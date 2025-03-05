@@ -1361,3 +1361,14 @@ select.form-input {
         font-size: 1rem;
     }
 }
+.hidden {
+    display: none;
+}
+
+.metric-fill-70 {
+    width: 70%;
+}
+
+.metric-fill-90 {
+    width: 90%;
+}
