@@ -47,6 +47,10 @@ yarn-error.log
 # Docker
 docker-compose.override.yml
 
+# Kubernetes/Bridge generated files
+bridge/base/*.yaml
+bridge/overlays/**/*.yaml
+
 # Log files
 *.log
 logs/
