@@ -2,11 +2,18 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Copy requirements first for better caching
+# Copy requirements file
 COPY backend/requirements.txt .
 
-# Install dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Create a compatible requirements file
+RUN echo "setuptools>=68.0.0" >> requirements.txt.compatible && \
+    echo "wheel>=0.40.0" >> requirements.txt.compatible && \
+    cat requirements.txt | sed 's/numpy==1.24.4/numpy>=1.25.0/g' | \
+    sed 's/aiohttp==3.8.5/aiohttp>=3.8.6/g' | \
+    sed 's/pydantic-ai==0.0.32/pydantic-ai>=0.0.32/g' | \
+    sed 's/langchain==0.0.312/langchain>=0.0.312/g' >> requirements.txt.compatible
+
+# Install dependencies from the compatible requirements file
 RUN pip install --no-cache-dir -r requirements.txt.compatible
 
 # Copy the rest of the application
@@ -20,4 +27,4 @@ ENV FLASK_APP=app.py
 ENV FLASK_ENV=production
 
 # Run the application
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "app:app"]
+CMD ["python", "app.py"]
