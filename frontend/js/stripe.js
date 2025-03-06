@@ -7,7 +7,7 @@
 
 class StripeService {
   constructor() {
-    this.publishableKey = 'pk_live_51QQkmTGpp9i49TTk5Bcw19pGK3Y8iR8O1Th4Y245vP5GecdHoZfFC6YqPFDTtSyxeK7buc8EqB39RR7Py9ptTcei00Vq7FcmlC';
+    this.publishableKey = process.env.STRIPE_PUBLISHABLE_KEY;
     this.stripe = null;
     
     // Load Stripe.js

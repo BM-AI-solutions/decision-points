@@ -99,7 +99,7 @@ def login():
             }), 401
 
         # Generate JWT token
-        secret_key = os.environ.get('JWT_SECRET_KEY', 'dev-jwt-secret-change-in-production')
+        secret_key = os.environ['JWT_SECRET_KEY']  # Required in production
         expiration = datetime.utcnow() + timedelta(hours=24)
 
         payload = {
@@ -288,7 +288,7 @@ def google_auth():
 
         try:
             # Get Google Client ID from environment variables
-            google_client_id = os.environ.get('GOOGLE_CLIENT_ID', '706670564943-pmitiums8ciksifmpmio5v5dtcius8rd.apps.googleusercontent.com')
+            google_client_id = os.environ['GOOGLE_CLIENT_ID']
             
             # Verify the token
             id_info = id_token.verify_oauth2_token(

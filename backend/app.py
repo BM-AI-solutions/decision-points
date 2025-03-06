@@ -7,6 +7,7 @@ from typing import Dict, Any, Optional, List, Union
 
 from dotenv import load_dotenv
 from flask import Flask, request, jsonify, Response
+from middleware.security_headers import security_headers
 from flask_cors import CORS
 from werkzeug.middleware.proxy_fix import ProxyFix
 
@@ -19,6 +20,7 @@ load_dotenv()
 
 # Initialize Flask app
 app = Flask(__name__)
+app.after_request(security_headers)
 app.config.from_object(Config)
 
 # Enable CORS
