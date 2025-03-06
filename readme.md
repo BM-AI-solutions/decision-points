@@ -1,3 +1,21 @@
+Steps to build and run with Docker Compose:
+Create the files above
+
+Set your OpenAI API key as an environment variable:
+
+# For Windows (PowerShell)
+$env:OPENAI_API_KEY="your-actual-openai-key"
+
+# For Windows (Command Prompt)
+set OPENAI_API_KEY=your-actual-openai-key
+
+# For macOS/Linux
+export OPENAI_API_KEY=your-actual-openai-key
+
+Build and run the services:
+
+docker-compose up --build
+
 This implementation follows all the requirements and best practices for the Decision Points AI Agent System. Here's what I've created:
 
 A Multi-Agent System:
