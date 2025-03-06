@@ -1,9 +1,9 @@
 // Wait for DOM to be fully loaded
 document.addEventListener('DOMContentLoaded', function() {
     // Navigation menu toggle for mobile
-    const menuToggle = document.querySelector('.menu-toggle');
-    const navMenu = document.querySelector('.nav-menu');
-    const authButtons = document.querySelector('.auth-buttons');
+    const menuToggle = document.querySelector('.navbar-toggle');
+    const navMenu = document.querySelector('.nav-links');
+    const authButtons = document.querySelector('.nav-links li:last-child');
 
     if (menuToggle) {
         menuToggle.addEventListener('click', function() {
@@ -23,17 +23,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 navMenu.style.boxShadow = 'var(--shadow-md)';
                 navMenu.style.zIndex = '100';
                 
-                authButtons.style.display = 'flex';
-                authButtons.style.flexDirection = 'column';
-                authButtons.style.position = 'absolute';
-                authButtons.style.top = navMenu.scrollHeight + 80 + 'px';
-                authButtons.style.left = '0';
-                authButtons.style.width = '100%';
-                authButtons.style.backgroundColor = 'var(--dark)';
-                authButtons.style.padding = '1rem';
-                authButtons.style.boxShadow = 'var(--shadow-md)';
-                authButtons.style.gap = '0.5rem';
-                authButtons.style.zIndex = '100';
+                // Show the sign up button separately
+                authButtons.style.display = 'block';
+                authButtons.style.margin = '1rem auto';
             } else {
                 navMenu.style = '';
                 authButtons.style = '';
@@ -332,8 +324,8 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Authentication buttons and modals
-    const loginBtn = document.querySelector('.btn-login');
-    const signUpBtn = document.querySelector('.btn-primary');
+    const loginBtn = document.querySelector('.nav-links a[href="#login"]');
+    const signUpBtn = document.querySelector('.nav-links .btn-primary');
     const loginModal = document.getElementById('login-modal');
     const appModal = document.getElementById('app-modal');
 
@@ -664,7 +656,7 @@ document.addEventListener('DOMContentLoaded', function() {
     document.head.appendChild(styleSheet);
 
     // Smooth scroll for navigation links
-    const navLinks = document.querySelectorAll('.nav-link');
+    const navLinks = document.querySelectorAll('.nav-links a');
     navLinks.forEach(link => {
         link.addEventListener('click', function(e) {
             e.preventDefault();
