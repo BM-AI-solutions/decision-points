@@ -67,3 +67,5 @@ frontend/dist/
 .cache/
 backend/__pycache__/
 backend/**/__pycache__/
+
+deployment-summary.md
