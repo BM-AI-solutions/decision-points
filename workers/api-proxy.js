@@ -24,7 +24,8 @@ const RATE_LIMIT = {
 // API endpoints that don't require authentication (public endpoints)
 const PUBLIC_ENDPOINTS = [
   '/api/health',
-  '/api/config'
+  '/api/config',
+  '/api/auth/google'
 ];
 
 addEventListener('fetch', event => {

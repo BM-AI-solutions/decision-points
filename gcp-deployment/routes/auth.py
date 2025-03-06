@@ -4,6 +4,8 @@ import jwt
 from datetime import datetime, timedelta
 import os
 from werkzeug.security import generate_password_hash, check_password_hash
+from google.auth.transport import requests
+from google.oauth2 import id_token
 
 from utils.logger import setup_logger
 
@@ -267,6 +269,103 @@ def subscribe():
         logger.error(f"Error subscribing user: {str(e)}", exc_info=True)
         return jsonify({
             'error': 'Error subscribing user',
+            'message': str(e),
+            'status': 500
+        }), 500
+
+@bp.route('/google', methods=['POST'])
+def google_auth():
+    """Authenticate user with Google OAuth."""
+    try:
+        data = request.json
+        token = data.get('token')
+
+        if not token:
+            return jsonify({
+                'error': 'Google token is required',
+                'status': 400
+            }), 400
+
+        try:
+            # Get Google Client ID from environment variables
+            google_client_id = os.environ.get('GOOGLE_CLIENT_ID', '116937668968-g0d3oevk2uh6ikng4igu18l4jjq6puhs.apps.googleusercontent.com')
+            
+            # Verify the token
+            id_info = id_token.verify_oauth2_token(
+                token,
+                requests.Request(),
+                google_client_id
+            )
+
+            # Extract user info
+            email = id_info.get('email')
+            name = id_info.get('name')
+            google_id = id_info.get('sub')  # Google's unique user ID
+            
+            if not email or not google_id:
+                return jsonify({
+                    'error': 'Invalid Google token',
+                    'status': 400
+                }), 400
+
+            # Check if user exists, if not create one
+            user = None
+            if email in USERS:
+                user = USERS[email]
+                # Update user's Google ID if not already set
+                if not user.get('google_id'):
+                    user['google_id'] = google_id
+            else:
+                # Create new user
+                user_id = str(uuid.uuid4())
+                user = {
+                    'id': user_id,
+                    'email': email,
+                    'name': name,
+                    'google_id': google_id,
+                    'created_at': datetime.utcnow().isoformat(),
+                    'credits': 10,  # Give new users some starter credits
+                    'subscription': None
+                }
+                USERS[email] = user
+
+            # Generate JWT token
+            secret_key = os.environ.get('JWT_SECRET_KEY', 'dev-jwt-secret-change-in-production')
+            expiration = datetime.utcnow() + timedelta(hours=24)
+
+            payload = {
+                'user_id': user['id'],
+                'email': user['email'],
+                'exp': expiration
+            }
+
+            token = jwt.encode(payload, secret_key, algorithm='HS256')
+
+            logger.info(f"User logged in with Google: {email}")
+            return jsonify({
+                'success': True,
+                'token': token,
+                'user': {
+                    'id': user['id'],
+                    'email': user['email'],
+                    'name': user['name'],
+                    'credits': user.get('credits', 10)
+                }
+            })
+
+        except ValueError as e:
+            # Invalid token
+            logger.error(f"Invalid Google token: {str(e)}")
+            return jsonify({
+                'error': 'Invalid Google token',
+                'message': str(e),
+                'status': 401
+            }), 401
+
+    except Exception as e:
+        logger.error(f"Error in Google authentication: {str(e)}", exc_info=True)
+        return jsonify({
+            'error': 'Error in Google authentication',
             'message': str(e),
             'status': 500
         }), 500

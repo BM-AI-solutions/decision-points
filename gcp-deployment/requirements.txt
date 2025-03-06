@@ -5,6 +5,7 @@ flask-jwt-extended==4.5.3
 werkzeug==2.3.7
 python-dotenv==1.0.0
 pydantic>=2.10,<3
+google-auth==2.38.0
 
 # Google Cloud Functions specific
 functions-framework==3.2.0

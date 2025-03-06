@@ -25,6 +25,9 @@ class Config:
     JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY', 'dev-jwt-secret-change-in-production')
     JWT_ACCESS_TOKEN_EXPIRES = int(os.environ.get('JWT_ACCESS_TOKEN_EXPIRES', 3600))  # 1 hour
     JWT_REFRESH_TOKEN_EXPIRES = int(os.environ.get('JWT_REFRESH_TOKEN_EXPIRES', 86400 * 30))  # 30 days
+    
+    # OAuth settings
+    GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID')
 
     # Rate limiting
     RATELIMIT_DEFAULT = os.environ.get('RATELIMIT_DEFAULT', '100 per day, 10 per hour')
