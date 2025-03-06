@@ -42,7 +42,7 @@ class ActionAgentManager:
 
         self.model_name = os.getenv("ACTION_AGENT_MODEL", "gpt-4o")
         self._initialize_agent()
-
+    
     def _initialize_agent(self) -> None:
         """Initialize the Action Agent with required tools."""
         # Set up agent dependencies
