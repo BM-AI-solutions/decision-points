@@ -288,7 +288,7 @@ def google_auth():
 
         try:
             # Get Google Client ID from environment variables
-            google_client_id = os.environ.get('GOOGLE_CLIENT_ID', '116937668968-g0d3oevk2uh6ikng4igu18l4jjq6puhs.apps.googleusercontent.com')
+            google_client_id = os.environ.get('GOOGLE_CLIENT_ID', '706670564943-pmitiums8ciksifmpmio5v5dtcius8rd.apps.googleusercontent.com')
             
             # Verify the token
             id_info = id_token.verify_oauth2_token(

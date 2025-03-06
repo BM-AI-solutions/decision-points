@@ -35,7 +35,7 @@ class AuthService {
     script.onload = () => {
       if (window.google) {
         google.accounts.id.initialize({
-          client_id: '116937668968-g0d3oevk2uh6ikng4igu18l4jjq6puhs.apps.googleusercontent.com', // Example client ID - replace with your actual Google OAuth client ID
+          client_id: '706670564943-pmitiums8ciksifmpmio5v5dtcius8rd.apps.googleusercontent.com', // Google OAuth client ID
           callback: this.handleGoogleResponse.bind(this),
           auto_select: false
         });
