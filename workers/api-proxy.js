@@ -9,24 +9,18 @@
  * 5. Request logging
  */
 
-// Configuration
-const API_HOST = 'us-central1-single-bindery-452721-n8.cloudfunctions.net';  // Your GCF hostname - replace YOUR_PROJECT_ID with your actual GCP project ID
-const API_PATH = '/intellisol-api';  // Cloud Function name/path
-const ALLOWED_ORIGINS = ['https://intellisol.cc', 'https://decisionpoints.intellisol.cc'];
-const REQUIRE_API_KEY = false;  // Set to true to require API key for all requests
+// Configuration (using environment variables)
+const API_HOST = API_HOST || 'us-central1-single-bindery-452721-n8.cloudfunctions.net';  // Your GCF hostname - replace YOUR_PROJECT_ID with your actual GCP project ID
+const API_PATH = API_PATH || '/intellisol-api';  // Cloud Function name/path
+const ALLOWED_ORIGINS = (ALLOWED_ORIGINS || 'https://intellisol.cc,https://decisionpoints.intellisol.cc').split(',');
+const REQUIRE_API_KEY = REQUIRE_API_KEY === 'true';  // Set to true to require API key for all requests
 
-// Rate limiting (using Cloudflare's built-in features)
-const RATE_LIMIT = {
-  max_requests: 100,  // Maximum requests per time window
-  time_window: 60,    // Time window in seconds
-};
+// Rate limiting (using Cloudflare's built-in features) - consider using Cloudflare's rate limiting rules instead
+const RATE_LIMIT_MAX_REQUESTS = parseInt(RATE_LIMIT_MAX_REQUESTS || '100');  // Maximum requests per time window
+const RATE_LIMIT_TIME_WINDOW = parseInt(RATE_LIMIT_TIME_WINDOW || '60');    // Time window in seconds
 
 // API endpoints that don't require authentication (public endpoints)
-const PUBLIC_ENDPOINTS = [
-  '/api/health',
-  '/api/config',
-  '/api/auth/google'
-];
+const PUBLIC_ENDPOINTS = (PUBLIC_ENDPOINTS || '/api/health,/api/config,/api/auth/google').split(',');
 
 addEventListener('fetch', event => {
   event.respondWith(handleRequest(event));
@@ -79,20 +73,22 @@ async function handleAPIRequest(request, event) {
     // For this example, we're skipping actual rate limiting checks
   }
 
-  // Forward the request to the backend API
-  // Transform the path to work with Cloud Functions
-  const gcfPath = url.pathname.replace('/api', API_PATH);
-  const apiURL = new URL(`https://${API_HOST}${gcfPath}${url.search}`);
-
-  // Clone the request with the new URL
-  const apiRequest = new Request(apiURL.toString(), {
-    method: request.method,
-    headers: request.headers,
-    body: request.body,
-    redirect: 'follow'
-  });
-
   try {
+    // Forward the request to the backend API
+    // Transform the path to work with Cloud Functions
+    const gcfPath = url.pathname.replace('/api', API_PATH);
+    const apiURL = new URL(`https://${API_HOST}${gcfPath}${url.search}`);
+
+    // Clone the request with the new URL
+    const apiRequest = new Request(apiURL.toString(), {
+      method: request.method,
+      headers: request.headers,
+      body: request.body,
+      redirect: 'follow'
+    });
+    
+    console.log(`Forwarding request to: ${apiURL.toString()}`); // Log the API URL
+
     // Fetch from the backend API
     const response = await fetch(apiRequest);
 
@@ -106,15 +102,16 @@ async function handleAPIRequest(request, event) {
 
     return newResponse;
   } catch (error) {
+    console.error('API request failed:', error); // Log the error
     // Handle errors
-    return jsonResponse({ 
-      error: 'API request failed', 
-      message: error.message 
+    return jsonResponse({
+      error: 'API request failed',
+      message: error.message
     }, 500);
   }
 }
 
-function handleStaticOrRedirect(request) {
+async function handleStaticOrRedirect(request) {
   const url = new URL(request.url);
 
   // Redirect to the main app for most paths

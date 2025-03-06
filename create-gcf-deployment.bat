@@ -1,4 +1,20 @@
 @echo off
+:: Script to create a Google Cloud Functions deployment package
+
+:: Set the Python runtime version
+set PYTHON_RUNTIME=python311
+
+:: Set the Google Cloud Functions region
+set GCP_REGION=us-central1
+
+:: Set the Google Cloud Functions name
+set GCP_FUNCTION_NAME=dualagent-api
+
+:: Set the environment variables
+set OPENAI_API_KEY=your_openai_api_key
+set FLASK_ENV=production
+set SECRET_KEY=your_secret_key
+
 echo Creating Google Cloud Functions deployment package...
 
 :: Create the deployment directory
@@ -23,10 +39,10 @@ echo.
 echo Next steps:
 echo 1. Navigate to the gcp-deployment directory
 echo 2. Deploy to Google Cloud Functions using:
-echo    gcloud functions deploy dualagent-api ^
+echo    gcloud functions deploy %GCP_FUNCTION_NAME% ^
 echo      --gen2 ^
-echo      --runtime=python39 ^
-echo      --region=us-central1 ^
+echo      --runtime=%PYTHON_RUNTIME% ^
+echo      --region=%GCP_REGION% ^
 echo      --source=. ^
 echo      --entry-point=entrypoint ^
 echo      --trigger-http ^
@@ -35,6 +51,6 @@ echo      --memory=1024MB ^
 echo      --timeout=540s ^
 echo      --min-instances=0 ^
 echo      --max-instances=10 ^
-echo      --set-env-vars="OPENAI_API_KEY=your_api_key,FLASK_ENV=production,SECRET_KEY=your_secret_key"
+echo      --set-env-vars="OPENAI_API_KEY=%OPENAI_API_KEY%,FLASK_ENV=%FLASK_ENV%,SECRET_KEY=%SECRET_KEY%"
 echo.
 echo Remember to replace the environment variables with your actual values.
