@@ -543,7 +543,7 @@ class ActionAgentManager:
 
         # Call the tool directly for structured output
         try:
-            result = await update_cash_flow_status(RunContext(deps), business_model_name, implemented_features)
+            result = await self.action_agent.tool(update_cash_flow_status)(RunContext(deps), business_model_name, implemented_features)
             logger.info(f"Calculated cash flow for {business_model_name} for user {user_id}")
             return result.dict()
         except Exception as e:
