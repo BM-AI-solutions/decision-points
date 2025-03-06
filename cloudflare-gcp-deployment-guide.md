@@ -80,18 +80,18 @@ cp -r backend/models gcp-deployment/
 cd gcp-deployment
 
 # Deploy to Google Cloud Functions
-gcloud functions deploy dualagent-api \
-  --gen2 \
-  --runtime=python39 \
-  --region=us-central1 \
-  --source=. \
-  --entry-point=entrypoint \
-  --trigger-http \
-  --allow-unauthenticated \
-  --memory=1024MB \
-  --timeout=540s \
-  --min-instances=0 \
-  --max-instances=10 \
+gcloud functions deploy intellisol-api 
+  --gen2 
+  --runtime=python39 
+  --region=us-central1 
+  --source=. 
+  --entry-point=entrypoint 
+  --trigger-http 
+  --allow-unauthenticated 
+  --memory=1024MB 
+  --timeout=540s 
+  --min-instances=0 
+  --max-instances=10 
   --set-env-vars="OPENAI_API_KEY=your_openai_api_key,FLASK_ENV=production,SECRET_KEY=your_secure_random_key"
 ```
 
