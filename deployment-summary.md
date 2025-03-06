@@ -97,11 +97,11 @@ This document summarizes the deployment setup for the Dual Agent System to Cloud
 
 ## 3. Testing the Deployment
 
-1. Visit `https://dualagent.intellisol.cc` to verify the frontend is working
+1. Visit `https://decisionpoints.intellisol.cc` to verify the frontend is working
 2. Test API endpoints:
    ```
-   curl https://dualagent.intellisol.cc/api/health
-   curl https://dualagent.intellisol.cc/api/config
+   curl https://decisionpoints.intellisol.cc/api/health
+   curl https://decisionpoints.intellisol.cc/api/config
    ```
 
 ## 4. Maintenance
