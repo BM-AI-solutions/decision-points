@@ -1,5 +1,4 @@
 Steps to build and run with Docker Compose:
-Create the files above
 
 Set your OpenAI API key as an environment variable:
 
