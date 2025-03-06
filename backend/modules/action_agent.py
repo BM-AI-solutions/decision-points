@@ -3,11 +3,11 @@ from __future__ import annotations
 import os
 import asyncio
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, TypeVar
 
 import loguru
 from pydantic import BaseModel, Field
-from pydantic_ai import Agent, RunContext, ModelRetry
+from pydantic_ai import Agent, RunContext, ModelRetry, Tool
 
 from models.business_model import (
     BusinessModel,
@@ -27,6 +27,14 @@ from utils.cache import cached
 
 logger = setup_logger("action_agent")
 
+# Define AgentDeps at the module level
+@dataclass
+class AgentDeps:
+    """Dependencies for the Action Agent"""
+    api_keys: Dict[str, str]
+    user_profile: Dict[str, Any]
+    storage_path: str
+
 class ActionAgentManager:
     """Manager for the Action Agent functionality."""
 
@@ -45,14 +53,6 @@ class ActionAgentManager:
     
     def _initialize_agent(self) -> None:
         """Initialize the Action Agent with required tools."""
-        # Set up agent dependencies
-        @dataclass
-        class AgentDeps:
-            """Dependencies for the Action Agent"""
-            api_keys: Dict[str, str]
-            user_profile: Dict[str, Any]
-            storage_path: str
-
         # Initialize the agent
         self.action_agent = Agent(
             f'openai:{self.model_name}',
@@ -412,7 +412,11 @@ class ActionAgentManager:
 
         # Call the tool directly for structured output
         try:
-            result = await implement_feature(RunContext(deps), feature_obj, service_name)
+            # Use a local function reference to avoid scope issues
+            async def call_implement_feature(ctx, feat, service):
+                return await implement_feature(ctx, feat, service)
+                
+            result = await call_implement_feature(RunContext(deps), feature_obj, service_name)
             logger.info(f"Implemented feature {feature_obj.feature_name} for user {user_id}")
             return result.dict()
         except Exception as e:
@@ -460,7 +464,11 @@ class ActionAgentManager:
 
         # Call the tool directly for structured output
         try:
-            result = await create_branding(RunContext(deps), business_model_name, target_demographics)
+            # Use a local function reference to avoid scope issues
+            async def call_create_branding(ctx, name, demo):
+                return await create_branding(ctx, name, demo)
+                
+            result = await call_create_branding(RunContext(deps), business_model_name, target_demographics)
             logger.info(f"Created branding for {business_model_name} for user {user_id}")
             return result.dict()
         except Exception as e:
@@ -501,7 +509,11 @@ class ActionAgentManager:
 
         # Call the tool directly for structured output
         try:
-            result = await deploy_system(RunContext(deps), business_model_name, implemented_features)
+            # Use a local function reference to avoid scope issues
+            async def call_deploy_system(ctx, name, features):
+                return await deploy_system(ctx, name, features)
+                
+            result = await call_deploy_system(RunContext(deps), business_model_name, implemented_features)
             logger.info(f"Deployed system for {business_model_name} for user {user_id}")
             return result.dict()
         except Exception as e:
@@ -543,7 +555,11 @@ class ActionAgentManager:
 
         # Call the tool directly for structured output
         try:
-            result = await self.action_agent.tool(update_cash_flow_status)(RunContext(deps), business_model_name, implemented_features)
+            # Use a local function reference to avoid scope issues
+            async def call_update_cash_flow_status(ctx, name, features):
+                return await update_cash_flow_status(ctx, name, features)
+                
+            result = await call_update_cash_flow_status(RunContext(deps), business_model_name, implemented_features)
             logger.info(f"Calculated cash flow for {business_model_name} for user {user_id}")
             return result.dict()
         except Exception as e:
@@ -562,7 +578,7 @@ class ActionAgentManager:
                 "automated_percentage": 90
             }
 
-    def _create_deps(self, user_id: str) -> Any:
+    def _create_deps(self, user_id: str) -> AgentDeps:
         """Create agent dependencies for a user.
 
         Args:
@@ -571,12 +587,6 @@ class ActionAgentManager:
         Returns:
             Agent dependencies
         """
-        @dataclass
-        class AgentDeps:
-            api_keys: Dict[str, str]
-            user_profile: Dict[str, Any]
-            storage_path: str
-
         # In a real implementation, would load user profile from database
         return AgentDeps(
             api_keys={"OPENAI_API_KEY": self.api_key},

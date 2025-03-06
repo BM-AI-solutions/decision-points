@@ -3,11 +3,11 @@ from __future__ import annotations
 import os
 import asyncio
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, TypeVar
 
 import loguru
 from pydantic import BaseModel, Field
-from pydantic_ai import Agent, RunContext, ModelRetry
+from pydantic_ai import Agent, RunContext, ModelRetry, Tool
 
 from models.business_model import (
     BusinessModel, 
@@ -21,6 +21,14 @@ from utils.logger import setup_logger
 from utils.cache import cached
 
 logger = setup_logger("guide_agent")
+
+# Define AgentDeps at the module level
+@dataclass
+class AgentDeps:
+    """Dependencies for the Guide Agent"""
+    api_keys: Dict[str, str]
+    user_profile: Dict[str, Any]
+    storage_path: str
 
 class GuideAgentManager:
     """Manager for the Guide Agent functionality."""
@@ -40,14 +48,6 @@ class GuideAgentManager:
 
     def _initialize_agent(self) -> None:
         """Initialize the Guide Agent with required tools."""
-        # Set up agent dependencies
-        @dataclass
-        class AgentDeps:
-            """Dependencies for the Guide Agent"""
-            api_keys: Dict[str, str]
-            user_profile: Dict[str, Any]
-            storage_path: str
-
         # Initialize the agent
         self.guide_agent = Agent(
             f'openai:{self.model_name}',
@@ -594,7 +594,7 @@ class GuideAgentManager:
 
         return human_tasks
 
-    def _create_deps(self, user_id: str) -> Any:
+    def _create_deps(self, user_id: str) -> AgentDeps:
         """Create agent dependencies for a user.
 
         Args:
@@ -603,12 +603,6 @@ class GuideAgentManager:
         Returns:
             Agent dependencies
         """
-        @dataclass
-        class AgentDeps:
-            api_keys: Dict[str, str]
-            user_profile: Dict[str, Any]
-            storage_path: str
-
         # In a real implementation, would load user profile from database
         return AgentDeps(
             api_keys={"OPENAI_API_KEY": self.api_key},
