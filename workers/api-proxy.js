@@ -10,9 +10,9 @@
  */
 
 // Configuration
-const API_HOST = 'us-central1-YOUR_PROJECT_ID.cloudfunctions.net';  // Your GCF hostname - replace YOUR_PROJECT_ID with your actual GCP project ID
-const API_PATH = '/dualagent-api';  // Cloud Function name/path
-const ALLOWED_ORIGINS = ['https://intellisol.cc', 'https://dualagent.intellisol.cc'];
+const API_HOST = 'us-central1-single-bindery-452721-n8.cloudfunctions.net';  // Your GCF hostname - replace YOUR_PROJECT_ID with your actual GCP project ID
+const API_PATH = '/intellisol-api';  // Cloud Function name/path
+const ALLOWED_ORIGINS = ['https://intellisol.cc', 'https://decisionpoints.intellisol.cc'];
 const REQUIRE_API_KEY = false;  // Set to true to require API key for all requests
 
 // Rate limiting (using Cloudflare's built-in features)

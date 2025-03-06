@@ -76,23 +76,23 @@ This document summarizes the deployment setup for the Dual Agent System to Cloud
      - Build output directory: `frontend`
    - Click "Save and Deploy"
 
-3. Set up custom domain `dualagent.intellisol.cc` in the Cloudflare Pages project
+3. Set up custom domain `decisionpoints.intellisol.cc` in the Cloudflare Pages project
 
 ### Step 3: Deploy API Proxy to Cloudflare Workers
 
 1. Update the `workers/api-proxy.js` file with your actual GCF URL:
    ```javascript
-   const API_HOST = 'us-central1-your-project-id.cloudfunctions.net';  // Update this
+   const API_HOST = 'us-central1-single-bindery-452721-n8.cloudfunctions.net';  // Update this
    ```
 
 2. In Cloudflare dashboard:
    - Go to Workers & Pages
-   - Create a new service named "dualagent-api-proxy"
+   - Create a new service named "intellisol-api-proxy"
    - Copy and paste the updated `workers/api-proxy.js` code
    - Deploy the worker
 
 3. Configure Worker routes:
-   - Add route: `dualagent.intellisol.cc/api/*`
+   - Add route: `decisionpoints.intellisol.cc/api/*`
    - Zone: intellisol.cc (Zone ID: 83f6f0d954589cd372dfcdbe37ba27c0)
 
 ## 3. Testing the Deployment
