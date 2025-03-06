@@ -171,6 +171,40 @@ const apiService = {
     return api.get('/auth/user');
   },
   
+  // OAuth authentication
+  loginWithGoogle: (data) => {
+    return api.post('/auth/google', data);
+  },
+  
+  loginWithGithub: (data) => {
+    return api.post('/auth/github', data);
+  },
+  
+  // Subscription management
+  getSubscriptionPlans: () => {
+    return api.get('/subscriptions/plans');
+  },
+  
+  getCurrentSubscription: () => {
+    return api.get('/subscriptions/current');
+  },
+  
+  createCheckoutSession: (data) => {
+    return api.post('/subscriptions/create-checkout-session', data);
+  },
+  
+  updateSubscription: (subscriptionId, data) => {
+    return api.put(`/subscriptions/${subscriptionId}`, data);
+  },
+  
+  cancelSubscription: (subscriptionId) => {
+    return api.post(`/subscriptions/${subscriptionId}/cancel`);
+  },
+  
+  reactivateSubscription: (subscriptionId) => {
+    return api.post(`/subscriptions/${subscriptionId}/reactivate`);
+  },
+  
   // System health and configuration
   getHealthStatus: () => {
     return api.get('/health');
