@@ -13,7 +13,7 @@ aiohttp==3.8.5
 
 # AI and NLP
 pydantic-ai==0.0.32
-openai==1.3.7
+openai>==1.3.7
 langchain==0.0.312
 
 # Data processing
