@@ -7,6 +7,7 @@ COPY backend/requirements.txt .
 
 # Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt.compatible
 
 # Copy the rest of the application
 COPY backend/ .
