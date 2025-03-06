@@ -2,7 +2,7 @@
  * Cloudflare Worker script to proxy API requests to the Decision Points backend
  * 
  * This worker handles:
- * 1. API request proxying
+ * 1. API request proxying to Google Cloud Functions
  * 2. CORS headers
  * 3. API key validation
  * 4. Rate limiting
@@ -10,8 +10,9 @@
  */
 
 // Configuration
-const API_HOST = 'backend.intellisol.cc';  // Your backend hostname
-const ALLOWED_ORIGINS = ['https://intellisol.cc', 'https://decision-points.intellisol.cc'];
+const API_HOST = 'us-central1-YOUR_PROJECT_ID.cloudfunctions.net';  // Your GCF hostname - replace YOUR_PROJECT_ID with your actual GCP project ID
+const API_PATH = '/dualagent-api';  // Cloud Function name/path
+const ALLOWED_ORIGINS = ['https://intellisol.cc', 'https://dualagent.intellisol.cc'];
 const REQUIRE_API_KEY = false;  // Set to true to require API key for all requests
 
 // Rate limiting (using Cloudflare's built-in features)
@@ -51,10 +52,10 @@ async function handleRequest(event) {
 
 async function handleAPIRequest(request, event) {
   const url = new URL(request.url);
-  const path = url.pathname;
+  const originalPath = url.pathname;
 
   // Check if the endpoint requires authentication
-  const isPublicEndpoint = PUBLIC_ENDPOINTS.some(endpoint => path.startsWith(endpoint));
+  const isPublicEndpoint = PUBLIC_ENDPOINTS.some(endpoint => originalPath.startsWith(endpoint));
 
   if (REQUIRE_API_KEY && !isPublicEndpoint) {
     // Validate API key (if required)
@@ -71,14 +72,16 @@ async function handleAPIRequest(request, event) {
   // This is a simplified example - Cloudflare has built-in rate limiting that's more robust
   if (!isPublicEndpoint) {
     const clientIP = request.headers.get('CF-Connecting-IP');
-    const rateLimitKey = `ratelimit:${clientIP}:${path}`;
+    const rateLimitKey = `ratelimit:${clientIP}:${originalPath}`;
 
     // In a real implementation, you would check and increment a counter in KV storage
     // For this example, we're skipping actual rate limiting checks
   }
 
   // Forward the request to the backend API
-  const apiURL = new URL(url.pathname + url.search, `https://${API_HOST}`);
+  // Transform the path to work with Cloud Functions
+  const gcfPath = url.pathname.replace('/api', API_PATH);
+  const apiURL = new URL(`https://${API_HOST}${gcfPath}${url.search}`);
 
   // Clone the request with the new URL
   const apiRequest = new Request(apiURL.toString(), {
