@@ -1162,11 +1162,21 @@ select.form-input {
     align-items: center;
     margin: var(--spacing-md) 0;
     min-height: 50px;
+    width: 100%;
+    overflow: hidden;
 }
 
 /* Style for the Google sign-in button iframe */
 .google-btn-container iframe {
     width: 100% !important;
+    min-height: 40px;
+}
+
+/* Ensure the Google button is centered and sized properly */
+.google-btn-container div {
+    width: 100% !important;
+    display: flex !important;
+    justify-content: center !important;
 }
 
 /* Authentication Success Message */
@@ -1339,12 +1349,43 @@ select.form-input {
         font-size: 2.3rem;
     }
 
-    .nav-menu, .auth-buttons {
+    .nav-links {
         display: none;
+        position: absolute;
+        top: 80px;
+        left: 0;
+        width: 100%;
+        background-color: rgba(18, 18, 18, 0.95);
+        -webkit-backdrop-filter: blur(10px);
+        backdrop-filter: blur(10px);
+        flex-direction: column;
+        padding: 1rem;
+        box-shadow: var(--shadow-md);
+        z-index: 100;
+        border-bottom: 1px solid var(--border-color);
     }
-
-    .menu-toggle {
+    
+    .nav-links.active {
+        display: flex;
+    }
+    
+    .nav-links li {
+        margin: 0.5rem 0;
+        text-align: center;
+    }
+    
+    .nav-links li:last-child {
+        margin-top: 1rem;
+    }
+    
+    .navbar-toggle {
         display: block;
+        background-color: transparent;
+        border: none;
+        color: var(--text-primary);
+        font-size: 1.5rem;
+        cursor: pointer;
+        padding: 0.5rem;
     }
 
     .hero {

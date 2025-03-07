@@ -3,32 +3,15 @@ document.addEventListener('DOMContentLoaded', function() {
     // Navigation menu toggle for mobile
     const menuToggle = document.querySelector('.navbar-toggle');
     const navMenu = document.querySelector('.nav-links');
-    const authButtons = document.querySelector('.nav-links li:last-child');
 
     if (menuToggle) {
         menuToggle.addEventListener('click', function() {
             navMenu.classList.toggle('active');
-            authButtons.classList.toggle('active');
             
-            // Style changes for mobile menu
-            if (navMenu.classList.contains('active')) {
-                navMenu.style.display = 'flex';
-                navMenu.style.flexDirection = 'column';
-                navMenu.style.position = 'absolute';
-                navMenu.style.top = '80px';
-                navMenu.style.left = '0';
-                navMenu.style.width = '100%';
-                navMenu.style.backgroundColor = 'var(--dark)';
-                navMenu.style.padding = '1rem';
-                navMenu.style.boxShadow = 'var(--shadow-md)';
-                navMenu.style.zIndex = '100';
-                
-                // Show the sign up button separately
-                authButtons.style.display = 'block';
-                authButtons.style.margin = '1rem auto';
-            } else {
+            // No need to set inline styles as they're now in the CSS
+            if (!navMenu.classList.contains('active')) {
+                // Only reset when closing
                 navMenu.style = '';
-                authButtons.style = '';
             }
         });
     }
