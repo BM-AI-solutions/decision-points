@@ -1155,6 +1155,42 @@ select.form-input {
     animation: modalFadeIn 0.3s ease;
 }
 
+/* Google Button Styles */
+.google-btn-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin: var(--spacing-md) 0;
+    min-height: 50px;
+}
+
+/* Style for the Google sign-in button iframe */
+.google-btn-container iframe {
+    width: 100% !important;
+}
+
+/* Authentication Success Message */
+.auth-success {
+    text-align: center;
+    padding: var(--spacing-lg) 0;
+}
+
+.auth-success-icon {
+    font-size: 3rem;
+    color: var(--success);
+    margin-bottom: var(--spacing-md);
+    display: block;
+}
+
+.auth-success h4 {
+    color: var(--text-primary);
+    margin-bottom: var(--spacing-sm);
+}
+
+.auth-success p {
+    color: var(--text-secondary);
+}
+
 @keyframes modalFadeIn {
     from {
         opacity: 0;

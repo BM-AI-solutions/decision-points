@@ -328,11 +328,37 @@ document.addEventListener('DOMContentLoaded', function() {
     const signUpBtn = document.querySelector('.nav-links .btn-primary');
     const loginModal = document.getElementById('login-modal');
     const appModal = document.getElementById('app-modal');
+    
+    // Add login link if it doesn't exist
+    if (!loginBtn && document.querySelector('.nav-links')) {
+        const loginLi = document.createElement('li');
+        const loginLink = document.createElement('a');
+        loginLink.href = "#login";
+        loginLink.textContent = "Log In";
+        loginLi.appendChild(loginLink);
+        
+        // Insert before the last item (Sign Up button)
+        const navLinks = document.querySelector('.nav-links');
+        navLinks.insertBefore(loginLi, navLinks.lastElementChild);
+        
+        // Update loginBtn reference
+        const updatedLoginBtn = document.querySelector('.nav-links a[href="#login"]');
+        if (updatedLoginBtn) {
+            // Reassign loginBtn to the new element
+            loginBtn = updatedLoginBtn;
+        }
+    }
 
     // Login button functionality
     if (loginBtn && loginModal) {
-        loginBtn.addEventListener('click', function() {
+        loginBtn.addEventListener('click', function(e) {
+            e.preventDefault();
             openModal(loginModal);
+            
+            // Initialize Google Sign-In when the modal is opened
+            if (typeof loadGoogleAPI === 'function') {
+                loadGoogleAPI();
+            }
         });
     }
     
@@ -373,6 +399,23 @@ document.addEventListener('DOMContentLoaded', function() {
                     </div>
                 </form>
             `;
+            
+            // Add event listener to the Google button
+            setTimeout(() => {
+                const googleBtn = document.querySelector('.btn-google');
+                if (googleBtn) {
+                    googleBtn.addEventListener('click', function() {
+                        closeModal(appModal);
+                        setTimeout(() => {
+                            openModal(loginModal);
+                            // Initialize Google Sign-In
+                            if (typeof loadGoogleAPI === 'function') {
+                                loadGoogleAPI();
+                            }
+                        }, 300);
+                    });
+                }
+            }, 100);
             
             // Set header title
             appModal.querySelector('.modal-header h3').textContent = 'Sign Up for Decision Points AI';

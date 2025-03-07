@@ -241,7 +241,7 @@
                     </div>
                 </div>
                 <div class="testimonial-controls">
-                    <button class="testimonial-control prev">
+                    <button class="testimonial-control prev" aria-label="Previous testimonial">
                         <i class="fas fa-chevron-left"></i>
                     </button>
                     <div class="testimonial-dots">
@@ -249,7 +249,7 @@
                         <span class="dot"></span>
                         <span class="dot"></span>
                     </div>
-                    <button class="testimonial-control next">
+                    <button class="testimonial-control next" aria-label="Next testimonial">
                         <i class="fas fa-chevron-right"></i>
                     </button>
                 </div>
@@ -286,6 +286,10 @@
                         <input type="password" id="password" class="form-input" placeholder="••••••••••">
                     </div>
                     <button type="submit" class="btn btn-primary btn-full">Log In</button>
+                    <div class="auth-divider">
+                        <span>or continue with</span>
+                    </div>
+                    <div id="google-signin-button-container" class="google-btn-container"></div>
                 </form>
             </div>
         </div>
@@ -304,6 +308,7 @@
     </div>
 
     <!-- Scripts -->
+    <script src="js/auth.js"></script>
     <script src="js/main.js"></script>
 </body>
 </html>
