@@ -69,3 +69,6 @@ backend/__pycache__/
 backend/**/__pycache__/
 
 /deployment-summary.md
+
+.pytest_cache
+.PYC 
