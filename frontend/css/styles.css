@@ -272,9 +272,21 @@ img {
 
 .navbar .container {
     display: flex;
-    justify-content: space-between;
+    justify-content: center; /* Center the content */
     align-items: center;
     height: 100%;
+}
+
+
+/* Media query for smaller screens */
+@media (max-width: 768px) {
+    /* ... other styles ... */
+
+    .auth-buttons {
+        flex-direction: column; /* Stack buttons vertically */
+        align-items: center; /* Center buttons */
+        margin-top: 1rem;
+    }
 }
 
 .logo {
