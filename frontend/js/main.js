@@ -691,9 +691,13 @@ document.addEventListener('DOMContentLoaded', function() {
             const targetElement = document.querySelector(targetId);
 
             if (targetElement) {
+                const yOffset = -80; 
+                const elementPosition = targetElement.getBoundingClientRect().top;
+                const offsetPosition = elementPosition + window.pageYOffset + yOffset;
+
                 window.scrollTo({
-                    top: targetElement.offsetTop - 80, // Adjust for navbar height
-                    // behavior: 'smooth' // Temporarily disable smooth scrolling for testing
+                    top: offsetPosition,
+                    behavior: 'smooth'
                 });
 
                 // Close mobile menu if open
