@@ -696,6 +696,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     behavior: 'smooth'
                 });
 
+                // Add active class to clicked link
+                navLinks.forEach(link => link.classList.remove('active'));
+                this.classList.add('active');
                 // Close mobile menu if open
                 if (navMenu.classList.contains('active')) {
                     navMenu.classList.remove('active');
