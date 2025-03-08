@@ -693,12 +693,9 @@ document.addEventListener('DOMContentLoaded', function() {
             if (targetElement) {
                 window.scrollTo({
                     top: targetElement.offsetTop - 80, // Adjust for navbar height
-                    behavior: 'smooth'
+                    // behavior: 'smooth' // Temporarily disable smooth scrolling for testing
                 });
 
-                // Add active class to clicked link
-                navLinks.forEach(link => link.classList.remove('active'));
-                this.classList.add('active');
                 // Close mobile menu if open
                 if (navMenu.classList.contains('active')) {
                     navMenu.classList.remove('active');
