@@ -8,7 +8,7 @@ class Config:
     DEBUG = os.environ.get('FLASK_ENV') == 'development'
 
     # API Keys
-    OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
+    GOOGLE_API_KEY = os.environ.get('GOOGLE_API_KEY')
 
     # Database settings (if using a database)
     DATABASE_URL = os.environ.get('DATABASE_URL')
@@ -53,6 +53,6 @@ class Config:
     def get_api_keys(cls) -> Dict[str, str]:
         """Get all configured API keys."""
         return {
-            'openai': cls.OPENAI_API_KEY,
+            'google': cls.GOOGLE_API_KEY,
             'stripe': cls.STRIPE_API_KEY,
         }

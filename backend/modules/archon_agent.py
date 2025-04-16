@@ -19,7 +19,7 @@ from typing import Dict, List, Any, Optional, Union, Tuple
 
 class ArchonAgent:
     """
-    AI agent for automated passive income generation powered by Archon
+    AI agent for automated passive income generation powered by Gemini (Google Gemini AI) and Archon
     """
     
     def __init__(self, api_key: Optional[str] = None, debug_mode: bool = False):
@@ -30,7 +30,7 @@ class ArchonAgent:
             api_key: Optional API key for external services
             debug_mode: If True, provides verbose logging
         """
-        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
+        self.api_key = api_key or os.getenv("GOOGLE_API_KEY")
         self.debug_mode = debug_mode
         self.income_streams = []
         self.subscription_tiers = []

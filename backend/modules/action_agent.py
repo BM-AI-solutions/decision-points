@@ -42,20 +42,20 @@ class ActionAgentManager:
         """Initialize the Action Agent Manager.
 
         Args:
-            api_key: OpenAI API key (uses env var if None)
+            api_key: Gemini API key (uses env var if None)
         """
-        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
+        self.api_key = api_key or os.getenv("GOOGLE_API_KEY")
         if not self.api_key:
-            raise ValueError("OpenAI API key is required")
+            raise ValueError("Google Gemini API key is required")
 
-        self.model_name = os.getenv("ACTION_AGENT_MODEL", "gpt-4o")
+        self.model_name = os.getenv("ACTION_AGENT_MODEL", "gemini-pro")
         self._initialize_agent()
     
     def _initialize_agent(self) -> None:
         """Initialize the Action Agent with required tools."""
         # Initialize the agent
         self.action_agent = Agent(
-            f'openai:{self.model_name}',
+            f'gemini:{self.model_name}',
             deps_type=AgentDeps,
             system_prompt="""You are the Action Agent in the Decision Points system. Your role is to implement
             the business models and features identified by the Guide Agent and automate them to generate
@@ -110,7 +110,7 @@ class ActionAgentManager:
                 "stripe": "https://dashboard.stripe.com/",
                 "paypal": "https://www.paypal.com/dashboard/",
                 "aws": "https://console.aws.amazon.com/",
-                "openai": "https://platform.openai.com/",
+                "gemini": "https://aistudio.google.com/app/apikey",
                 "gumroad": "https://app.gumroad.com/dashboard",
                 "mailchimp": "https://us1.admin.mailchimp.com/",
             }
@@ -589,7 +589,7 @@ class ActionAgentManager:
         """
         # In a real implementation, would load user profile from database
         return AgentDeps(
-            api_keys={"OPENAI_API_KEY": self.api_key},
+            api_keys={"GOOGLE_API_KEY": self.api_key},
             user_profile={"id": user_id, "name": "User"},
             storage_path=f"./data/users/{user_id}"
         )

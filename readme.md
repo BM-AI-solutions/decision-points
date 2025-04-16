@@ -21,7 +21,7 @@ Decision Points is an AI-powered system designed to automate the creation, deplo
     *   Language: Python (3.8+/3.9)
     *   Framework: Flask
     *   Server: Gunicorn / uWSGI
-    *   AI: OpenAI API, Langchain
+    *   AI: Google Gemini API, Langchain
     *   Database (Deployment Dependent): Google Cloud Datastore OR PostgreSQL (with SQLAlchemy/Alembic) OR MongoDB
     *   Caching (Deployment Dependent): Cachetools OR Redis
 *   **Frontend:**
@@ -44,7 +44,7 @@ Two primary methods are supported for local development and testing:
 
 1.  **Docker Compose (Recommended):**
     *   Ensure Docker and Docker Compose are installed.
-    *   Configure required environment variables (copy `.env.example` to `.env` and fill in values).
+    *   Configure required environment variables (copy `.env.example` to `.env` and fill in values, including your `GOOGLE_API_KEY` for Gemini).
     *   Run: `docker-compose up --build`
 
 2.  **Python Virtual Environment (venv):**
@@ -58,10 +58,10 @@ Two primary methods are supported for local development and testing:
         ```bash
         pip install -r backend/requirements.txt
         ```
-    *   Configure required environment variables (e.g., set them in your shell or create a `.env` file).
+    *   Configure required environment variables (e.g., set them in your shell or create a `.env` file, ensuring you set `GOOGLE_API_KEY` for Gemini).
     *   Run the Flask development server (refer to Flask documentation or project specifics).
 
-**Environment Variables:** The system relies on environment variables for configuration, including API keys and secrets. Refer to `backend/.env.example` for a template.
+**Environment Variables:** The system relies on environment variables for configuration, including API keys and secrets. For Gemini, set the `GOOGLE_API_KEY` environment variable. Refer to `backend/.env.example` for a template.
 
 ### Production Deployment
 

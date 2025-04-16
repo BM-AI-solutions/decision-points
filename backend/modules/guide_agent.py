@@ -37,20 +37,20 @@ class GuideAgentManager:
         """Initialize the Guide Agent Manager.
 
         Args:
-            api_key: OpenAI API key (uses env var if None)
+            api_key: Gemini API key (uses env var if None)
         """
-        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
+        self.api_key = api_key or os.getenv("GOOGLE_API_KEY")
         if not self.api_key:
-            raise ValueError("OpenAI API key is required")
+            raise ValueError("Google Gemini API key is required")
 
-        self.model_name = os.getenv("GUIDE_AGENT_MODEL", "gpt-4o")
+        self.model_name = os.getenv("GUIDE_AGENT_MODEL", "gemini-pro")
         self._initialize_agent()
-
+    
     def _initialize_agent(self) -> None:
         """Initialize the Guide Agent with required tools."""
         # Initialize the agent
         self.guide_agent = Agent(
-            f'openai:{self.model_name}',
+            f'gemini:{self.model_name}',
             deps_type=AgentDeps,
             system_prompt="""You are the Guide Agent in the Decision Points system. Your role is to analyze markets, identify profitable
             business opportunities, and create detailed instructions for the Action Agent to implement these opportunities.
@@ -353,7 +353,7 @@ class GuideAgentManager:
                 "stripe": "https://dashboard.stripe.com/register",
                 "paypal": "https://www.paypal.com/business/sign-up",
                 "aws": "https://aws.amazon.com/free/",
-                "openai": "https://platform.openai.com/signup",
+                "gemini": "https://aistudio.google.com/app/apikey",
                 "gumroad": "https://app.gumroad.com/signup",
                 "mailchimp": "https://login.mailchimp.com/signup/",
                 "etsy": "https://www.etsy.com/sell",
@@ -605,7 +605,7 @@ class GuideAgentManager:
         """
         # In a real implementation, would load user profile from database
         return AgentDeps(
-            api_keys={"OPENAI_API_KEY": self.api_key},
+            api_keys={"GOOGLE_API_KEY": self.api_key},
             user_profile={"id": user_id, "name": "User"},
             storage_path=f"./data/users/{user_id}"
         )
