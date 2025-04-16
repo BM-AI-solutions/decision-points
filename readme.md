@@ -2,7 +2,7 @@
 
 ## Summary/Overview
 
-Decision Points is an AI-powered system designed to automate the creation, deployment, and monetization of online businesses. Utilizing specialized agents (Guide, Action, etc.), it analyzes markets, implements business models and features, generates branding materials, and projects cash flow, requiring minimal human input. The system targets both developers for setup and maintenance, and end-users who interact via a web UI to create their businesses.
+Decision Points is an AI-powered system designed to automate the creation, deployment, and monetization of online businesses. Utilizing specialized agents (Guide, Action, Archon, etc.), it analyzes markets, implements business models and features, generates branding materials, and projects cash flow, requiring minimal human input. The system supports flexible model selection for each agent, including integration with Google Gemini AI and OpenAI models, and is designed for both developers (setup/maintenance) and end-users (web UI for business creation).
 
 ## Key Features
 
@@ -14,6 +14,7 @@ Decision Points is an AI-powered system designed to automate the creation, deplo
 *   **User Authentication:** Secure user management.
 *   **Stripe-Based Monetization:** Integration with Stripe for payment processing.
 *   **Chat Interaction:** User interaction facilitated through a chat interface.
+*   **Flexible Model Selection:** Configure which LLM (e.g., Gemini, GPT-4o) each agent uses via environment variables.
 
 ## Technology Stack
 
@@ -21,7 +22,7 @@ Decision Points is an AI-powered system designed to automate the creation, deplo
     *   Language: Python (3.8+/3.9)
     *   Framework: Flask
     *   Server: Gunicorn / uWSGI
-    *   AI: Google Gemini API, Langchain
+    *   AI: Google Gemini API, Langchain, OpenAI (configurable per agent)
     *   Database (Deployment Dependent): Google Cloud Datastore OR PostgreSQL (with SQLAlchemy/Alembic) OR MongoDB
     *   Caching (Deployment Dependent): Cachetools OR Redis
 *   **Frontend:**
@@ -34,7 +35,7 @@ Decision Points is an AI-powered system designed to automate the creation, deplo
 
 ## Architecture Overview
 
-The system employs a Client-Server architecture, featuring a static frontend communicating with a Flask-based backend API. An optional Cloudflare Worker layer can act as an API proxy. The backend utilizes a multi-agent design to handle different aspects of business creation. The architecture supports multiple deployment targets, including Docker Compose for local/simple deployments, Google Cloud Functions combined with Cloudflare, or a self-hosted Linux VPS.
+The system employs a Client-Server architecture, featuring a static frontend communicating with a Flask-based backend API. An optional Cloudflare Worker layer can act as an API proxy. The backend utilizes a multi-agent design to handle different aspects of business creation, with each agent's LLM model configurable via environment variables. The architecture supports multiple deployment targets, including Docker Compose for local/simple deployments, Google Cloud Functions combined with Cloudflare, or a self-hosted Linux VPS.
 
 ## Installation
 
@@ -44,7 +45,7 @@ Two primary methods are supported for local development and testing:
 
 1.  **Docker Desktop (Recommended):**
     *   Ensure Docker Desktop is installed.
-    *   Configure required environment variables (copy `.env.example` to `.env` and fill in values, including your `GOOGLE_API_KEY` for Gemini).
+    *   Configure required environment variables (copy `.env.example` to `.env` and fill in values, including your `GOOGLE_API_KEY` for Gemini and any agent model overrides).
     *   Run: `docker compose up --build`
 
 2.  **Python Virtual Environment (venv):**
@@ -58,10 +59,31 @@ Two primary methods are supported for local development and testing:
         ```bash
         pip install -r backend/requirements.txt
         ```
-    *   Configure required environment variables (e.g., set them in your shell or create a `.env` file, ensuring you set `GOOGLE_API_KEY` for Gemini).
+    *   Configure required environment variables (e.g., set them in your shell or create a `.env` file, ensuring you set `GOOGLE_API_KEY` for Gemini and any agent model overrides).
     *   Run the Flask development server (refer to Flask documentation or project specifics).
 
-**Environment Variables:** The system relies on environment variables for configuration, including API keys and secrets. For Gemini, set the `GOOGLE_API_KEY` environment variable. Refer to `backend/.env.example` for a template.
+**Environment Variables:**  
+The system relies on environment variables for configuration, including API keys, secrets, and agent model selection. For Gemini, set the `GOOGLE_API_KEY` environment variable. Refer to `backend/.env.example` for a template.
+
+### Agent Model Selection
+
+You can configure which LLM model each agent uses by setting the following environment variables:
+
+- `ACTION_AGENT_MODEL`: Model for the Action Agent (default: `gemini-pro`)
+- `GUIDE_AGENT_MODEL`: Model for the Guide Agent (default: `gemini-pro`)
+- `ARCHON_AGENT_MODEL`: Model for the Archon Agent (default: `gemini-pro`)
+
+Supported values include `"gemini-pro"`, `"gpt-4o"`, and any other supported LLM model.
+
+**Example (.env):**
+```
+ACTION_AGENT_MODEL=gemini-pro
+GUIDE_AGENT_MODEL=gpt-4o
+ARCHON_AGENT_MODEL=gemini-pro
+```
+
+If a variable is not set, the system default (`gemini-pro`) will be used.  
+You may override these in `.env.production` for production deployments (see `backend/.env.production.template` for examples).
 
 ### Production Deployment
 
@@ -72,15 +94,17 @@ Detailed guides for deploying to production environments are available in the `d
 
 ## Usage
 
-End-users interact with the system primarily through the web user interface. The process is typically guided, initiated by the user selecting options or providing initial input. The frontend communicates with the backend API to trigger agent actions. User authentication is required for most operations. Stripe integration handles payment processing for monetization features.
+End-users interact with the system primarily through the web user interface. The process is typically guided, initiated by the user selecting options or providing initial input. The frontend communicates with the backend API to trigger agent actions. User authentication is required for most operations. Stripe integration handles payment processing for monetization features.  
+The backend will use the configured LLM model for each agent as specified in your environment variables.
 
 ## Development Status
 
 *   **Stage:** Mature (Testing / Early Production)
-*   **Version:** (Specific version information TBD)
-*   **Recent Changes:** (Details TBD)
-*   **Known Issues:** (Placeholder - list known issues here)
-*   **Roadmap:** (Placeholder - outline future plans here)
+*   **AI Integration:** Supports Google Gemini and OpenAI models, with per-agent model selection via environment variables.
+*   **Environment Configuration:** Flexible, with clear templates for local and production use.
+*   **Recent Changes:** Added flexible model selection for each agent; improved Gemini AI integration; updated environment configuration.
+*   **Known Issues:** (List known issues here)
+*   **Roadmap:** (Outline future plans here)
 
 ## Contribution Guidelines
 

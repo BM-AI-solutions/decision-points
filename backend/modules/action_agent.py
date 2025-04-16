@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import asyncio
 from dataclasses import dataclass
+from backend.config import Config  # Import Config for model selection
 from typing import Any, Dict, List, Optional, Union, TypeVar
 
 import loguru
@@ -48,7 +49,8 @@ class ActionAgentManager:
         if not self.api_key:
             raise ValueError("Google Gemini API key is required")
 
-        self.model_name = os.getenv("ACTION_AGENT_MODEL", "gemini-pro")
+        # Select the model name from configuration (set via environment variable ACTION_AGENT_MODEL)
+        self.model_name = Config.ACTION_AGENT_MODEL
         self._initialize_agent()
     
     def _initialize_agent(self) -> None:

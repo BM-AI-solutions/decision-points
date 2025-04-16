@@ -16,6 +16,7 @@ import os
 import json
 import asyncio
 from typing import Dict, List, Any, Optional, Union, Tuple
+from backend.config import Config  # Import Config for model selection
 
 class ArchonAgent:
     """
@@ -32,6 +33,8 @@ class ArchonAgent:
         """
         self.api_key = api_key or os.getenv("GOOGLE_API_KEY")
         self.debug_mode = debug_mode
+        # Select the model name from configuration (set via environment variable ARCHON_AGENT_MODEL)
+        self.model_name = Config.ARCHON_AGENT_MODEL  # Used for LLM-based operations if/when needed
         self.income_streams = []
         self.subscription_tiers = []
         self.integrations = {

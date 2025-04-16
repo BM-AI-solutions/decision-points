@@ -33,9 +33,13 @@ class Config:
     RATELIMIT_DEFAULT = os.environ.get('RATELIMIT_DEFAULT', '100 per day, 10 per hour')
     RATELIMIT_STORAGE_URL = os.environ.get('RATELIMIT_STORAGE_URL', 'memory://')
 
-    # Agent settings
-    GUIDE_AGENT_MODEL = os.environ.get('GUIDE_AGENT_MODEL', 'gpt-4o')
-    ACTION_AGENT_MODEL = os.environ.get('ACTION_AGENT_MODEL', 'gpt-4o')
+    # Agent model selection settings
+    # These environment variables allow you to configure which LLM model each agent uses.
+    # Set GUIDE_AGENT_MODEL, ACTION_AGENT_MODEL, and ARCHON_AGENT_MODEL in your environment
+    # to control the model for each agent independently. If not set, defaults are used.
+    GUIDE_AGENT_MODEL = os.environ.get('GUIDE_AGENT_MODEL', 'gemini-pro')  # e.g., "gemini-pro", "gpt-4o"
+    ACTION_AGENT_MODEL = os.environ.get('ACTION_AGENT_MODEL', 'gemini-pro')  # e.g., "gemini-pro", "gpt-4o"
+    ARCHON_AGENT_MODEL = os.environ.get('ARCHON_AGENT_MODEL', 'gemini-pro')  # e.g., "gemini-pro", "gpt-4o"
 
     # Payment settings (if implementing subscriptions)
     STRIPE_API_KEY = os.environ.get('STRIPE_API_KEY')
