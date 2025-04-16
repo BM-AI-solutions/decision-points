@@ -13,7 +13,7 @@ aiohttp==3.8.5
 
 # AI and NLP
 pydantic-ai==0.0.32
-google-generativeai
+google-genai
 langchain==0.0.312
 
 # Data processing
