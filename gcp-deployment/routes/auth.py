@@ -6,20 +6,17 @@ import os
 from werkzeug.security import generate_password_hash, check_password_hash
 from google.auth.transport import requests
 from google.oauth2 import id_token
-import stripe
 
 from utils.logger import setup_logger
+
 bp = Blueprint('auth', __name__)
 logger = setup_logger('routes.auth')
 
-# Initialize Google Cloud Datastore client
-datastore_client = datastore.Client()
-
-
-from models.user import UserProfile, UserAuth
+# Mock user database for demonstration
+USERS = {}
 
 @bp.route('/register', methods=['POST'])
-async def register():
+def register():
     """Register a new user."""
     try:
         data = request.json
@@ -34,43 +31,26 @@ async def register():
                 'status': 400
             }), 400
 
-        # Check if user already exists
-        query = datastore_client.query(kind='User')
-        query.add_filter('email', '=', email)
-        existing_users = list(query.fetch())
-
-        if existing_users:
+        if email in USERS:
             return jsonify({
                 'error': 'Email already registered',
                 'status': 409
             }), 409
 
         user_id = str(uuid.uuid4())
-        password_hash = generate_password_hash(password)
 
-        # Create UserAuth entity
-        auth_entity = UserAuth(
-            id=user_id,
-            email=email,
-            hashed_password=password_hash,
-            salt="" # Salt is not used in generate_password_hash
-        ).to_entity(datastore_client, user_id)
+        # In a real application, you would store this in a database
+        USERS[email] = {
+            'id': user_id,
+            'email': email,
+            'password_hash': generate_password_hash(password),
+            'name': name,
+            'created_at': datetime.utcnow().isoformat(),
+            'credits': 10,  # Give new users some starter credits
+            'subscription': None
+        }
 
-        # Create UserProfile entity
-        profile_entity = UserProfile(
-            id=user_id,
-            email=email,
-            name=name,
-            created_at=datetime.utcnow(),
-            credits_remaining=10
-        ).to_entity(datastore_client)
-
-        # Save entities to Datastore in a transaction
-        with datastore_client.transaction():
-            datastore_client.put(auth_entity)
-            datastore_client.put(profile_entity)
-
-        logger.info(f"Registered new user: {email} with ID {user_id}")
+        logger.info(f"Registered new user: {email}")
         return jsonify({
             'success': True,
             'user': {
@@ -90,7 +70,7 @@ async def register():
         }), 500
 
 @bp.route('/login', methods=['POST'])
-async def login():
+def login():
     """Log in a user."""
     try:
         data = request.json
@@ -103,62 +83,47 @@ async def login():
                 'error': 'Email and password are required',
                 'status': 400
             }), 400
-        
-        # Retrieve user auth entity from Datastore
-        query = datastore_client.query(kind='UserAuth')
-        query.add_filter('email', '=', email)
-        user_auth_entities = list(query.fetch())
 
-        if not user_auth_entities:
+        if email not in USERS:
             return jsonify({
                 'error': 'Invalid email or password',
                 'status': 401
             }), 401
 
-        user_auth_entity = user_auth_entities[0]
-        user_auth = UserAuth.from_entity(user_auth_entity)
+        user = USERS[email]
 
-        if not check_password_hash(user_auth.hashed_password, password):
+        if not check_password_hash(user['password_hash'], password):
             return jsonify({
                 'error': 'Invalid email or password',
                 'status': 401
             }), 401
-
-        # Retrieve user profile entity
-        user_profile_entity = datastore_client.get(datastore_client.key('User', user_auth.id))
-        if not user_profile_entity:
-            return jsonify({
-                'error': 'User profile not found',
-                'status': 404
-            }), 404
-        user_profile = UserProfile.from_entity(user_profile_entity)
 
         # Generate JWT token
-        secret_key = os.environ['JWT_SECRET_KEY']  # Required in production
+        secret_key = os.environ.get('JWT_SECRET_KEY', 'dev-jwt-secret-change-in-production')
         expiration = datetime.utcnow() + timedelta(hours=24)
 
         payload = {
-            'user_id': user_auth.id,
-            'email': user_auth.email,
+            'user_id': user['id'],
+            'email': user['email'],
             'exp': expiration
         }
 
         token = jwt.encode(payload, secret_key, algorithm='HS256')
 
-        logger.info(f"User login: {email} with ID {user_auth.id}")
+        logger.info(f"User login: {email}")
         return jsonify({
             'success': True,
             'token': token,
             'user': {
-                'id': user_auth.id,
-                'email': user_auth.email,
-                'name': user_profile.name,
-                'credits': user_profile.credits_remaining
+                'id': user['id'],
+                'email': user['email'],
+                'name': user['name'],
+                'credits': user['credits']
             }
         })
 
     except Exception as e:
-        logger.error(f"Error logging in user with email {email}: {str(e)}", exc_info=True)
+        logger.error(f"Error logging in: {str(e)}", exc_info=True)
         return jsonify({
             'error': 'Error logging in',
             'message': str(e),
@@ -183,6 +148,7 @@ def profile():
         try:
             payload = jwt.decode(token, secret_key, algorithms=['HS256'])
             user_id = payload['user_id']
+            email = payload['email']
         except jwt.ExpiredSignatureError:
             return jsonify({
                 'error': 'Token expired',
@@ -194,25 +160,28 @@ def profile():
                 'status': 401
             }), 401
 
-        # Retrieve user profile entity from Datastore
-        user_profile_entity = datastore_client.get(datastore_client.key('User', user_id))
-        if not user_profile_entity:
+        # Find user
+        user = None
+        for u in USERS.values():
+            if u['id'] == user_id:
+                user = u
+                break
+
+        if not user:
             return jsonify({
-                'error': 'User profile not found',
+                'error': 'User not found',
                 'status': 404
             }), 404
-        
-        user_profile = UserProfile.from_entity(user_profile_entity)
 
-        logger.info(f"Retrieved profile for user: {user_profile.email} with ID {user_id}")
+        logger.info(f"Retrieved profile for user: {email}")
         return jsonify({
             'success': True,
             'user': {
-                'id': user_profile.id,
-                'email': user_profile.email,
-                'name': user_profile.name,
-                'credits': user_profile.credits_remaining,
-                'subscription': user_profile.subscription_type # Subscription is not stored in UserProfile yet
+                'id': user['id'],
+                'email': user['email'],
+                'name': user['name'],
+                'credits': user['credits'],
+                'subscription': user['subscription']
             }
         })
 
@@ -305,7 +274,7 @@ def subscribe():
         }), 500
 
 @bp.route('/google', methods=['POST'])
-async def google_auth():
+def google_auth():
     """Authenticate user with Google OAuth."""
     try:
         data = request.json
@@ -319,7 +288,7 @@ async def google_auth():
 
         try:
             # Get Google Client ID from environment variables
-            google_client_id = os.environ['GOOGLE_CLIENT_ID']
+            google_client_id = os.environ.get('GOOGLE_CLIENT_ID', '706670564943-pmitiums8ciksifmpmio5v5dtcius8rd.apps.googleusercontent.com')
             
             # Verify the token
             id_info = id_token.verify_oauth2_token(
@@ -339,64 +308,48 @@ async def google_auth():
                     'status': 400
                 }), 400
 
-            # Check if user with google_id already exists
-            query = datastore_client.query(kind='UserAuth')
-            query.add_filter('google_id', '=', google_id) # Add filter for google_id
-            user_auth_entities = list(query.fetch())
-
-            user_id = None # Initialize user_id
-            if user_auth_entities:
-                user_auth_entity = user_auth_entities[0]
-                user_auth = UserAuth.from_entity(user_auth_entity)
-                user_id = user_auth.id # Get user_id from existing UserAuth entity
+            # Check if user exists, if not create one
+            user = None
+            if email in USERS:
+                user = USERS[email]
+                # Update user's Google ID if not already set
+                if not user.get('google_id'):
+                    user['google_id'] = google_id
             else:
-                # Create new user if google_id does not exist
+                # Create new user
                 user_id = str(uuid.uuid4())
-                user_auth = UserAuth(
-                    id=user_id,
-                    email=email,
-                    hashed_password=None, # No password for Google OAuth
-                    salt=None,
-                    google_id=google_id # Store google_id
-                )
-                auth_entity = user_auth.to_entity(datastore_client, user_id)
-
-                # Create UserProfile entity
-                profile_entity = UserProfile(
-                    id=user_id,
-                    email=email,
-                    name=name,
-                    created_at=datetime.utcnow(),
-                    credits_remaining=10
-                ).to_entity(datastore_client)
-
-                # Save entities to Datastore in a transaction
-                with datastore_client.transaction():
-                    datastore_client.put(auth_entity)
-                    datastore_client.put(profile_entity)
-
+                user = {
+                    'id': user_id,
+                    'email': email,
+                    'name': name,
+                    'google_id': google_id,
+                    'created_at': datetime.utcnow().isoformat(),
+                    'credits': 10,  # Give new users some starter credits
+                    'subscription': None
+                }
+                USERS[email] = user
 
             # Generate JWT token
             secret_key = os.environ.get('JWT_SECRET_KEY', 'dev-jwt-secret-change-in-production')
             expiration = datetime.utcnow() + timedelta(hours=24)
 
             payload = {
-                'user_id': user_id,
-                'email': email,
+                'user_id': user['id'],
+                'email': user['email'],
                 'exp': expiration
             }
 
             token = jwt.encode(payload, secret_key, algorithm='HS256')
 
-            logger.info(f"User logged in with Google: {email} with ID {user_id}")
+            logger.info(f"User logged in with Google: {email}")
             return jsonify({
                 'success': True,
                 'token': token,
                 'user': {
-                    'id': user_id,
-                    'email': email,
-                    'name': name,
-                    'credits': 10 # Credits are not stored in UserAuth yet
+                    'id': user['id'],
+                    'email': user['email'],
+                    'name': user['name'],
+                    'credits': user.get('credits', 10)
                 }
             })
 
@@ -418,19 +371,9 @@ async def google_auth():
         }), 500
 
 @bp.route('/credits/purchase', methods=['POST'])
-async def purchase_credits():
+def purchase_credits():
     """Purchase credits."""
     try:
-        # Initialize Stripe client
-        stripe_api_key = os.environ.get('STRIPE_API_KEY')
-        if not stripe_api_key:
-            return jsonify({
-                'error': 'Stripe API key is not configured',
-                'status': 500
-            }), 500
-
-        stripe.api_key = stripe_api_key
-
         auth_header = request.headers.get('Authorization')
 
         if not auth_header or not auth_header.startswith('Bearer '):
@@ -467,15 +410,14 @@ async def purchase_credits():
                 'status': 400
             }), 400
 
-        # Retrieve user profile entity from Datastore
-        user_profile_entity = datastore_client.get(datastore_client.key('User', user_id))
-        if not user_profile_entity:
+        # Find user
+        if email not in USERS:
             return jsonify({
-                'error': 'User profile not found',
+                'error': 'User not found',
                 'status': 404
             }), 404
-        
-        user_profile = UserProfile.from_entity(user_profile_entity)
+
+        user = USERS[email]
 
         # Credit packages
         packages = {
@@ -483,66 +425,31 @@ async def purchase_credits():
             'medium': {'credits': 250, 'price': 79},
             'large': {'credits': 600, 'price': 159}
         }
+
         if package_id not in packages:
             return jsonify({
                 'error': 'Invalid package ID',
                 'status': 400
             }), 400
 
+        # In a real application, you would process the payment
+        # For this demonstration, we'll just update the user's credits
+
         package = packages[package_id]
-        updated_credits = user_profile.credits_remaining + package['credits']
+        user['credits'] += package['credits']
 
-        try:
-            # Create Stripe Payment Intent
-            intent = stripe.PaymentIntent.create(
-                amount=int(package['price'] * 100), # Amount in cents
-                currency='usd',
-                payment_method_types=['card'],
-                metadata={
-                    'package_id': package_id,
-                    'user_id': user_id,
-                    'email': email
-                }
-            )
-
-            payment_intent_id = intent['id']
-            payment_status = intent['payment_status']
-
-            # Update user credits in Datastore after successful payment - webhook handling would be better for production
-            if payment_status == 'succeeded': # For simplicity, assume payment is successful here - webhook is needed for real confirmation
-                user_profile_entity['credits_remaining'] = updated_credits
-                datastore_client.put(user_profile_entity)
-                logger.info(f"User {email} purchased {package['credits']} credits, total credits: {updated_credits}, Payment Intent ID: {payment_intent_id}")
-            else:
-                logger.warning(f"Stripe Payment Intent status: {payment_status}, Payment Intent ID: {payment_intent_id}")
-                return jsonify({
-                    'error': 'Payment processing incomplete',
-                    'status': 400,
-                    'message': f'Stripe Payment Intent status: {payment_status}',
-                    'payment_intent_id': payment_intent_id
-                }), 400
-
-            return jsonify({
-                'success': True,
-                'credits': updated_credits,
-                'client_secret': intent.client_secret, # Send client_secret to frontend to complete payment
-                'transaction': {
-                    'id': payment_intent_id,
-                    'package_id': package_id,
-                    'credits': package['credits'],
-                    'price': package['price'],
-                    'date': datetime.utcnow().isoformat(),
-                    'payment_status': payment_status
-                }
-            })
-
-        except stripe.error.StripeError as e:
-            logger.error(f"Stripe API error: {str(e)}", exc_info=True)
-            return jsonify({
-                'error': 'Payment processing error',
-                'status': 500,
-                'message': str(e)
-            }), 500
+        logger.info(f"User {email} purchased {package['credits']} credits")
+        return jsonify({
+            'success': True,
+            'credits': user['credits'],
+            'transaction': {
+                'id': str(uuid.uuid4()),
+                'package_id': package_id,
+                'credits': package['credits'],
+                'price': package['price'],
+                'date': datetime.utcnow().isoformat()
+            }
+        })
 
     except Exception as e:
         logger.error(f"Error purchasing credits: {str(e)}", exc_info=True)

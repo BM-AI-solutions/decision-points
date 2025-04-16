@@ -1,0 +1,20 @@
+{
+  "name": "frontend",
+  "version": "1.0.0",
+  "description": "Frontend for the web app",
+  "scripts": {
+    "build": "npm run js && npm run css && npm run images",
+    "js": "node_modules/.bin/terser js/*.js -o dist/bundle.js",
+    "css": "node_modules/.bin/postcss css/styles.css -o dist/styles.min.css",
+    "images": "mkdir -p dist/images && cp images/* dist/images/",
+    "deploy": "echo 'Deploying frontend...'"
+  },
+  "dependencies": {
+    "cssnano": "^6.0.5",
+    "terser": "^5.28.1"
+  },
+  "devDependencies": {
+    "postcss": "^8.5.3",
+    "postcss-cli": "^11.0.0"
+  }
+}

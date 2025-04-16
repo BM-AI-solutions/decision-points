@@ -2,29 +2,25 @@
  * Cloudflare Worker script to proxy API requests to the Decision Points backend
  * 
  * This worker handles:
- * 1. API request proxying
+ * 1. API request proxying to Google Cloud Functions
  * 2. CORS headers
  * 3. API key validation
  * 4. Rate limiting
  * 5. Request logging
  */
 
-// Configuration
-const API_HOST = 'backend.intellisol.cc';  // Your backend hostname
-const ALLOWED_ORIGINS = ['https://intellisol.cc', 'https://decision-points.intellisol.cc'];
-const REQUIRE_API_KEY = false;  // Set to true to require API key for all requests
+// Configuration (using environment variables)
+const API_HOST = API_HOST || 'us-central1-single-bindery-452721-n8.cloudfunctions.net';  // Your GCF hostname - replace YOUR_PROJECT_ID with your actual GCP project ID
+const API_PATH = API_PATH || '/intellisol-api';  // Cloud Function name/path
+const ALLOWED_ORIGINS = (ALLOWED_ORIGINS || 'https://intellisol.cc,https://decisionpoints.intellisol.cc').split(',');
+const REQUIRE_API_KEY = REQUIRE_API_KEY === 'true';  // Set to true to require API key for all requests
 
-// Rate limiting (using Cloudflare's built-in features)
-const RATE_LIMIT = {
-  max_requests: 100,  // Maximum requests per time window
-  time_window: 60,    // Time window in seconds
-};
+// Rate limiting (using Cloudflare's built-in features) - consider using Cloudflare's rate limiting rules instead
+const RATE_LIMIT_MAX_REQUESTS = parseInt(RATE_LIMIT_MAX_REQUESTS || '100');  // Maximum requests per time window
+const RATE_LIMIT_TIME_WINDOW = parseInt(RATE_LIMIT_TIME_WINDOW || '60');    // Time window in seconds
 
 // API endpoints that don't require authentication (public endpoints)
-const PUBLIC_ENDPOINTS = [
-  '/api/health',
-  '/api/config'
-];
+const PUBLIC_ENDPOINTS = (PUBLIC_ENDPOINTS || '/api/health,/api/config,/api/auth/google').split(',');
 
 addEventListener('fetch', event => {
   event.respondWith(handleRequest(event));
@@ -51,10 +47,10 @@ async function handleRequest(event) {
 
 async function handleAPIRequest(request, event) {
   const url = new URL(request.url);
-  const path = url.pathname;
+  const originalPath = url.pathname;
 
   // Check if the endpoint requires authentication
-  const isPublicEndpoint = PUBLIC_ENDPOINTS.some(endpoint => path.startsWith(endpoint));
+  const isPublicEndpoint = PUBLIC_ENDPOINTS.some(endpoint => originalPath.startsWith(endpoint));
 
   if (REQUIRE_API_KEY && !isPublicEndpoint) {
     // Validate API key (if required)
@@ -71,24 +67,28 @@ async function handleAPIRequest(request, event) {
   // This is a simplified example - Cloudflare has built-in rate limiting that's more robust
   if (!isPublicEndpoint) {
     const clientIP = request.headers.get('CF-Connecting-IP');
-    const rateLimitKey = `ratelimit:${clientIP}:${path}`;
+    const rateLimitKey = `ratelimit:${clientIP}:${originalPath}`;
 
     // In a real implementation, you would check and increment a counter in KV storage
     // For this example, we're skipping actual rate limiting checks
   }
 
-  // Forward the request to the backend API
-  const apiURL = new URL(url.pathname + url.search, `https://${API_HOST}`);
-
-  // Clone the request with the new URL
-  const apiRequest = new Request(apiURL.toString(), {
-    method: request.method,
-    headers: request.headers,
-    body: request.body,
-    redirect: 'follow'
-  });
-
   try {
+    // Forward the request to the backend API
+    // Transform the path to work with Cloud Functions
+    const gcfPath = url.pathname.replace('/api', API_PATH);
+    const apiURL = new URL(`https://${API_HOST}${gcfPath}${url.search}`);
+
+    // Clone the request with the new URL
+    const apiRequest = new Request(apiURL.toString(), {
+      method: request.method,
+      headers: request.headers,
+      body: request.body,
+      redirect: 'follow'
+    });
+    
+    console.log(`Forwarding request to: ${apiURL.toString()}`); // Log the API URL
+
     // Fetch from the backend API
     const response = await fetch(apiRequest);
 
@@ -102,15 +102,16 @@ async function handleAPIRequest(request, event) {
 
     return newResponse;
   } catch (error) {
+    console.error('API request failed:', error); // Log the error
     // Handle errors
-    return jsonResponse({ 
-      error: 'API request failed', 
-      message: error.message 
+    return jsonResponse({
+      error: 'API request failed',
+      message: error.message
     }, 500);
   }
 }
 
-function handleStaticOrRedirect(request) {
+async function handleStaticOrRedirect(request) {
   const url = new URL(request.url);
 
   // Redirect to the main app for most paths
