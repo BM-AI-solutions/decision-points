@@ -1,7 +1,7 @@
 version: "3.9"
 services:
   backend:
-    image: python:3.9-slim-buster
+    build: ./backend
     working_dir: /app
     ports:
       - "5000:5000"
