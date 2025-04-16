@@ -42,10 +42,10 @@ The system employs a Client-Server architecture, featuring a static frontend com
 
 Two primary methods are supported for local development and testing:
 
-1.  **Docker Compose (Recommended):**
-    *   Ensure Docker and Docker Compose are installed.
+1.  **Docker Desktop (Recommended):**
+    *   Ensure Docker Desktop is installed.
     *   Configure required environment variables (copy `.env.example` to `.env` and fill in values, including your `GOOGLE_API_KEY` for Gemini).
-    *   Run: `docker-compose up --build`
+    *   Run: `docker compose up --build`
 
 2.  **Python Virtual Environment (venv):**
     *   Ensure Python 3.8+ or 3.9+ is installed.
