@@ -284,7 +284,9 @@ function Header() {
       <nav className="navbar">
         <div className="container">
           <div className="logo">
-            <img src="images/logo.svg" alt="Decision Points AI Logo" />
+            <Link to="/">
+              <img src="images/logo.svg" alt="Decision Points AI Logo" />
+            </Link>
           </div>
           
           {/* Navigation menu with improved styling */}
