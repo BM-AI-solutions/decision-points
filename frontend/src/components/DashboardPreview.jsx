@@ -32,7 +32,7 @@ function DashboardPreview() {
                 <i className="fas fa-user-circle"></i>
               </div>
             </div>
-            <div className="dashboard-content-area" style={{ height: 'calc(100% - 60px)', overflow: 'hidden' }}>
+            <div className="dashboard-content-area" style={{ height: 'calc(100% - 60px)' }}>
               <div className="dashboard-sidebar">
                 <div className="sidebar-item active"><i className="fas fa-home"></i> Dashboard</div>
                 <div className="sidebar-item"><i className="fas fa-chart-pie"></i> Analytics</div>
