@@ -401,6 +401,7 @@ img {
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3),
                 0 0 0 1px rgba(255, 71, 19, 0.1);
     transition: background 0.3s, box-shadow 0.3s;
+    overflow: hidden;
 }
 
 .navbar .container {
@@ -408,9 +409,22 @@ img {
     justify-content: space-between;
     align-items: center;
     height: 100%;
-    gap: 2.5rem;
+    gap: 1.5rem;
     max-width: 1440px;
-    padding: 0 2.5rem;
+    padding: 0 1.5rem;
+}
+
+.nav-menu {
+    display: flex;
+    gap: 1.5rem;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
+}
+
+.nav-menu::-webkit-scrollbar {
+    display: none; /* Chrome, Safari, Opera */
 }
 
 
@@ -812,10 +826,159 @@ img {
     transform: perspective(1000px) rotateY(-2deg) rotateX(2deg);
 }
 
-.dashboard-image img {
+/* Dashboard Mockup Styles */
+.dashboard-mockup {
     width: 100%;
-    display: block;
+    height: 500px;
+    background: rgba(13, 13, 13, 0.9);
     border-radius: var(--radius-xl);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid rgba(255, 71, 19, 0.2);
+}
+
+.dashboard-header {
+    height: 60px;
+    background: rgba(8, 8, 8, 0.9);
+    border-bottom: 1px solid rgba(255, 71, 19, 0.2);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 20px;
+}
+
+.dashboard-logo {
+    color: var(--accent-orange);
+    font-weight: 700;
+    font-size: 1.2rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.dashboard-controls {
+    display: flex;
+    gap: 16px;
+    color: var(--text-muted);
+}
+
+.dashboard-controls i {
+    font-size: 1.2rem;
+    cursor: pointer;
+    transition: color 0.2s ease;
+}
+
+.dashboard-controls i:hover {
+    color: var(--text-primary);
+}
+
+.dashboard-content-area {
+    display: flex;
+    flex: 1;
+    height: calc(100% - 60px);
+}
+
+.dashboard-sidebar {
+    width: 200px;
+    background: rgba(10, 10, 10, 0.8);
+    border-right: 1px solid rgba(255, 71, 19, 0.1);
+    padding: 20px 0;
+}
+
+.sidebar-item {
+    padding: 12px 20px;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.sidebar-item:hover {
+    background: rgba(255, 71, 19, 0.1);
+    color: var(--text-primary);
+}
+
+.sidebar-item.active {
+    background: rgba(255, 71, 19, 0.2);
+    color: var(--accent-orange);
+    border-left: 3px solid var(--accent-orange);
+}
+
+.dashboard-main {
+    flex: 1;
+    padding: 20px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    gap: 20px;
+    overflow: auto;
+}
+
+.dashboard-widget {
+    background: rgba(26, 26, 26, 0.7);
+    border-radius: var(--radius-lg);
+    padding: 16px;
+    border: 1px solid rgba(255, 71, 19, 0.1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.dashboard-widget h4 {
+    margin-bottom: 12px;
+    font-size: 1rem;
+    color: var(--text-primary);
+}
+
+.dashboard-widget.revenue {
+    grid-column: 1 / 3;
+}
+
+.chart-placeholder {
+    height: 120px;
+    background: linear-gradient(90deg,
+        rgba(191, 4, 38, 0.3) 0%,
+        rgba(255, 71, 19, 0.5) 50%,
+        rgba(191, 4, 38, 0.3) 100%);
+    border-radius: var(--radius-md);
+    position: relative;
+    overflow: hidden;
+}
+
+.chart-placeholder::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: repeating-linear-gradient(
+        45deg,
+        transparent,
+        transparent 10px,
+        rgba(255, 255, 255, 0.05) 10px,
+        rgba(255, 255, 255, 0.05) 20px
+    );
+}
+
+.insights-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.insight-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px;
+    background: rgba(255, 71, 19, 0.1);
+    border-radius: var(--radius-md);
+}
+
+.insight-item i {
+    color: var(--accent-orange);
 }
 
 /* Pricing Section */
