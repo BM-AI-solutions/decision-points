@@ -53,6 +53,21 @@ Two primary methods are supported for local development and testing:
     *   Both services are orchestrated via `docker-compose.yml`, which sets up a shared network so the frontend can reach the backend at `http://backend:5000`.
     *   Environment variables for the backend are managed via `.env` files (see `backend/.env.example`). Compose loads these automatically for the backend service.
     *   **No Google Cloud SDK or credentials are required for local Docker development.** The backend uses a local in-memory database for user/session data in this mode.
+
+### Using Development vs. Production Configurations
+
+This project now uses separate Docker Compose files for development and production:
+
+*   **Development:** Uses hot-reloading for the backend and the Vite dev server for the frontend. Access the frontend at `http://localhost:8000` and the backend API at `http://localhost:5000`. Run with:
+    ```bash
+    docker-compose -f docker-compose.dev.yml up
+    ```
+*   **Production:** Builds optimized production images for both backend (using Gunicorn) and frontend (serving static files with Nginx). Access the frontend at `http://localhost:8000`. Run with:
+    ```bash
+    docker-compose -f docker-compose.prod.yml up --build
+    ```
+
+---
     *   To forward Stripe webhooks to your backend during local development, use the Stripe CLI:
         ```bash
         stripe listen --forward-to localhost:5000/api/stripe/webhook

@@ -4,16 +4,16 @@ services:
   backend:
     build:
       context: ./backend
-      target: dev
+      target: prod
     env_file:
+      # For production, ensure you have a .env file based on .env.production.template
       - ./backend/.env
     working_dir: /app
     ports:
       - "5000:5000"
-    volumes:
-      - ./backend:/app
+    # Volumes removed for production, code is baked into the image
     restart: unless-stopped
-    command: flask run --host=0.0.0.0 --port=5000
+    # Command removed for production, uses Dockerfile CMD (gunicorn)
     networks:
       - appnet
 
@@ -23,9 +23,7 @@ services:
       target: prod
     ports:
       - "8000:80"
-    volumes:
-      # For development, mount source; for production, comment this out
-      - ./frontend/dist:/usr/share/nginx/html
+    # Volumes removed for production, Nginx serves files from the image
     restart: unless-stopped
     depends_on:
       - backend
