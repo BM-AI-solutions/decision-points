@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import asyncio
 from dataclasses import dataclass
-from backend.config import Config  # Import Config for model selection
+from config import Config  # Import Config for model selection
 from typing import Any, Dict, List, Optional, Union, TypeVar
 
 import loguru
@@ -57,7 +57,7 @@ class ActionAgentManager:
         """Initialize the Action Agent with required tools."""
         # Initialize the agent
         self.action_agent = Agent(
-            f'gemini:{self.model_name}',
+            self.model_name,
             deps_type=AgentDeps,
             system_prompt="""You are the Action Agent in the Decision Points system. Your role is to implement
             the business models and features identified by the Guide Agent and automate them to generate

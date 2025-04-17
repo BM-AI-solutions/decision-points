@@ -24,7 +24,19 @@ app.after_request(security_headers)
 app.config.from_object(Config)
 
 # Enable CORS
-CORS(app, resources={r"/api/*": {"origins": ["https://decisionpoints.intellisol.cc"]}})
+# Allow specific origin for production, add localhost for development
+allowed_origins = ["https://decisionpoints.intellisol.cc"]
+# Allow development origin if FLASK_ENV is development OR if billing is not required (local dev setup)
+if (
+    os.environ.get('FLASK_ENV') == 'development'
+    or app.config.get('ENV') == 'development'
+    or not app.config.get('BILLING_REQUIRED', True)
+):
+    # Assuming frontend runs on port 8000 for local dev based on previous setup
+    # Vite default is often 5173, adjust if needed.
+    allowed_origins.append("http://localhost:8000") # Keep existing dev origin
+    # You might need to add 'http://localhost:5173' if your Vite dev server uses that port
+CORS(app, resources={r"/api/*": {"origins": allowed_origins}}, supports_credentials=True)
 
 # Fix for proxies
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)

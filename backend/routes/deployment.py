@@ -2,15 +2,18 @@ from flask import Blueprint, request, jsonify
 import uuid
 from typing import Dict, Any, List
 
+# Import the shared decorator
+from utils.decorators import require_subscription_or_local
 from modules.action_agent import ActionAgentManager
 from utils.logger import setup_logger
 
-bp = Blueprint('deployment', __name__)
+bp = Blueprint('deployment', __name__, url_prefix='/api/deployment') # Added url_prefix
 logger = setup_logger('routes.deployment')
 action_agent_manager = ActionAgentManager()
 
 @bp.route('/deploy', methods=['POST'])
-async def deploy_system():
+@require_subscription_or_local
+async def deploy_system(user_id: str): # Add user_id from decorator
     """Deploy a business system."""
     try:
         data = request.json
@@ -18,7 +21,7 @@ async def deploy_system():
         # Required parameters
         business_model_name = data.get('business_model_name')
         implemented_features = data.get('implemented_features')
-        user_id = data.get('user_id', str(uuid.uuid4()))
+        # user_id is now passed as an argument
 
         if not business_model_name:
             return jsonify({
@@ -46,15 +49,16 @@ async def deploy_system():
         })
 
     except Exception as e:
-        logger.error(f"Error deploying system: {str(e)}", exc_info=True)
+        logger.error(f"Error deploying system for user {user_id}: {str(e)}", exc_info=True)
         return jsonify({
             'error': 'Error deploying system',
             'message': str(e),
             'status': 500
         }), 500
 
-@bp.route('/status/<deployment_url>', methods=['GET'])
-def get_deployment_status(deployment_url):
+@bp.route('/status/<path:deployment_url>', methods=['GET']) # Use path converter for URLs
+@require_subscription_or_local
+def get_deployment_status(user_id: str, deployment_url: str): # Add user_id from decorator
     """Get the status of a deployment."""
     try:
         # In a real application, you would check the actual deployment status
@@ -75,14 +79,17 @@ def get_deployment_status(deployment_url):
             }
         }
 
-        logger.info(f"Retrieved deployment status for {deployment_url}")
+        # Note: Current implementation doesn't link deployment_url to user_id for ownership check.
+        # This would require storing deployment info linked to users/business models.
+        # For now, the decorator ensures the user is authenticated and subscribed (if cloud).
+        logger.info(f"Retrieved deployment status for {deployment_url} by user {user_id}")
         return jsonify({
             'success': True,
             'deployment_status': status
         })
 
     except Exception as e:
-        logger.error(f"Error retrieving deployment status: {str(e)}", exc_info=True)
+        logger.error(f"Error retrieving deployment status for {deployment_url}, user {user_id}: {str(e)}", exc_info=True)
         return jsonify({
             'error': 'Error retrieving deployment status',
             'message': str(e),

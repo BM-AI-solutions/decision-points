@@ -2,6 +2,8 @@ from flask import Blueprint, request, jsonify
 import uuid
 from typing import Dict, Any, List
 
+# Import the shared decorator
+from utils.decorators import require_subscription_or_local
 from modules.action_agent import ActionAgentManager
 from utils.logger import setup_logger
 
@@ -9,16 +11,19 @@ bp = Blueprint('features', __name__)
 logger = setup_logger('routes.features')
 action_agent_manager = ActionAgentManager()
 
+
 @bp.route('/implement', methods=['POST'])
-async def implement_feature():
-    """Implement a specific feature."""
+@require_subscription_or_local
+async def implement_feature(user_id: str): # Accept user_id from decorator
+    """Implement a specific feature. Requires active subscription in cloud mode."""
     try:
+        # user_id is passed directly by the decorator
         data = request.json
 
         # Required parameters
         feature = data.get('feature')
         service_name = data.get('service_name')
-        user_id = data.get('user_id', str(uuid.uuid4()))
+        # user_id is now passed as an argument
 
         if not feature:
             return jsonify({
@@ -54,15 +59,17 @@ async def implement_feature():
         }), 500
 
 @bp.route('/branding', methods=['POST'])
-async def create_branding():
-    """Create branding for a business model."""
+@require_subscription_or_local
+async def create_branding(user_id: str): # Accept user_id from decorator
+    """Create branding for a business model. Requires active subscription in cloud mode."""
     try:
+        # user_id is passed directly by the decorator
         data = request.json
 
         # Required parameters
         business_model_name = data.get('business_model_name')
         target_demographics = data.get('target_demographics')
-        user_id = data.get('user_id', str(uuid.uuid4()))
+        # user_id is now passed as an argument
 
         if not business_model_name:
             return jsonify({

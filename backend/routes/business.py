@@ -2,18 +2,21 @@ from flask import Blueprint, request, jsonify
 import uuid
 from typing import Dict, Any, List
 
+# Import the shared decorator
+from utils.decorators import require_subscription_or_local
 from modules.action_agent import ActionAgentManager
 from utils.logger import setup_logger
 
-bp = Blueprint('business', __name__)
+bp = Blueprint('business', __name__, url_prefix='/api/business') # Added url_prefix for consistency
 logger = setup_logger('routes.business')
 action_agent_manager = ActionAgentManager()
 
-# Mock database for business models
-BUSINESS_MODELS = {}
+# Mock database for business models - Consider replacing with persistent storage
+BUSINESS_MODELS: Dict[str, Dict[str, Any]] = {}
 
 @bp.route('/implement', methods=['POST'])
-async def implement_business_model():
+@require_subscription_or_local
+async def implement_business_model(user_id: str): # Add user_id from decorator
     """Implement a business model."""
     try:
         data = request.json
@@ -22,7 +25,7 @@ async def implement_business_model():
         instructions = data.get('instructions')
         business_model = data.get('business_model')
         features = data.get('features')
-        user_id = data.get('user_id', str(uuid.uuid4()))
+        # user_id is now passed as an argument by the decorator
 
         if not instructions:
             return jsonify({
@@ -68,7 +71,7 @@ async def implement_business_model():
         })
 
     except Exception as e:
-        logger.error(f"Error implementing business model: {str(e)}", exc_info=True)
+        logger.error(f"Error implementing business model for user {user_id}: {str(e)}", exc_info=True)
         return jsonify({
             'error': 'Error implementing business model',
             'message': str(e),
@@ -76,7 +79,8 @@ async def implement_business_model():
         }), 500
 
 @bp.route('/<model_id>', methods=['GET'])
-def get_business_model(model_id):
+@require_subscription_or_local
+def get_business_model(user_id: str, model_id: str): # Add user_id from decorator
     """Get a business model by ID."""
     try:
         if model_id not in BUSINESS_MODELS:
@@ -87,22 +91,29 @@ def get_business_model(model_id):
 
         model = BUSINESS_MODELS[model_id]
 
-        logger.info(f"Retrieved business model {model_id}")
+        # Security check: Ensure the requesting user owns this model
+        if model.get('user_id') != user_id:
+             logger.warning(f"User {user_id} attempted to access unauthorized model {model_id} owned by {model.get('user_id')}")
+             return jsonify({'error': 'Forbidden', 'status': 403}), 403
+
+        logger.info(f"Retrieved business model {model_id} for user {user_id}")
         return jsonify({
             'success': True,
             'business_model': model
         })
 
     except Exception as e:
-        logger.error(f"Error retrieving business model: {str(e)}", exc_info=True)
+        logger.error(f"Error retrieving business model {model_id} for user {user_id}: {str(e)}", exc_info=True)
         return jsonify({
             'error': 'Error retrieving business model',
             'message': str(e),
             'status': 500
         }), 500
 
-@bp.route('/list/<user_id>', methods=['GET'])
-def list_business_models(user_id):
+# Changed route to remove user_id from path - get it from JWT via decorator
+@bp.route('/list', methods=['GET'])
+@require_subscription_or_local
+def list_business_models(user_id: str): # Add user_id from decorator
     """List all business models for a user."""
     try:
         user_models = []
@@ -122,7 +133,7 @@ def list_business_models(user_id):
         })
 
     except Exception as e:
-        logger.error(f"Error listing business models: {str(e)}", exc_info=True)
+        logger.error(f"Error listing business models for user {user_id}: {str(e)}", exc_info=True)
         return jsonify({
             'error': 'Error listing business models',
             'message': str(e),

@@ -16,7 +16,7 @@ import os
 import json
 import asyncio
 from typing import Dict, List, Any, Optional, Union, Tuple
-from backend.config import Config  # Import Config for model selection
+from config import Config  # Import Config for model selection
 
 class ArchonAgent:
     """

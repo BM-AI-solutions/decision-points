@@ -2,15 +2,21 @@ from flask import Blueprint, request, jsonify
 import uuid
 from typing import Dict, Any, List
 
+# Import the shared decorator
+from utils.decorators import require_subscription_or_local
 from modules.action_agent import ActionAgentManager
 from utils.logger import setup_logger
+# Import BUSINESS_MODELS from business.py to check ownership for forecast
+# This creates a dependency, consider a shared data access layer later
+from .business import BUSINESS_MODELS
 
-bp = Blueprint('cashflow', __name__)
+bp = Blueprint('cashflow', __name__, url_prefix='/api/cashflow') # Added url_prefix
 logger = setup_logger('routes.cashflow')
 action_agent_manager = ActionAgentManager()
 
 @bp.route('/calculate', methods=['POST'])
-async def calculate_cash_flow():
+@require_subscription_or_local
+async def calculate_cash_flow(user_id: str): # Add user_id from decorator
     """Calculate cash flow for a business model."""
     try:
         data = request.json
@@ -18,7 +24,7 @@ async def calculate_cash_flow():
         # Required parameters
         business_model_name = data.get('business_model_name')
         implemented_features = data.get('implemented_features')
-        user_id = data.get('user_id', str(uuid.uuid4()))
+        # user_id is now passed as an argument
 
         if not business_model_name:
             return jsonify({
@@ -46,15 +52,17 @@ async def calculate_cash_flow():
         })
 
     except Exception as e:
-        logger.error(f"Error calculating cash flow: {str(e)}", exc_info=True)
+        logger.error(f"Error calculating cash flow for user {user_id}: {str(e)}", exc_info=True)
         return jsonify({
             'error': 'Error calculating cash flow',
             'message': str(e),
             'status': 500
         }), 500
 
-@bp.route('/history/<user_id>', methods=['GET'])
-def get_cash_flow_history(user_id):
+# Changed route to remove user_id from path - get it from JWT via decorator
+@bp.route('/history', methods=['GET'])
+@require_subscription_or_local
+def get_cash_flow_history(user_id: str): # Add user_id from decorator
     """Get cash flow history for a user."""
     try:
         # In a real application, you would retrieve the actual cash flow history
@@ -88,7 +96,7 @@ def get_cash_flow_history(user_id):
         })
 
     except Exception as e:
-        logger.error(f"Error retrieving cash flow history: {str(e)}", exc_info=True)
+        logger.error(f"Error retrieving cash flow history for user {user_id}: {str(e)}", exc_info=True)
         return jsonify({
             'error': 'Error retrieving cash flow history',
             'message': str(e),
@@ -96,10 +104,21 @@ def get_cash_flow_history(user_id):
         }), 500
 
 @bp.route('/forecast/<business_id>', methods=['GET'])
-def get_cash_flow_forecast(business_id):
+@require_subscription_or_local
+def get_cash_flow_forecast(user_id: str, business_id: str): # Add user_id from decorator
     """Get cash flow forecast for a business model."""
     try:
-        # In a real application, you would generate an actual forecast
+        # Check ownership of the business model first
+        if business_id not in BUSINESS_MODELS:
+             logger.warning(f"Forecast requested for non-existent business model {business_id} by user {user_id}")
+             return jsonify({'error': 'Business model not found', 'status': 404}), 404
+
+        model = BUSINESS_MODELS[business_id]
+        if model.get('user_id') != user_id:
+             logger.warning(f"User {user_id} attempted to access forecast for unauthorized model {business_id} owned by {model.get('user_id')}")
+             return jsonify({'error': 'Forbidden', 'status': 403}), 403
+
+        # In a real application, you would generate an actual forecast based on the model
         # For this demonstration, we'll return mock data
 
         forecast = {
@@ -127,7 +146,7 @@ def get_cash_flow_forecast(business_id):
         })
 
     except Exception as e:
-        logger.error(f"Error generating cash flow forecast: {str(e)}", exc_info=True)
+        logger.error(f"Error generating cash flow forecast for business {business_id}, user {user_id}: {str(e)}", exc_info=True)
         return jsonify({
             'error': 'Error generating cash flow forecast',
             'message': str(e),

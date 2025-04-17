@@ -1,12 +1,10 @@
-version: "3.8"
-
 services:
   backend:
     build:
       context: ./backend
       target: dev
     env_file:
-      - ./backend/.env
+      - ./.env
     working_dir: /app
     ports:
       - "5000:5000"
@@ -20,13 +18,15 @@ services:
   frontend:
     build:
       context: ./frontend
-      target: prod
+      target: build
+    working_dir: /app
     ports:
-      - "8000:80"
+      - "8000:5173"
     volumes:
-      # For development, mount source; for production, comment this out
-      - ./frontend/dist:/usr/share/nginx/html
+      - ./frontend:/app
+      - /app/node_modules
     restart: unless-stopped
+    command: npm run dev -- --host
     depends_on:
       - backend
     networks:
