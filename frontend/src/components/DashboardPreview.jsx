@@ -20,7 +20,7 @@ function DashboardPreview() {
           <button className="btn btn-primary ember-glow">Explore Dashboard <i className="fas fa-arrow-right"></i></button>
         </div>
         
-        <div className="dashboard-image animate-on-scroll">
+        <div className="dashboard-image animate-on-scroll" style={{ maxWidth: "600px" }}>
           <div className="dashboard-mockup">
             <div className="dashboard-header">
               <div className="dashboard-logo">
@@ -32,7 +32,7 @@ function DashboardPreview() {
                 <i className="fas fa-user-circle"></i>
               </div>
             </div>
-            <div className="dashboard-content-area" style={{ height: 'calc(100% - 60px)' }}>
+            <div className="dashboard-content-area" style={{ height: 'calc(100% - 60px)', overflow: 'hidden' }}>
               <div className="dashboard-sidebar">
                 <div className="sidebar-item active"><i className="fas fa-home"></i> Dashboard</div>
                 <div className="sidebar-item"><i className="fas fa-chart-pie"></i> Analytics</div>
@@ -44,7 +44,7 @@ function DashboardPreview() {
               <div className="dashboard-main">
                 <div className="dashboard-widget revenue">
                   <h4>Monthly Revenue</h4>
-                  <div style={{ height: '90px' }}>
+                  <div style={{ height: '120px' }}>
                     <Line
                       data={{
                         labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
@@ -59,8 +59,8 @@ function DashboardPreview() {
                             pointBackgroundColor: '#3b82f6',
                             pointBorderColor: '#fff',
                             pointBorderWidth: 2,
-                            pointRadius: 3,
-                            pointHoverRadius: 5
+                            pointRadius: 2,
+                            pointHoverRadius: 4
                           }
                         ]
                       }}
@@ -87,9 +87,9 @@ function DashboardPreview() {
                             },
                             ticks: {
                               font: {
-                                size: 8
+                                size: 9
                               },
-                              maxTicksLimit: 4
+                              maxTicksLimit: 3
                             }
                           },
                           y: {
@@ -102,9 +102,9 @@ function DashboardPreview() {
                                 return '$' + value;
                               },
                               font: {
-                                size: 8
+                                size: 9
                               },
-                              maxTicksLimit: 4
+                              maxTicksLimit: 3
                             }
                           }
                         }
@@ -114,7 +114,7 @@ function DashboardPreview() {
                 </div>
                 <div className="dashboard-widget customers">
                   <h4>Customer Growth</h4>
-                  <div style={{ height: '90px' }}>
+                  <div style={{ height: '120px' }}>
                     <Bar
                       data={{
                         labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
@@ -125,7 +125,7 @@ function DashboardPreview() {
                             backgroundColor: 'rgba(59, 130, 246, 0.7)',
                             borderColor: '#3b82f6',
                             borderWidth: 1,
-                            borderRadius: 3
+                            borderRadius: 2
                           }
                         ]
                       }}
@@ -145,9 +145,9 @@ function DashboardPreview() {
                             },
                             ticks: {
                               font: {
-                                size: 8
+                                size: 9
                               },
-                              maxTicksLimit: 4
+                              maxTicksLimit: 3
                             }
                           },
                           y: {
@@ -157,9 +157,9 @@ function DashboardPreview() {
                             },
                             ticks: {
                               font: {
-                                size: 8
+                                size: 9
                               },
-                              maxTicksLimit: 4
+                              maxTicksLimit: 3
                             }
                           }
                         }

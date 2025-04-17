@@ -904,19 +904,19 @@ body.menu-open {
     overflow: hidden;
     box-shadow: 0 32px 64px rgba(0, 0, 0, 0.3),
                 0 0 0 1px rgba(255, 71, 19, 0.1);
-    transform: perspective(1000px) rotateY(-3deg) rotateX(3deg); /* Reduced 3D effect */
+    transform: perspective(1000px) rotateY(-2deg) rotateX(2deg); /* Further reduced 3D effect */
     transition: all 0.5s ease;
     max-width: 100%; /* Ensure it doesn't overflow */
 }
 
 .dashboard-image:hover {
-    transform: perspective(1000px) rotateY(-2deg) rotateX(2deg);
+    transform: perspective(1000px) rotateY(-1deg) rotateX(1deg);
 }
 
 /* Dashboard Mockup Styles */
 .dashboard-mockup {
     width: 100%;
-    height: 400px; /* Reduced height for better fit */
+    height: 500px; /* Increased height to fit all content */
     background: rgba(13, 13, 13, 0.9);
     border-radius: var(--radius-xl);
     overflow: hidden;
@@ -968,20 +968,21 @@ body.menu-open {
 }
 
 .dashboard-sidebar {
-    width: 200px;
+    width: 180px;
     background: rgba(10, 10, 10, 0.8);
     border-right: 1px solid rgba(255, 71, 19, 0.1);
     padding: 20px 0;
 }
 
 .sidebar-item {
-    padding: 12px 20px;
+    padding: 10px 16px;
     color: var(--text-muted);
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
     cursor: pointer;
     transition: all 0.2s ease;
+    font-size: 0.9rem;
 }
 
 .sidebar-item:hover {
@@ -1000,7 +1001,7 @@ body.menu-open {
     padding: 20px;
     display: grid;
     grid-template-columns: 1fr 1fr;
-    grid-template-rows: 1fr 1fr;
+    grid-template-rows: auto auto;
     gap: 20px;
     overflow: auto;
 }
@@ -1011,11 +1012,13 @@ body.menu-open {
     padding: 16px;
     border: 1px solid rgba(255, 71, 19, 0.1);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    display: flex;
+    flex-direction: column;
 }
 
 .dashboard-widget h4 {
-    margin-bottom: 12px;
-    font-size: 1rem;
+    margin-bottom: 10px;
+    font-size: 0.95rem;
     color: var(--text-primary);
 }
 
@@ -1045,16 +1048,17 @@ body.menu-open {
 .insights-list {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 8px;
 }
 
 .insight-item {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 8px 12px;
+    gap: 8px;
+    padding: 6px 10px;
     background: rgba(255, 71, 19, 0.1);
     border-radius: var(--radius-md);
+    font-size: 0.85rem;
 }
 
 .insight-item i {
@@ -1878,7 +1882,7 @@ select.form-input {
     }
     
     .dashboard-mockup {
-        height: 350px; /* Slightly smaller on medium screens */
+        height: 450px; /* Adjusted for medium screens but still showing all content */
     }
 
     .footer-top {
@@ -2059,7 +2063,7 @@ select.form-input {
     }
     
     .dashboard-mockup {
-        height: 300px; /* Even smaller on small screens */
+        height: 400px; /* Adjusted for small screens but still showing all content */
     }
     
     .dashboard-widget h4 {
