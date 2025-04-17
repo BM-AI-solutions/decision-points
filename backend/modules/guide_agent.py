@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import asyncio
 from dataclasses import dataclass
-from backend.config import Config  # Import Config for model selection
+from config import Config  # Import Config for model selection
 from typing import Any, Dict, List, Optional, Union, TypeVar
 
 import loguru
@@ -11,8 +11,8 @@ from pydantic import BaseModel, Field
 from pydantic_ai import Agent, RunContext, ModelRetry, Tool
 
 from models.business_model import (
-    BusinessModel, 
-    MarketResearchResult, 
+    BusinessModel,
+    MarketResearchResult,
     FeatureImplementation,
     HumanTaskRequest,
     GuideInstruction
@@ -47,12 +47,12 @@ class GuideAgentManager:
         # Select the model name from configuration (set via environment variable GUIDE_AGENT_MODEL)
         self.model_name = Config.GUIDE_AGENT_MODEL
         self._initialize_agent()
-    
+
     def _initialize_agent(self) -> None:
         """Initialize the Guide Agent with required tools."""
         # Initialize the agent
         self.guide_agent = Agent(
-            f'gemini:{self.model_name}',
+            self.model_name,
             deps_type=AgentDeps,
             system_prompt="""You are the Guide Agent in the Decision Points system. Your role is to analyze markets, identify profitable
             business opportunities, and create detailed instructions for the Action Agent to implement these opportunities.
@@ -94,7 +94,7 @@ class GuideAgentManager:
                 return MarketResearchResult(
                     top_performing_models=[
                         BusinessModel(
-                            name="Dropshipping Specialty Items", 
+                            name="Dropshipping Specialty Items",
                             type="e-commerce",
                             potential_revenue=2500.0,
                             implementation_difficulty=6,
@@ -102,7 +102,7 @@ class GuideAgentManager:
                             required_apis=["Shopify", "Oberlo", "PayPal"]
                         ),
                         BusinessModel(
-                            name="Print on Demand Personalized Products", 
+                            name="Print on Demand Personalized Products",
                             type="e-commerce",
                             potential_revenue=1800.0,
                             implementation_difficulty=4,
@@ -118,7 +118,7 @@ class GuideAgentManager:
                 return MarketResearchResult(
                     top_performing_models=[
                         BusinessModel(
-                            name="Niche Knowledge Products", 
+                            name="Niche Knowledge Products",
                             type="digital_products",
                             potential_revenue=3200.0,
                             implementation_difficulty=3,
@@ -126,7 +126,7 @@ class GuideAgentManager:
                             required_apis=["Gumroad", "Stripe", "MailChimp"]
                         ),
                         BusinessModel(
-                            name="AI-Generated Content Templates", 
+                            name="AI-Generated Content Templates",
                             type="digital_products",
                             potential_revenue=2700.0,
                             implementation_difficulty=5,
@@ -143,7 +143,7 @@ class GuideAgentManager:
                 return MarketResearchResult(
                     top_performing_models=[
                         BusinessModel(
-                            name="Subscription Service", 
+                            name="Subscription Service",
                             type="recurring_revenue",
                             potential_revenue=1500.0,
                             implementation_difficulty=5,
@@ -158,7 +158,7 @@ class GuideAgentManager:
 
         @self.guide_agent.tool
         async def identify_revenue_features(
-            ctx: RunContext[AgentDeps], 
+            ctx: RunContext[AgentDeps],
             business_model_name: str,
             market_data: MarketResearchResult
         ) -> List[FeatureImplementation]:
@@ -175,7 +175,7 @@ class GuideAgentManager:
             logger.info(f"Identifying revenue features for business model: {business_model_name}")
 
             # Find the business model in the market data
-            business_model = next((model for model in market_data.top_performing_models 
+            business_model = next((model for model in market_data.top_performing_models
                                 if model.name.lower() == business_model_name.lower()), None)
 
             if not business_model:
@@ -254,7 +254,7 @@ class GuideAgentManager:
 
         @self.guide_agent.tool
         async def create_action_instructions(
-            ctx: RunContext[AgentDeps], 
+            ctx: RunContext[AgentDeps],
             business_model: BusinessModel,
             selected_features: List[FeatureImplementation]
         ) -> GuideInstruction:
@@ -331,7 +331,7 @@ class GuideAgentManager:
 
         @self.guide_agent.tool
         async def request_human_task(
-            ctx: RunContext[AgentDeps], 
+            ctx: RunContext[AgentDeps],
             service_name: str,
             reason: str,
             required_fields: List[str]
@@ -414,8 +414,8 @@ class GuideAgentManager:
         }
 
     async def identify_features(
-        self, 
-        business_model_name: str, 
+        self,
+        business_model_name: str,
         market_data: Dict[str, Any],
         user_id: str
     ) -> List[Dict[str, Any]]:
