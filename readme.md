@@ -1,5 +1,5 @@
 # Decision Points AI System
-
+![Decision Points AI Logo](https://i.imgur.com/5AVm5uo.jpeg)
 ## Summary/Overview
 
 Decision Points is an AI-powered system designed to automate the creation, deployment, and monetization of online businesses. Utilizing specialized agents (Guide, Action, Archon, etc.), it analyzes markets, implements business models and features, generates branding materials, and projects cash flow, requiring minimal human input. The system supports flexible model selection for each agent, including integration with Google Gemini AI and OpenAI models, and is designed for both developers (setup/maintenance) and end-users (web UI for business creation).
