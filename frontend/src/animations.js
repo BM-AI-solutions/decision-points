@@ -24,6 +24,81 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('.animate-on-scroll').forEach(el => {
     observer.observe(el);
   });
+  
+  // Navigation enhancement - highlight active section on scroll
+  const sections = document.querySelectorAll('section, .hero, .features, .how-it-works, .dashboard-preview, .pricing, .app-section, .testimonials');
+  const navLinks = document.querySelectorAll('.nav-link');
+  
+  // Function to set active nav link
+  const setActiveNavLink = () => {
+    let currentSection = '';
+    
+    sections.forEach(section => {
+      const sectionTop = section.offsetTop;
+      const sectionHeight = section.clientHeight;
+      
+      if (window.scrollY >= (sectionTop - 200)) {
+        currentSection = section.getAttribute('id') || '';
+      }
+    });
+    
+    navLinks.forEach(link => {
+      link.classList.remove('active');
+      const href = link.getAttribute('href');
+      
+      if (href && href.substring(1) === currentSection) {
+        link.classList.add('active');
+      }
+    });
+  };
+  
+  // Initial call to set active nav link
+  setActiveNavLink();
+  
+  // Add scroll event listener for active nav highlighting
+  window.addEventListener('scroll', setActiveNavLink);
+  
+  // Navbar appearance change on scroll
+  const navbar = document.querySelector('.navbar');
+  
+  const updateNavbarAppearance = () => {
+    if (window.scrollY > 50) {
+      navbar.classList.add('navbar-scrolled');
+    } else {
+      navbar.classList.remove('navbar-scrolled');
+    }
+  };
+  
+  // Initial call to set navbar appearance
+  updateNavbarAppearance();
+  
+  // Add scroll event listener for navbar appearance
+  window.addEventListener('scroll', updateNavbarAppearance);
+  
+  // Mobile menu toggle enhancement
+  const mobileMenuToggle = document.querySelector('.navbar-toggle');
+  const navMenu = document.querySelector('.nav-menu');
+  
+  if (mobileMenuToggle && navMenu) {
+    // Close mobile menu when clicking on a nav link
+    navMenu.querySelectorAll('.nav-link').forEach(link => {
+      link.addEventListener('click', () => {
+        if (navMenu.classList.contains('active')) {
+          navMenu.classList.remove('active');
+          document.body.classList.remove('menu-open');
+        }
+      });
+    });
+    
+    // Toggle body class for preventing scroll when menu is open
+    mobileMenuToggle.addEventListener('click', () => {
+      if (navMenu.classList.contains('active')) {
+        document.body.classList.remove('menu-open');
+      } else {
+        document.body.classList.add('menu-open');
+      }
+    });
+  }
 
   // Add flame flicker effect to specific elements
   document.querySelectorAll('.flame-effect').forEach(el => {

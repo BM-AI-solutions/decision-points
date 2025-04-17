@@ -227,34 +227,117 @@ function Header() {
         <div className="logo">
           <img src="images/logo.svg" alt="Decision Points AI Logo" />
         </div>
-        {/* Apply 'active' class based on state */}
-        <ul className={isMobileMenuOpen ? 'nav-links active' : 'nav-links'}>
-          <li><a href="#features" onClick={(e) => handleSmoothScroll(e, '#features')}>Features</a></li>
-          <li><a href="#how-it-works" onClick={(e) => handleSmoothScroll(e, '#how-it-works')}>How It Works</a></li>
-          <li><a href="#pricing" onClick={(e) => handleSmoothScroll(e, '#pricing')}>Pricing</a></li>
-          <li><a href="#app" onClick={(e) => handleSmoothScroll(e, '#app')}>Start Building</a></li>
-          <li><a href="#testimonials" onClick={(e) => handleSmoothScroll(e, '#testimonials')}>Testimonials</a></li>
+        
+        {/* Navigation menu with improved styling */}
+        <ul className={isMobileMenuOpen ? 'nav-menu active' : 'nav-menu'}>
           <li>
+            <a
+              href="#features"
+              className="nav-link"
+              onClick={(e) => handleSmoothScroll(e, '#features')}
+            >
+              Features
+            </a>
+          </li>
+          <li>
+            <a
+              href="#how-it-works"
+              className="nav-link"
+              onClick={(e) => handleSmoothScroll(e, '#how-it-works')}
+            >
+              How It Works
+            </a>
+          </li>
+          <li>
+            <a
+              href="#pricing"
+              className="nav-link"
+              onClick={(e) => handleSmoothScroll(e, '#pricing')}
+            >
+              Pricing
+            </a>
+          </li>
+          <li>
+            <a
+              href="#app"
+              className="nav-link"
+              onClick={(e) => handleSmoothScroll(e, '#app')}
+            >
+              Start Building
+            </a>
+          </li>
+          <li>
+            <a
+              href="#testimonials"
+              className="nav-link"
+              onClick={(e) => handleSmoothScroll(e, '#testimonials')}
+            >
+              Testimonials
+            </a>
+          </li>
+          <li className="auth-item">
             {isLoggedIn ? (
               <div className="user-info">
                 {userInfo?.picture && (
-                  <img src={userInfo.picture} alt={userInfo.name || 'User'} className="user-avatar" style={{ width: '30px', height: '30px', borderRadius: '50%', marginRight: '10px' }} />
+                  <img
+                    src={userInfo.picture}
+                    alt={userInfo.name || 'User'}
+                    className="user-avatar"
+                  />
                 )}
-                <span>{userInfo?.name || 'User'}</span>
-                <button onClick={handleLogout} className="btn btn-secondary" style={{ marginLeft: '15px' }}>Logout</button>
+                <span className="user-name">{userInfo?.name || 'User'}</span>
+                <button
+                  onClick={handleLogout}
+                  className="btn btn-secondary logout-btn"
+                >
+                  Logout
+                </button>
               </div>
             ) : (
               // Container for the Google Sign-In button
-              // The GSI library will render the button inside this div
-              <div ref={googleButtonRef} id="google-signin-button-container" style={{ minWidth: '150px' /* Adjust as needed */ }}>
+              <div
+                ref={googleButtonRef}
+                id="google-signin-button-container"
+                className="google-signin-wrapper"
+              >
                 {/* Google button will be rendered here by the script */}
               </div>
             )}
           </li>
         </ul>
-        {/* Add onClick handler to toggle button */}
-        <button className="navbar-toggle" aria-label="Toggle Navigation" onClick={toggleMobileMenu}>
-          <i className="fas fa-bars"></i>
+        
+        {/* Mobile menu toggle button with SVG icon instead of Font Awesome */}
+        <button
+          className="navbar-toggle"
+          aria-label="Toggle Navigation"
+          onClick={toggleMobileMenu}
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            width="24"
+            height="24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            {isMobileMenuOpen ? (
+              // X icon when menu is open
+              <>
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </>
+            ) : (
+              // Hamburger icon when menu is closed
+              <>
+                <line x1="3" y1="12" x2="21" y2="12"></line>
+                <line x1="3" y1="6" x2="21" y2="6"></line>
+                <line x1="3" y1="18" x2="21" y2="18"></line>
+              </>
+            )}
+          </svg>
         </button>
       </div>
     </nav>
