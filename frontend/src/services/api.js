@@ -192,7 +192,7 @@ const apiService = {
 
   signup: (userData) => {
     console.log("API Call: signup", userData); // Added logging
-    return apiClientInstance.post('/auth/signup', userData);
+    return apiClientInstance.post('/auth/register', userData); // Corrected path from /signup
   },
 
   logout: () => {

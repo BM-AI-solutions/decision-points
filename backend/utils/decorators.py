@@ -23,9 +23,12 @@ else:
     # If they are instance variables, this approach needs rethinking.
     # A better approach might be to pass a user lookup function to the decorator.
     try:
-        from backend.routes.auth import USERS, USER_IDS # Adjust import path as needed
+        # Corrected import path (relative to /app inside container)
+        from routes.auth import USERS, USER_IDS
     except ImportError:
-         current_app.logger.warning("Could not import USERS/USER_IDS from auth.py for local mode.")
+         # Commented out: This runs at import time, before app context exists
+         # current_app.logger.warning("Could not import USERS/USER_IDS from auth.py for local mode.")
+         # Fallback if import fails (e.g., circular import)
          USERS = {}
          USER_IDS = {}
     datastore_client = None # Ensure datastore_client is None in local mode
