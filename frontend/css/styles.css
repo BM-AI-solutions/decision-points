@@ -871,6 +871,7 @@ body.menu-open {
     gap: var(--spacing-xl);
     position: relative;
     z-index: 2;
+    flex-wrap: wrap; /* Allow wrapping on smaller screens */
 }
 
 .dashboard-content {
@@ -897,14 +898,15 @@ body.menu-open {
 }
 
 .dashboard-image {
-    flex: 1.2;
+    flex: 1;
     position: relative;
     border-radius: var(--radius-xl);
     overflow: hidden;
     box-shadow: 0 32px 64px rgba(0, 0, 0, 0.3),
                 0 0 0 1px rgba(255, 71, 19, 0.1);
-    transform: perspective(1000px) rotateY(-5deg) rotateX(5deg);
+    transform: perspective(1000px) rotateY(-3deg) rotateX(3deg); /* Reduced 3D effect */
     transition: all 0.5s ease;
+    max-width: 100%; /* Ensure it doesn't overflow */
 }
 
 .dashboard-image:hover {
@@ -914,13 +916,14 @@ body.menu-open {
 /* Dashboard Mockup Styles */
 .dashboard-mockup {
     width: 100%;
-    height: 500px;
+    height: 400px; /* Reduced height for better fit */
     background: rgba(13, 13, 13, 0.9);
     border-radius: var(--radius-xl);
     overflow: hidden;
     display: flex;
     flex-direction: column;
     border: 1px solid rgba(255, 71, 19, 0.2);
+    max-width: 100%; /* Ensure it doesn't overflow its container */
 }
 
 .dashboard-header {
@@ -1868,6 +1871,14 @@ select.form-input {
 
     .dashboard-image {
         margin-top: var(--spacing-lg);
+        width: 100%;
+        max-width: 600px; /* Limit width on medium screens */
+        margin-left: auto;
+        margin-right: auto;
+    }
+    
+    .dashboard-mockup {
+        height: 350px; /* Slightly smaller on medium screens */
     }
 
     .footer-top {
@@ -2045,6 +2056,23 @@ select.form-input {
     .btn-large {
         padding: 0.75rem 1.5rem;
         font-size: 1rem;
+    }
+    
+    .dashboard-mockup {
+        height: 300px; /* Even smaller on small screens */
+    }
+    
+    .dashboard-widget h4 {
+        font-size: 0.9rem; /* Smaller headings on small screens */
+    }
+    
+    .dashboard-sidebar {
+        width: 160px; /* Narrower sidebar on small screens */
+    }
+    
+    .sidebar-item {
+        padding: 8px 16px; /* Smaller padding for sidebar items */
+        font-size: 0.9rem;
     }
 }
 .hidden {
