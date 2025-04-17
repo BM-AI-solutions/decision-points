@@ -1,10 +1,12 @@
 import { defineConfig } from 'vite';
 import legacy from '@vitejs/plugin-legacy';
+import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   // The root directory is implicitly 'frontend/' since vite.config.js is here.
   // We can be explicit if needed: root: '.',
   plugins: [
+    react(), // Add the React plugin
     legacy({
       targets: ['defaults', 'not IE 11'], // Adjust browser targets as needed
     }),
