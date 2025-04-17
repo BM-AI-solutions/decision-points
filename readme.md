@@ -181,6 +181,14 @@ If a variable is not set, the system default (`gemini-pro`) will be used.
 You may override these in `.env.production` for production deployments (see `backend/.env.production.template` for examples).
 
 ---
+### Frontend Configuration
+
+- **`VITE_DEPLOYMENT_MODE`**: Controls frontend behavior based on the deployment type.
+    - Set to `'cloud'` for the cloud-hosted version, which enables specific features like free-tier signup.
+    - Leave blank or set to any other value for the self-hosted version, which uses standard open signup.
+    - See `frontend/.env.example` for details.
+
+---
 
 ### Production Deployment
 

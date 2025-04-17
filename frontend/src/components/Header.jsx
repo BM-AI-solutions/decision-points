@@ -1,14 +1,33 @@
 import React, { useState, useEffect, useRef } from 'react';
+import LoginForm from './LoginForm'; // Import LoginForm
+import SignupForm from './SignupForm'; // Import SignupForm
 
 function Header() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userInfo, setUserInfo] = useState(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false); // State for mobile menu
+  const [showLogin, setShowLogin] = useState(false); // State for login form visibility
+  const [showSignup, setShowSignup] = useState(false); // State for signup form visibility
   const googleButtonRef = useRef(null); // Ref for the button container
 
   // Toggle Mobile Menu
   const toggleMobileMenu = () => {
     setIsMobileMenuOpen(!isMobileMenuOpen);
+  };
+
+  // Click Handlers for Login/Signup
+  const handleLoginClick = () => {
+    console.log('Log in button clicked');
+    setShowLogin(true);
+    setShowSignup(false);
+    // Future implementation: Open login modal/form (State now handles visibility)
+  };
+
+  const handleSignupClick = () => {
+    console.log('Sign up button clicked');
+    setShowSignup(true);
+    setShowLogin(false);
+    // Future implementation: Open signup modal/form (State now handles visibility)
   };
 
   // Smooth Scroll Handler
@@ -295,12 +314,9 @@ function Header() {
               </div>
             ) : (
               // Container for the Google Sign-In button
-              <div
-                ref={googleButtonRef}
-                id="google-signin-button-container"
-                className="google-signin-wrapper"
-              >
-                {/* Google button will be rendered here by the script */}
+              <div className="auth-buttons-container">
+                <button className="btn btn-secondary btn-login" style={{ marginRight: '10px' }} onClick={handleLoginClick}>Log in</button>
+                <button className="btn btn-primary btn-signup" onClick={handleSignupClick}>Sign up</button>
               </div>
             )}
           </li>
@@ -341,6 +357,150 @@ function Header() {
         </button>
       </div>
     </nav>
+  );
+  // Conditionally render forms outside the nav, but within the component fragment/div
+  return (
+    <> {/* Use Fragment to return multiple elements */}
+      <nav className="navbar">
+        {/* ... rest of the navbar content ... */}
+        <div className="container">
+          <div className="logo">
+            <img src="images/logo.svg" alt="Decision Points AI Logo" />
+          </div>
+          
+          {/* Navigation menu with improved styling */}
+          <ul className={isMobileMenuOpen ? 'nav-menu active' : 'nav-menu'}>
+            <li>
+              <a
+                href="#features"
+                className="nav-link"
+                onClick={(e) => handleSmoothScroll(e, '#features')}
+              >
+                Features
+              </a>
+            </li>
+            <li>
+              <a
+                href="#how-it-works"
+                className="nav-link"
+                onClick={(e) => handleSmoothScroll(e, '#how-it-works')}
+              >
+                How It Works
+              </a>
+            </li>
+            <li>
+              <a
+                href="#pricing"
+                className="nav-link"
+                onClick={(e) => handleSmoothScroll(e, '#pricing')}
+              >
+                Pricing
+              </a>
+            </li>
+            <li>
+              <a
+                href="#app"
+                className="nav-link"
+                onClick={(e) => handleSmoothScroll(e, '#app')}
+              >
+                Start Building
+              </a>
+            </li>
+            <li>
+              <a
+                href="#testimonials"
+                className="nav-link"
+                onClick={(e) => handleSmoothScroll(e, '#testimonials')}
+              >
+                Testimonials
+              </a>
+            </li>
+            <li className="auth-item">
+              {isLoggedIn ? (
+                <div className="user-info">
+                  {userInfo?.picture && (
+                    <img
+                      src={userInfo.picture}
+                      alt={userInfo.name || 'User'}
+                      className="user-avatar"
+                    />
+                  )}
+                  <span className="user-name">{userInfo?.name || 'User'}</span>
+                  <button
+                    onClick={handleLogout}
+                    className="btn btn-secondary logout-btn"
+                  >
+                    Logout
+                  </button>
+                </div>
+              ) : (
+                // Container for the Login/Signup buttons
+                <div className="auth-buttons-container">
+                  <button className="btn btn-secondary btn-login" style={{ marginRight: '10px' }} onClick={handleLoginClick}>Log in</button>
+                  <button className="btn btn-primary btn-signup" onClick={handleSignupClick}>Sign up</button>
+                </div>
+              )}
+            </li>
+          </ul>
+          
+          {/* Mobile menu toggle button with SVG icon instead of Font Awesome */}
+          <button
+            className="navbar-toggle"
+            aria-label="Toggle Navigation"
+            onClick={toggleMobileMenu}
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              width="24"
+              height="24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              {isMobileMenuOpen ? (
+                // X icon when menu is open
+                <>
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </>
+              ) : (
+                // Hamburger icon when menu is closed
+                <>
+                  <line x1="3" y1="12" x2="21" y2="12"></line>
+                  <line x1="3" y1="6" x2="21" y2="6"></line>
+                  <line x1="3" y1="18" x2="21" y2="18"></line>
+                </>
+              )}
+            </svg>
+          </button>
+        </div>
+      </nav>
+
+      {/* Conditionally render Login Form */}
+      {showLogin && (
+        <div className="modal-overlay"> {/* Basic overlay for context */}
+          <div className="modal-content">
+             <button onClick={() => setShowLogin(false)} style={{float: 'right'}}>X</button> {/* Simple close button */}
+             <h2>Login</h2>
+             <LoginForm />
+          </div>
+        </div>
+      )}
+
+      {/* Conditionally render Signup Form */}
+      {showSignup && (
+        <div className="modal-overlay"> {/* Basic overlay for context */}
+          <div className="modal-content">
+            <button onClick={() => setShowSignup(false)} style={{float: 'right'}}>X</button> {/* Simple close button */}
+            <h2>Sign Up</h2>
+            <SignupForm />
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
