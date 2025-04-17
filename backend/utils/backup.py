@@ -508,7 +508,8 @@ def upload_to_gcs(file_path: str, bucket: str, key_prefix: str) -> str:
         # Generate URL
         url = f"gs://{bucket}/{gcs_key}"
         
-        logger.info(f"Backup uploaded to GCS: {url}")
+        logger.info(f"Backup uploaded to GCS: bucket={bucket}, key_prefix={key_prefix}")
+        logger.debug(f"Full GCS URL: {url}") # Only for debugging
         return url
     
     except Exception as e:
