@@ -466,7 +466,7 @@ def upload_to_s3(file_path: str, bucket: str, key_prefix: str) -> str:
         # Generate URL
         url = f"s3://{bucket}/{s3_key}"
         
-        logger.info(f"Backup uploaded to S3: {url}")
+        logger.info(f"Backup uploaded to S3 bucket '{bucket}' with key prefix '{key_prefix.rstrip('/')}'")
         return url
     
     except ClientError as e:
