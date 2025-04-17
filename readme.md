@@ -45,13 +45,13 @@ Two primary methods are supported for local development and testing:
 
 1.  **Docker Desktop (Recommended):**
     *   Ensure Docker Desktop is installed.
-    *   Configure required environment variables (copy `.env.example` to `.env` and fill in values, including your `GOOGLE_API_KEY` for Gemini and any agent model overrides).
+    *   Configure required environment variables: copy the root `.env.example` file to `.env` (i.e., `cp .env.example .env`) and fill in the necessary values (like your `GOOGLE_API_KEY` for Gemini and any agent model overrides).
     *   Run: `docker compose -f docker-compose.dev.yml up -d --build`
     *   The backend and frontend are fully Dockerized for local development and production builds.
     *   The backend uses a multi-stage Dockerfile supporting both development (hot-reload, volume mount) and production (Gunicorn) modes. Compose uses the dev stage by default for local development.
     *   The frontend uses a Dockerfile to build static assets with npm, then serves them via nginx in production. For local development, the dist/ directory is mounted for live updates.
     *   Both services are orchestrated via `docker-compose.yml`, which sets up a shared network so the frontend can reach the backend at `http://backend:5000`.
-    *   Environment variables for the backend are managed via `.env` files (see `backend/.env.example`). Compose loads these automatically for the backend service.
+    *   Environment variables for the services are managed via the root `.env` file created in the previous step. Docker Compose (`docker-compose.dev.yml`) automatically loads this file for the services.
     *   **No Google Cloud SDK or credentials are required for local Docker development.** The backend uses a local in-memory database for user/session data in this mode.
 
 ### Using Development vs. Production Configurations
@@ -106,7 +106,7 @@ The system supports two deployment modes, each with different environment variab
 | ARCHON_AGENT_MODEL      |        ✔️         |          ✔️           | Optional, overrides default agent model             |
 | ...other integrations   |   optional        |       optional        | See `.env.example` for more                         |
 
-- See `backend/.env.example` for a complete, annotated template.
+- See the root `.env.example` for a complete, annotated template.
 
 ### Google Cloud Datastore & Credentials
 
@@ -178,7 +178,7 @@ ARCHON_AGENT_MODEL=gemini-pro
 ```
 
 If a variable is not set, the system default (`gemini-pro`) will be used.  
-You may override these in `.env.production` for production deployments (see `backend/.env.production.template` for examples).
+You may override these in a separate `.env.production` file if needed for production deployments.
 
 ---
 ### Frontend Configuration
@@ -186,7 +186,7 @@ You may override these in `.env.production` for production deployments (see `bac
 - **`VITE_DEPLOYMENT_MODE`**: Controls frontend behavior based on the deployment type.
     - Set to `'cloud'` for the cloud-hosted version, which enables specific features like free-tier signup.
     - Leave blank or set to any other value for the self-hosted version, which uses standard open signup.
-    - See `frontend/.env.example` for details.
+    - This variable is configured in the root `.env` file.
 
 ---
 
