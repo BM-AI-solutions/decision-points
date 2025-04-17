@@ -4,11 +4,19 @@ import jwt
 from datetime import datetime, timedelta
 import os
 from werkzeug.security import generate_password_hash, check_password_hash
-from google.auth.transport import requests
-from google.oauth2 import id_token
 import stripe
-from google.cloud import datastore
 from config import Config
+
+# Only import Google Cloud libraries if billing is required (hosted/SaaS mode)
+if Config.BILLING_REQUIRED:
+    from google.auth.transport import requests
+    from google.oauth2 import id_token
+    from google.cloud import datastore
+else:
+    # Provide mocks for Google auth/ID token in local mode
+    requests = None
+    id_token = None
+    datastore = None
 
 
 from utils.logger import setup_logger
@@ -59,8 +67,14 @@ else:
 
 logger = setup_logger('routes.auth')
 
-# Initialize Google Cloud Datastore client
-datastore_client = datastore.Client()
+# Backend selection: Google Cloud Datastore (hosted/SaaS) or in-memory (local)
+if Config.BILLING_REQUIRED:
+    datastore_client = datastore.Client()
+else:
+    # In-memory user/session store for local/self-hosted mode
+    USERS = {}         # email -> user dict
+    USER_AUTHS = {}    # email -> auth dict
+    USER_IDS = {}      # id -> email
 
 
 from models.user import UserProfile, UserAuth
@@ -81,41 +95,68 @@ async def register():
                 'status': 400
             }), 400
 
-        # Check if user already exists
-        query = datastore_client.query(kind='User')
-        query.add_filter('email', '=', email)
-        existing_users = list(query.fetch())
+        if Config.BILLING_REQUIRED:
+            # Check if user already exists in Datastore
+            query = datastore_client.query(kind='User')
+            query.add_filter('email', '=', email)
+            existing_users = list(query.fetch())
 
-        if existing_users:
-            return jsonify({
-                'error': 'Email already registered',
-                'status': 409
-            }), 409
+            if existing_users:
+                return jsonify({
+                    'error': 'Email already registered',
+                    'status': 409
+                }), 409
 
-        user_id = str(uuid.uuid4())
-        password_hash = generate_password_hash(password)
+            user_id = str(uuid.uuid4())
+            password_hash = generate_password_hash(password)
 
-        # Create UserAuth entity
-        auth_entity = UserAuth(
-            id=user_id,
-            email=email,
-            hashed_password=password_hash,
-            salt="" # Salt is not used in generate_password_hash
-        ).to_entity(datastore_client, user_id)
+            # Create UserAuth entity
+            auth_entity = UserAuth(
+                id=user_id,
+                email=email,
+                hashed_password=password_hash,
+                salt="" # Salt is not used in generate_password_hash
+            ).to_entity(datastore_client, user_id)
 
-        # Create UserProfile entity
-        profile_entity = UserProfile(
-            id=user_id,
-            email=email,
-            name=name,
-            created_at=datetime.utcnow(),
-            credits_remaining=10
-        ).to_entity(datastore_client)
+            # Create UserProfile entity
+            profile_entity = UserProfile(
+                id=user_id,
+                email=email,
+                name=name,
+                created_at=datetime.utcnow(),
+                credits_remaining=10
+            ).to_entity(datastore_client)
 
-        # Save entities to Datastore in a transaction
-        with datastore_client.transaction():
-            datastore_client.put(auth_entity)
-            datastore_client.put(profile_entity)
+            # Save entities to Datastore in a transaction
+            with datastore_client.transaction():
+                datastore_client.put(auth_entity)
+                datastore_client.put(profile_entity)
+
+        else:
+            # Local mode: check in-memory USERS
+            if email in USERS:
+                return jsonify({
+                    'error': 'Email already registered',
+                    'status': 409
+                }), 409
+
+            user_id = str(uuid.uuid4())
+            password_hash = generate_password_hash(password)
+            # Store auth and profile in-memory
+            USER_AUTHS[email] = {
+                'id': user_id,
+                'email': email,
+                'hashed_password': password_hash,
+                'salt': ""
+            }
+            USERS[email] = {
+                'id': user_id,
+                'email': email,
+                'name': name,
+                'created_at': datetime.utcnow(),
+                'credits_remaining': 10
+            }
+            USER_IDS[user_id] = email
 
         logger.info(f"Registered new user: {email} with ID {user_id}")
         return jsonify({
@@ -151,34 +192,55 @@ async def login():
                 'status': 400
             }), 400
         
-        # Retrieve user auth entity from Datastore
-        query = datastore_client.query(kind='UserAuth')
-        query.add_filter('email', '=', email)
-        user_auth_entities = list(query.fetch())
+        if Config.BILLING_REQUIRED:
+            # Retrieve user auth entity from Datastore
+            query = datastore_client.query(kind='UserAuth')
+            query.add_filter('email', '=', email)
+            user_auth_entities = list(query.fetch())
 
-        if not user_auth_entities:
-            return jsonify({
-                'error': 'Invalid email or password',
-                'status': 401
-            }), 401
+            if not user_auth_entities:
+                return jsonify({
+                    'error': 'Invalid email or password',
+                    'status': 401
+                }), 401
 
-        user_auth_entity = user_auth_entities[0]
-        user_auth = UserAuth.from_entity(user_auth_entity)
+            user_auth_entity = user_auth_entities[0]
+            user_auth = UserAuth.from_entity(user_auth_entity)
 
-        if not check_password_hash(user_auth.hashed_password, password):
-            return jsonify({
-                'error': 'Invalid email or password',
-                'status': 401
-            }), 401
+            if not check_password_hash(user_auth.hashed_password, password):
+                return jsonify({
+                    'error': 'Invalid email or password',
+                    'status': 401
+                }), 401
 
-        # Retrieve user profile entity
-        user_profile_entity = datastore_client.get(datastore_client.key('User', user_auth.id))
-        if not user_profile_entity:
-            return jsonify({
-                'error': 'User profile not found',
-                'status': 404
-            }), 404
-        user_profile = UserProfile.from_entity(user_profile_entity)
+            # Retrieve user profile entity
+            user_profile_entity = datastore_client.get(datastore_client.key('User', user_auth.id))
+            if not user_profile_entity:
+                return jsonify({
+                    'error': 'User profile not found',
+                    'status': 404
+                }), 404
+            user_profile = UserProfile.from_entity(user_profile_entity)
+        else:
+            # Local mode: check in-memory USER_AUTHS/USERS
+            auth = USER_AUTHS.get(email)
+            if not auth or not check_password_hash(auth['hashed_password'], password):
+                return jsonify({
+                    'error': 'Invalid email or password',
+                    'status': 401
+                }), 401
+            user_id = auth['id']
+            profile = USERS.get(email)
+            if not profile:
+                return jsonify({
+                    'error': 'User profile not found',
+                    'status': 404
+                }), 404
+            user_profile = type('UserProfile', (), profile)()
+            user_profile.id = profile['id']
+            user_profile.email = profile['email']
+            user_profile.name = profile['name']
+            user_profile.credits_remaining = profile['credits_remaining']
 
         # Generate JWT token
         secret_key = os.environ['JWT_SECRET_KEY']  # Required in production
@@ -241,15 +303,34 @@ def profile():
                 'status': 401
             }), 401
 
-        # Retrieve user profile entity from Datastore
-        user_profile_entity = datastore_client.get(datastore_client.key('User', user_id))
-        if not user_profile_entity:
-            return jsonify({
-                'error': 'User profile not found',
-                'status': 404
-            }), 404
-        
-        user_profile = UserProfile.from_entity(user_profile_entity)
+        if Config.BILLING_REQUIRED:
+            # Retrieve user profile entity from Datastore
+            user_profile_entity = datastore_client.get(datastore_client.key('User', user_id))
+            if not user_profile_entity:
+                return jsonify({
+                    'error': 'User profile not found',
+                    'status': 404
+                }), 404
+            
+            user_profile = UserProfile.from_entity(user_profile_entity)
+        else:
+            # Local mode: get from in-memory USERS
+            email = None
+            for e, p in USERS.items():
+                if p['id'] == user_id:
+                    email = e
+                    break
+            if not email:
+                return jsonify({
+                    'error': 'User profile not found',
+                    'status': 404
+                }), 404
+            profile = USERS[email]
+            user_profile = type('UserProfile', (), profile)()
+            user_profile.id = profile['id']
+            user_profile.email = profile['email']
+            user_profile.name = profile['name']
+            user_profile.credits_remaining = profile['credits_remaining']
 
         logger.info(f"Retrieved profile for user: {user_profile.email} with ID {user_id}")
         subscription_active = has_active_subscription(user_profile)
@@ -388,40 +469,66 @@ async def google_auth():
                 }), 400
 
             # Check if user with google_id already exists
-            query = datastore_client.query(kind='UserAuth')
-            query.add_filter('google_id', '=', google_id) # Add filter for google_id
-            user_auth_entities = list(query.fetch())
+            if Config.BILLING_REQUIRED:
+                query = datastore_client.query(kind='UserAuth')
+                query.add_filter('google_id', '=', google_id) # Add filter for google_id
+                user_auth_entities = list(query.fetch())
 
-            user_id = None # Initialize user_id
-            if user_auth_entities:
-                user_auth_entity = user_auth_entities[0]
-                user_auth = UserAuth.from_entity(user_auth_entity)
-                user_id = user_auth.id # Get user_id from existing UserAuth entity
+                user_id = None # Initialize user_id
+                if user_auth_entities:
+                    user_auth_entity = user_auth_entities[0]
+                    user_auth = UserAuth.from_entity(user_auth_entity)
+                    user_id = user_auth.id # Get user_id from existing UserAuth entity
+                else:
+                    # Create new user if google_id does not exist
+                    user_id = str(uuid.uuid4())
+                    user_auth = UserAuth(
+                        id=user_id,
+                        email=email,
+                        hashed_password=None, # No password for Google OAuth
+                        salt=None,
+                        google_id=google_id # Store google_id
+                    )
+                    auth_entity = user_auth.to_entity(datastore_client, user_id)
+
+                    # Create UserProfile entity
+                    profile_entity = UserProfile(
+                        id=user_id,
+                        email=email,
+                        name=name,
+                        created_at=datetime.utcnow(),
+                        credits_remaining=10
+                    ).to_entity(datastore_client)
+
+                    # Save entities to Datastore in a transaction
+                    with datastore_client.transaction():
+                        datastore_client.put(auth_entity)
+                        datastore_client.put(profile_entity)
             else:
-                # Create new user if google_id does not exist
-                user_id = str(uuid.uuid4())
-                user_auth = UserAuth(
-                    id=user_id,
-                    email=email,
-                    hashed_password=None, # No password for Google OAuth
-                    salt=None,
-                    google_id=google_id # Store google_id
-                )
-                auth_entity = user_auth.to_entity(datastore_client, user_id)
-
-                # Create UserProfile entity
-                profile_entity = UserProfile(
-                    id=user_id,
-                    email=email,
-                    name=name,
-                    created_at=datetime.utcnow(),
-                    credits_remaining=10
-                ).to_entity(datastore_client)
-
-                # Save entities to Datastore in a transaction
-                with datastore_client.transaction():
-                    datastore_client.put(auth_entity)
-                    datastore_client.put(profile_entity)
+                # Local mode: check in-memory USER_AUTHS for google_id
+                user_id = None
+                for e, a in USER_AUTHS.items():
+                    if a.get('google_id') == google_id:
+                        user_id = a['id']
+                        break
+                if not user_id:
+                    # Create new user if google_id does not exist
+                    user_id = str(uuid.uuid4())
+                    USER_AUTHS[email] = {
+                        'id': user_id,
+                        'email': email,
+                        'hashed_password': None,
+                        'salt': None,
+                        'google_id': google_id
+                    }
+                    USERS[email] = {
+                        'id': user_id,
+                        'email': email,
+                        'name': name,
+                        'created_at': datetime.utcnow(),
+                        'credits_remaining': 10
+                    }
+                    USER_IDS[user_id] = email
 
 
             # Generate JWT token
@@ -507,15 +614,34 @@ async def purchase_credits():
                 'status': 400
             }), 400
 
-        # Retrieve user profile entity from Datastore
-        user_profile_entity = datastore_client.get(datastore_client.key('User', user_id))
-        if not user_profile_entity:
-            return jsonify({
-                'error': 'User profile not found',
-                'status': 404
-            }), 404
-        
-        user_profile = UserProfile.from_entity(user_profile_entity)
+        if Config.BILLING_REQUIRED:
+            # Retrieve user profile entity from Datastore
+            user_profile_entity = datastore_client.get(datastore_client.key('User', user_id))
+            if not user_profile_entity:
+                return jsonify({
+                    'error': 'User profile not found',
+                    'status': 404
+                }), 404
+            
+            user_profile = UserProfile.from_entity(user_profile_entity)
+        else:
+            # Local mode: get from in-memory USERS
+            email = None
+            for e, p in USERS.items():
+                if p['id'] == user_id:
+                    email = e
+                    break
+            if not email:
+                return jsonify({
+                    'error': 'User profile not found',
+                    'status': 404
+                }), 404
+            profile = USERS[email]
+            user_profile = type('UserProfile', (), profile)()
+            user_profile.id = profile['id']
+            user_profile.email = profile['email']
+            user_profile.name = profile['name']
+            user_profile.credits_remaining = profile['credits_remaining']
 
         # Credit packages
         packages = {

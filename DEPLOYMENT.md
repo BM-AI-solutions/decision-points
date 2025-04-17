@@ -101,9 +101,12 @@ Handled automatically by GitHub Actions (`.github/workflows/backend-cloudrun.yml
 The backend supports dual-mode operation for subscription enforcement, controlled by the `BILLING_REQUIRED` environment variable:
 
 - **Local/Docker Development:** Set `BILLING_REQUIRED=false` (the default in `backend/.env.example`). All subscription checks are bypassed and users have full access.
-- **Hosted/Cloud Production:** Set `BILLING_REQUIRED=true` in your production environment (e.g., in Google Secret Manager or your cloud provider's env config). This enforces Stripe subscription checks and restricts access for non-subscribed users.
+  **Google Cloud Datastore and credentials are NOT required in this mode.** The backend uses a local in-memory database for user/session data. You do not need to set up Google Cloud SDK or credentials for local development or Docker Compose.
 
-This allows seamless local development and testing without payment requirements, while ensuring proper billing enforcement in production.
+- **Hosted/Cloud Production:** Set `BILLING_REQUIRED=true` in your production environment (e.g., in Google Secret Manager or your cloud provider's env config). This enforces Stripe subscription checks and restricts access for non-subscribed users.
+  **Google Cloud Datastore and credentials ARE required in this mode** for user/session data. See below for setup.
+
+This allows seamless local development and testing without payment requirements or Google Cloud setup, while ensuring proper billing enforcement and cloud data storage in production.
 
 - Backend: All required variables are listed in `backend/.env.production.template`. These must be created as secrets in Google Secret Manager.
 - Frontend: Public keys and config are set via Firebase environment config.
@@ -196,7 +199,8 @@ The following table summarizes which environment variables are required for each
 - JWT-based authentication is enforced for all sensitive endpoints.
 - JWT secret (`JWT_SECRET_KEY`) must be set as a secret in production.
 - Google OAuth is supported for user registration/login.
-- User and subscription data are stored in Google Cloud Datastore.
+- User and subscription data are stored in Google Cloud Datastore **only in hosted/SaaS mode (`BILLING_REQUIRED=true`)**.
+- In local/self-hosted mode (`BILLING_REQUIRED=false`), user and session data are stored in a local in-memory database and no Google Cloud setup is required.
 
 ### d. Subscription Status Enforcement
 

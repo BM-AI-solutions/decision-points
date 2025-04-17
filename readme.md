@@ -52,6 +52,7 @@ Two primary methods are supported for local development and testing:
     *   The frontend uses a Dockerfile to build static assets with npm, then serves them via nginx in production. For local development, the dist/ directory is mounted for live updates.
     *   Both services are orchestrated via `docker-compose.yml`, which sets up a shared network so the frontend can reach the backend at `http://backend:5000`.
     *   Environment variables for the backend are managed via `.env` files (see `backend/.env.example`). Compose loads these automatically for the backend service.
+    *   **No Google Cloud SDK or credentials are required for local Docker development.** The backend uses a local in-memory database for user/session data in this mode.
     *   To forward Stripe webhooks to your backend during local development, use the Stripe CLI:
         ```bash
         stripe listen --forward-to localhost:5000/api/stripe/webhook
@@ -91,6 +92,14 @@ The system supports two deployment modes, each with different environment variab
 | ...other integrations   |   optional        |       optional        | See `.env.example` for more                         |
 
 - See `backend/.env.example` for a complete, annotated template.
+
+### Google Cloud Datastore & Credentials
+
+- **Hosted/SaaS Mode (`BILLING_REQUIRED=true`):**
+  Google Cloud Datastore and credentials are required for user/session data. You must provide Google Cloud credentials as described in `DEPLOYMENT.md`.
+
+- **Local/Self-Hosted Mode (`BILLING_REQUIRED=false`):**
+  The backend uses a local in-memory database for user/session data. **No Google Cloud SDK, Datastore, or credentials are required** for local development or Docker Compose. You can run the backend and frontend locally without any Google Cloud setup.
 
 ### BILLING_REQUIRED
 
