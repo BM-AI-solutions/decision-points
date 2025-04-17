@@ -83,6 +83,7 @@ from models.user import UserProfile, UserAuth
 async def register():
     """Register a new user."""
     try:
+        logger.info(f"Checking Config.BILLING_REQUIRED: {Config.BILLING_REQUIRED}") # Add this log
         data = request.json
 
         email = data.get('email')
@@ -134,14 +135,18 @@ async def register():
 
         else:
             # Local mode: check in-memory USERS
-            if email in USERS:
+            logger.info(f"Local mode signup attempt for email: {email}") # Add log
+            logger.debug(f"Current USERS keys before check: {list(USERS.keys())}") # Add log
+            if email in USERS: # Remove the previous logs
+                logger.warning(f"Email '{email}' already found in local USERS store.") # Add log
                 return jsonify({
                     'error': 'Email already registered',
                     'status': 409
                 }), 409
-
-            user_id = str(uuid.uuid4())
-            password_hash = generate_password_hash(password)
+            else: # Add else block for clarity and correct indentation of next log
+                logger.info(f"Email '{email}' not found in local USERS store. Proceeding with registration.") # Add log
+                user_id = str(uuid.uuid4())
+                password_hash = generate_password_hash(password)
             # Store auth and profile in-memory
             USER_AUTHS[email] = {
                 'id': user_id,
@@ -157,6 +162,8 @@ async def register():
                 'credits_remaining': 10
             }
             USER_IDS[user_id] = email
+
+            logger.debug(f"Added '{email}' to USERS. Current keys: {list(USERS.keys())}") # Add log
 
         logger.info(f"Registered new user: {email} with ID {user_id}")
         return jsonify({

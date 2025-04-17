@@ -2,15 +2,18 @@ from flask import Blueprint, jsonify, request
 import uuid
 from typing import Dict, Any, List
 
-from modules.guide_agent import GuideAgentManager
-from utils.logger import setup_logger
+# Import the shared decorator
+from backend.utils.decorators import require_subscription_or_local
+from backend.modules.guide_agent import GuideAgentManager
+from backend.utils.logger import setup_logger
 
-bp = Blueprint('market', __name__)
+bp = Blueprint('market', __name__, url_prefix='/api/market') # Added url_prefix
 logger = setup_logger('routes.market')
 guide_agent_manager = GuideAgentManager()
 
 @bp.route('/analyze', methods=['POST'])
-async def analyze_market() -> Dict[str, Any]:
+@require_subscription_or_local
+async def analyze_market(user_id: str) -> Dict[str, Any]: # Add user_id from decorator
     """Analyze a market segment to find business opportunities."""
     data = request.json
 
@@ -24,8 +27,7 @@ async def analyze_market() -> Dict[str, Any]:
                 "status": 400
             }), 400
 
-        # Generate a user ID if not provided
-        user_id = data.get('user_id', str(uuid.uuid4()))
+        # user_id is now passed as an argument
 
         # Run the market analysis
         result = await guide_agent_manager.analyze_market(market_segment, user_id)
@@ -38,7 +40,7 @@ async def analyze_market() -> Dict[str, Any]:
         })
 
     except Exception as e:
-        logger.error(f"Error analyzing market: {str(e)}", exc_info=True)
+        logger.error(f"Error analyzing market for user {user_id}: {str(e)}", exc_info=True)
         return jsonify({
             "error": "Error analyzing market",
             "message": str(e),
@@ -46,7 +48,8 @@ async def analyze_market() -> Dict[str, Any]:
         }), 500
 
 @bp.route('/features', methods=['POST'])
-async def identify_features() -> Dict[str, Any]:
+@require_subscription_or_local
+async def identify_features(user_id: str) -> Dict[str, Any]: # Add user_id from decorator
     """Identify revenue-generating features for a business model."""
     data = request.json
 
@@ -54,7 +57,7 @@ async def identify_features() -> Dict[str, Any]:
         # Get parameters from the request
         business_model_name = data.get('business_model_name')
         market_data = data.get('market_data')
-        user_id = data.get('user_id', str(uuid.uuid4()))
+        # user_id is now passed as an argument
 
         if not business_model_name:
             logger.warning("Business model name not provided")
@@ -86,7 +89,7 @@ async def identify_features() -> Dict[str, Any]:
         })
 
     except Exception as e:
-        logger.error(f"Error identifying features: {str(e)}", exc_info=True)
+        logger.error(f"Error identifying features for user {user_id}: {str(e)}", exc_info=True)
         return jsonify({
             "error": "Error identifying features",
             "message": str(e),
@@ -94,7 +97,8 @@ async def identify_features() -> Dict[str, Any]:
         }), 500
 
 @bp.route('/instructions', methods=['POST'])
-async def create_instructions() -> Dict[str, Any]:
+@require_subscription_or_local
+async def create_instructions(user_id: str) -> Dict[str, Any]: # Add user_id from decorator
     """Create implementation instructions for a business model and features."""
     data = request.json
 
@@ -102,7 +106,7 @@ async def create_instructions() -> Dict[str, Any]:
         # Get parameters from the request
         business_model = data.get('business_model')
         selected_features = data.get('selected_features')
-        user_id = data.get('user_id', str(uuid.uuid4()))
+        # user_id is now passed as an argument
 
         if not business_model:
             logger.warning("Business model not provided")
@@ -133,7 +137,7 @@ async def create_instructions() -> Dict[str, Any]:
         })
 
     except Exception as e:
-        logger.error(f"Error creating instructions: {str(e)}", exc_info=True)
+        logger.error(f"Error creating instructions for user {user_id}: {str(e)}", exc_info=True)
         return jsonify({
             "error": "Error creating instructions",
             "message": str(e),
@@ -141,7 +145,8 @@ async def create_instructions() -> Dict[str, Any]:
         }), 500
 
 @bp.route('/human-tasks', methods=['POST'])
-async def identify_human_tasks() -> Dict[str, Any]:
+@require_subscription_or_local
+async def identify_human_tasks(user_id: str) -> Dict[str, Any]: # Add user_id from decorator
     """Identify tasks that require human input."""
     data = request.json
 
@@ -149,7 +154,7 @@ async def identify_human_tasks() -> Dict[str, Any]:
         # Get parameters from the request
         business_model = data.get('business_model')
         features = data.get('features')
-        user_id = data.get('user_id', str(uuid.uuid4()))
+        # user_id is now passed as an argument
 
         if not business_model:
             logger.warning("Business model not provided")
@@ -180,7 +185,7 @@ async def identify_human_tasks() -> Dict[str, Any]:
         })
 
     except Exception as e:
-        logger.error(f"Error identifying human tasks: {str(e)}", exc_info=True)
+        logger.error(f"Error identifying human tasks for user {user_id}: {str(e)}", exc_info=True)
         return jsonify({
             "error": "Error identifying human tasks",
             "message": str(e),
