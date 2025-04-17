@@ -20,7 +20,7 @@ function DashboardPreview() {
           <button className="btn btn-primary ember-glow">Explore Dashboard <i className="fas fa-arrow-right"></i></button>
         </div>
         
-        <div className="dashboard-image animate-on-scroll" style={{ maxWidth: "600px" }}>
+        <div className="dashboard-image animate-on-scroll">
           <div className="dashboard-mockup">
             <div className="dashboard-header">
               <div className="dashboard-logo">

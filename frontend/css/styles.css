@@ -916,10 +916,10 @@ body.menu-open {
 /* Dashboard Mockup Styles */
 .dashboard-mockup {
     width: 100%;
-    height: 500px; /* Increased height to fit all content */
+    /* height: 500px; Let content determine height */
     background: rgba(13, 13, 13, 0.9);
     border-radius: var(--radius-xl);
-    overflow: hidden;
+    /* overflow: hidden; Allow content to be visible */
     display: flex;
     flex-direction: column;
     border: 1px solid rgba(255, 71, 19, 0.2);
@@ -1000,7 +1000,7 @@ body.menu-open {
     flex: 1;
     padding: 20px;
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
     grid-template-rows: auto auto;
     gap: 20px;
     overflow: auto;
@@ -1881,9 +1881,7 @@ select.form-input {
         margin-right: auto;
     }
     
-    .dashboard-mockup {
-        height: 450px; /* Adjusted for medium screens but still showing all content */
-    }
+    /* .dashboard-mockup height adjusted via removal above */
 
     .footer-top {
         flex-direction: column;
@@ -2062,9 +2060,7 @@ select.form-input {
         font-size: 1rem;
     }
     
-    .dashboard-mockup {
-        height: 400px; /* Adjusted for small screens but still showing all content */
-    }
+    /* .dashboard-mockup height adjusted via removal above */
     
     .dashboard-widget h4 {
         font-size: 0.9rem; /* Smaller headings on small screens */
