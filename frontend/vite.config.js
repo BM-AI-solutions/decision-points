@@ -20,7 +20,8 @@ export default defineConfig({
         target: 'http://backend:5000', // Target the backend service in Docker
         changeOrigin: true, // Necessary for proxying
         // secure: false, // Keep commented unless needed
-        rewrite: (path) => path.replace(/^\/api/, ''), // Remove /api prefix before forwarding
+        // Don't rewrite the path, as the backend routes already include /api
+        // rewrite: (path) => path.replace(/^\/api/, ''), // Remove /api prefix before forwarding
       }
     }
   },

@@ -8,8 +8,8 @@
 class ApiClient {
   constructor() {
     // Get configuration from Vite environment variables
-    // Ensure these are defined in your .env file (e.g., VITE_API_BASE_URL=/api)
-    this.baseUrl = import.meta.env.VITE_API_BASE_URL || '/api';
+    // Since all endpoints now include the '/api/' prefix, we set the base URL to an empty string
+    this.baseUrl = import.meta.env.VITE_API_BASE_URL || '';
     this.timeout = parseInt(import.meta.env.VITE_API_TIMEOUT || '60000', 10); // Default 60 seconds
     // Convert string 'true'/'false' to boolean, default true
     this.withCredentials = (import.meta.env.VITE_API_WITH_CREDENTIALS !== 'false');
@@ -51,12 +51,17 @@ class ApiClient {
       }
     }
 
+    // Get auth token from localStorage
+    const authToken = localStorage.getItem('authToken');
+    
     // Set up request options
     const requestOptions = {
       method,
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
+        // Add Authorization header if token exists
+        ...(authToken ? { 'Authorization': `Bearer ${authToken}` } : {}),
         ...headers,
       },
       credentials: this.withCredentials ? 'include' : 'same-origin',
@@ -190,28 +195,28 @@ const apiService = {
   // Business models
   getBusinessModels: () => {
     console.log("API Call: getBusinessModels"); // Added logging
-    return apiClientInstance.get('/business/models');
+    return apiClientInstance.get('/api/business/models');
   },
 
   getBusinessModel: (modelId) => {
     console.log("API Call: getBusinessModel", { modelId }); // Added logging
-    return apiClientInstance.get(`/business/models/${modelId}`);
+    return apiClientInstance.get(`/api/business/models/${modelId}`);
   },
 
   createBusinessModel: (modelData) => {
     console.log("API Call: createBusinessModel", modelData); // Added logging
-    return apiClientInstance.post('/business/models', modelData);
+    return apiClientInstance.post('/api/business/models', modelData);
   },
 
   // Features
   getFeatures: (businessModelId) => {
     console.log("API Call: getFeatures", { businessModelId }); // Added logging
-    return apiClientInstance.get('/features', { business_model_id: businessModelId });
+    return apiClientInstance.get('/api/features', { business_model_id: businessModelId });
   },
 
   implementFeature: (featureId, options) => {
     console.log("API Call: implementFeature", { featureId, options }); // Added logging
-    return apiClientInstance.post(`/features/${featureId}/implement`, options);
+    return apiClientInstance.post(`/api/features/${featureId}/implement`, options);
   },
 
   // User authentication
@@ -276,23 +281,23 @@ const apiService = {
 
   logout: () => {
     console.log("API Call: logout"); // Added logging
-    return apiClientInstance.post('/auth/logout');
+    return apiClientInstance.post('/api/auth/logout');
   },
 
   getCurrentUser: () => {
     console.log("API Call: getCurrentUser"); // Added logging
-    return apiClientInstance.get('/auth/user');
+    return apiClientInstance.get('/api/auth/profile');
   },
 
   // OAuth authentication
   loginWithGoogle: (data) => {
     console.log("API Call: loginWithGoogle"); // Added logging
-    return apiClientInstance.post('/auth/google', data);
+    return apiClientInstance.post('/api/auth/google', data);
   },
 
   loginWithGithub: (data) => {
     console.log("API Call: loginWithGithub"); // Added logging
-    return apiClientInstance.post('/auth/github', data);
+    return apiClientInstance.post('/api/auth/github', data);
   },
 
   // Subscription management
@@ -335,7 +340,12 @@ const apiService = {
   getConfig: () => {
     console.log("API Call: getConfig"); // Added logging
     return apiClientInstance.get('/config');
-  }
+  },
+  // Cashflow
+  getCashflowForecast: (businessId) => {
+    console.log("API Call: getCashflowForecast", { businessId });
+    return apiClientInstance.get(`/api/cashflow/forecast/${businessId}`);
+  },
 };
 
 // Export the service object for use in components

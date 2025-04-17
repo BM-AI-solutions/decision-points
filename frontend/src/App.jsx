@@ -1,15 +1,16 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import Header from './components/Header';
-import Footer from './components/Footer';
 import Hero from './components/Hero';
 import Features from './components/Features';
 import HowItWorks from './components/HowItWorks';
 import DashboardPreview from './components/DashboardPreview';
+import Dashboard from './components/Dashboard';
 import Pricing from './components/Pricing';
 import AppSection from './components/AppSection';
 import Testimonials from './components/Testimonials';
 import ArchonDashboard from './components/ArchonDashboard';
+import MarketingLayout from './components/MarketingLayout';
+import DashboardLayout from './components/DashboardLayout';
 
 function LandingPage() {
   return (
@@ -28,12 +29,24 @@ function LandingPage() {
 function App() {
   return (
     <BrowserRouter>
-      <Header />
       <Routes>
-        <Route path="/" element={<LandingPage />} />
-        <Route path="/dashboard" element={<ArchonDashboard />} />
+        <Route
+          path="/"
+          element={
+            <MarketingLayout>
+              <LandingPage />
+            </MarketingLayout>
+          }
+        />
+        <Route
+          path="/dashboard"
+          element={
+            <DashboardLayout>
+              <Dashboard />
+            </DashboardLayout>
+          }
+        />
       </Routes>
-      <Footer />
       {/* Modals */}
       <div id="login-modal" className="modal">
         <div className="modal-content">
