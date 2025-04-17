@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import LoginForm from './LoginForm'; // Import LoginForm
 import SignupForm from './SignupForm'; // Import SignupForm
 
@@ -29,7 +30,11 @@ function Header() {
 
   // Toggle Mobile Menu
   const toggleMobileMenu = () => {
-    setIsMobileMenuOpen(!isMobileMenuOpen);
+    setIsMobileMenuOpen((prev) => {
+      const next = !prev;
+      console.log('Hamburger clicked, menu open:', next);
+      return next;
+    });
   };
 
   // Click Handlers for Login/Signup
@@ -69,6 +74,17 @@ function Header() {
     }
   };
 
+
+  // Add/remove menu-open class on body when mobile menu is toggled
+  useEffect(() => {
+    if (isMobileMenuOpen) {
+      document.body.classList.add('menu-open');
+    } else {
+      document.body.classList.remove('menu-open');
+    }
+    // Cleanup on unmount
+    return () => document.body.classList.remove('menu-open');
+  }, [isMobileMenuOpen]);
 
   // Handle the sign-in response
   const handleCredentialResponse = (response) => {
@@ -320,12 +336,12 @@ function Header() {
             </li>
             {isLoggedIn && (
               <li>
-                <a
-                  href="/dashboard"
+                <Link
+                  to="/dashboard"
                   className="nav-link"
                 >
                   Dashboard
-                </a>
+                </Link>
               </li>
             )}
             <li className="auth-item">

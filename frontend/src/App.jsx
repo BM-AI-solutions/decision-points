@@ -1,4 +1,5 @@
 import React from 'react';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Header from './components/Header';
 import Footer from './components/Footer';
 import Hero from './components/Hero';
@@ -10,30 +11,29 @@ import AppSection from './components/AppSection';
 import Testimonials from './components/Testimonials';
 import ArchonDashboard from './components/ArchonDashboard';
 
-function App() {
+function LandingPage() {
   return (
     <>
-      <Header />
-
       <Hero />
-
       <Features />
-
       <HowItWorks />
-
       <DashboardPreview />
-
       <Pricing />
-
       <AppSection />
-
       <Testimonials />
+    </>
+  );
+}
 
-
-      <ArchonDashboard />
-
+function App() {
+  return (
+    <BrowserRouter>
+      <Header />
+      <Routes>
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/dashboard" element={<ArchonDashboard />} />
+      </Routes>
       <Footer />
-
       {/* Modals */}
       <div id="login-modal" className="modal">
         <div className="modal-content">
@@ -60,7 +60,6 @@ function App() {
           </div>
         </div>
       </div>
-
       <div id="app-modal" className="modal">
         <div className="modal-content">
           <div className="modal-header">
@@ -73,7 +72,7 @@ function App() {
           </div>
         </div>
       </div>
-    </>
+    </BrowserRouter>
   );
 }
 
