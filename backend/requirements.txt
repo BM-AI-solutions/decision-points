@@ -1,23 +1,23 @@
 # Core dependencies
-flask==2.3.3
+flask==3.0.3
 flask-cors==4.0.2
-flask-jwt-extended==4.5.3
-werkzeug==3.0.6
-gunicorn==23.0.0
+flask-jwt-extended==4.6.0
+werkzeug==3.0.3
+gunicorn==22.0.0
 python-dotenv==1.0.0
-pydantic>=2.10,<3
+pydantic>=2.7.3,<3
 
 # API clients
-httpx>=0.27,<1
+httpx==0.27.0
 
 # AI and NLP
 pydantic-ai==0.1.2
-google-genai==1.11.0
+google-genai==0.7.1
 langchain==0.2.5
 
 # Data processing
-numpy==1.24.4
-pandas==2.0.3
+numpy==1.26.4
+pandas==2.2.2
 
 # Database (if using)
 
@@ -31,8 +31,8 @@ loguru==0.7.2
 tenacity==8.2.3
 
 # Google Cloud Datastore
-google-cloud-datastore==2.17.0
+google-cloud-datastore==2.19.0
 
 # Stripe
-stripe==5.1.0
-functions_framework==3.5.0
+stripe==9.10.0
+functions_framework==3.6.0
