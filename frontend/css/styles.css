@@ -907,16 +907,6 @@ body.menu-open {
     transform: perspective(1000px) rotateY(-2deg) rotateX(2deg); /* Further reduced 3D effect */
     transition: all 0.5s ease;
     max-width: 100%; /* Ensure it doesn't overflow */
-    animation: dashboard-float 6s ease-in-out infinite;
-}
-
-@keyframes dashboard-float {
-    0%, 100% {
-        transform: perspective(1000px) rotateY(-2deg) rotateX(2deg) translateY(0);
-    }
-    50% {
-        transform: perspective(1000px) rotateY(-2deg) rotateX(2deg) translateY(-10px);
-    }
 }
 
 .dashboard-image:hover {
@@ -926,10 +916,10 @@ body.menu-open {
 /* Dashboard Mockup Styles */
 .dashboard-mockup {
     width: 100%;
-    height: 500px; /* Fixed height for consistency */
+    /* height: 500px; Let content determine height */
     background: rgba(13, 13, 13, 0.9);
     border-radius: var(--radius-xl);
-    overflow: hidden; /* Prevent content overflow */
+    /* overflow: hidden; Allow content to be visible */
     display: flex;
     flex-direction: column;
     border: 1px solid rgba(255, 71, 19, 0.2);
@@ -975,28 +965,24 @@ body.menu-open {
     display: flex;
     flex: 1;
     height: calc(100% - 60px);
-    overflow: hidden; /* Prevent content overflow */
 }
 
 .dashboard-sidebar {
     width: 180px;
     background: rgba(10, 10, 10, 0.8);
-    border-right: 1px solid rgba(255, 71, 19, 0.2);
+    border-right: 1px solid rgba(255, 71, 19, 0.1);
     padding: 20px 0;
-    box-shadow: 4px 0 12px rgba(0, 0, 0, 0.2);
 }
 
 .sidebar-item {
-    padding: 12px 16px;
+    padding: 10px 16px;
     color: var(--text-muted);
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
     cursor: pointer;
     transition: all 0.2s ease;
     font-size: 0.9rem;
-    margin-bottom: 2px;
-    border-left: 3px solid transparent;
 }
 
 .sidebar-item:hover {
@@ -1008,15 +994,13 @@ body.menu-open {
     background: rgba(255, 71, 19, 0.2);
     color: var(--accent-orange);
     border-left: 3px solid var(--accent-orange);
-    font-weight: 600;
-    box-shadow: 0 2px 8px rgba(255, 71, 19, 0.1);
 }
 
 .dashboard-main {
     flex: 1;
     padding: 20px;
     display: grid;
-    grid-template-columns: repeat(2, 1fr); /* Fixed 2-column layout */
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
     grid-template-rows: auto auto;
     gap: 20px;
     overflow: auto;
@@ -1030,57 +1014,16 @@ body.menu-open {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
     display: flex;
     flex-direction: column;
-    min-height: 180px; /* Ensure consistent height */
-    transition: all 0.3s ease;
-}
-
-.dashboard-widget:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
-    border-color: rgba(255, 71, 19, 0.3);
-}
-
-/* New class for chart containers */
-.chart-container {
-    height: 120px;
-    width: 100%;
-    position: relative;
-    background: rgba(20, 20, 20, 0.4);
-    border-radius: var(--radius-md);
-    padding: 8px;
-    border: 1px solid rgba(59, 130, 246, 0.1);
-    box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
 .dashboard-widget h4 {
-    margin-bottom: 12px;
+    margin-bottom: 10px;
     font-size: 0.95rem;
     color: var(--text-primary);
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.dashboard-widget h4::before {
-    content: '';
-    display: inline-block;
-    width: 8px;
-    height: 8px;
-    background: var(--accent-orange);
-    border-radius: 50%;
 }
 
 .dashboard-widget.revenue {
     grid-column: 1 / 3;
-    border-bottom: 2px solid rgba(59, 130, 246, 0.3);
-}
-
-.dashboard-widget.customers {
-    border-bottom: 2px solid rgba(59, 130, 246, 0.3);
-}
-
-.dashboard-widget.insights {
-    border-left: 2px solid rgba(255, 71, 19, 0.3);
 }
 
 .chart-placeholder {
@@ -1105,45 +1048,21 @@ body.menu-open {
 .insights-list {
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    margin-top: 8px;
+    gap: 8px;
 }
 
 .insight-item {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 8px 12px;
+    gap: 8px;
+    padding: 6px 10px;
     background: rgba(255, 71, 19, 0.1);
     border-radius: var(--radius-md);
     font-size: 0.85rem;
-    transition: all 0.2s ease;
-}
-
-.insight-item:hover {
-    background: rgba(255, 71, 19, 0.2);
-    transform: translateX(4px);
-    box-shadow: 2px 2px 8px rgba(0, 0, 0, 0.2);
 }
 
 .insight-item i {
     color: var(--accent-orange);
-    font-size: 1rem;
-    width: 20px;
-    height: 20px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(255, 71, 19, 0.2);
-    border-radius: 50%;
-    padding: 12px;
-    box-shadow: 0 2px 8px rgba(255, 71, 19, 0.3);
-    transition: all 0.3s ease;
-}
-
-.insight-item:hover i {
-    transform: scale(1.1);
-    background: rgba(255, 71, 19, 0.3);
 }
 
 /* Pricing Section */
@@ -1962,9 +1881,7 @@ select.form-input {
         margin-right: auto;
     }
     
-    .dashboard-mockup {
-        height: 450px; /* Slightly reduced height on medium screens */
-    }
+    /* .dashboard-mockup height adjusted via removal above */
 
     .footer-top {
         flex-direction: column;
@@ -2143,33 +2060,19 @@ select.form-input {
         font-size: 1rem;
     }
     
-    .dashboard-mockup {
-        height: 400px; /* Further reduced height on small screens */
-    }
+    /* .dashboard-mockup height adjusted via removal above */
     
     .dashboard-widget h4 {
         font-size: 0.9rem; /* Smaller headings on small screens */
     }
     
     .dashboard-sidebar {
-        width: 140px; /* Narrower sidebar on small screens */
+        width: 160px; /* Narrower sidebar on small screens */
     }
     
     .sidebar-item {
-        padding: 8px 12px; /* Smaller padding for sidebar items */
-        font-size: 0.85rem;
-    }
-    
-    .dashboard-main {
-        grid-template-columns: 1fr; /* Single column on small screens */
-    }
-    
-    .dashboard-widget.revenue {
-        grid-column: auto; /* Reset grid column span on small screens */
-    }
-    
-    .chart-container {
-        height: 100px; /* Smaller charts on small screens */
+        padding: 8px 16px; /* Smaller padding for sidebar items */
+        font-size: 0.9rem;
     }
 }
 .hidden {
