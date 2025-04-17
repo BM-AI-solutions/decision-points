@@ -32,7 +32,7 @@ function DashboardPreview() {
                 <i className="fas fa-user-circle"></i>
               </div>
             </div>
-            <div className="dashboard-content-area" style={{ height: 'calc(100% - 60px)' }}>
+            <div className="dashboard-content-area">
               <div className="dashboard-sidebar">
                 <div className="sidebar-item active"><i className="fas fa-home"></i> Dashboard</div>
                 <div className="sidebar-item"><i className="fas fa-chart-pie"></i> Analytics</div>
@@ -44,7 +44,7 @@ function DashboardPreview() {
               <div className="dashboard-main">
                 <div className="dashboard-widget revenue">
                   <h4>Monthly Revenue</h4>
-                  <div style={{ height: '120px' }}>
+                  <div className="chart-container">
                     <Line
                       data={{
                         labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
@@ -114,7 +114,7 @@ function DashboardPreview() {
                 </div>
                 <div className="dashboard-widget customers">
                   <h4>Customer Growth</h4>
-                  <div style={{ height: '120px' }}>
+                  <div className="chart-container">
                     <Bar
                       data={{
                         labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
