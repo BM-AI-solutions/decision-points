@@ -8,6 +8,8 @@ from google.auth.transport import requests
 from google.oauth2 import id_token
 import stripe
 from google.cloud import datastore
+from config import Config
+
 
 from utils.logger import setup_logger
 bp = Blueprint('auth', __name__)
@@ -19,6 +21,9 @@ STRIPE_MODE = os.environ.get('STRIPE_MODE', 'test')
 # --- Subscription Status Helper ---
 def has_active_subscription(user_profile):
     """Check if the user has an active subscription. Extend as needed for real logic."""
+    # Dual-mode: bypass subscription checks if billing is not required
+    if not Config.BILLING_REQUIRED:
+        return True
     # Placeholder: check for 'subscription' attribute and status
     subscription = getattr(user_profile, 'subscription', None)
     if not subscription:

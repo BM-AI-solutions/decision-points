@@ -74,6 +74,19 @@ Two primary methods are supported for local development and testing:
     *   Run the Flask development server (refer to Flask documentation or project specifics).
 
 **Environment Variables:**  
+### Dual-Mode Billing/Subscription Enforcement
+
+By default, local Docker and development environments **do not require a Stripe subscription**. This is controlled by the `BILLING_REQUIRED` environment variable in `backend/.env.example`:
+
+```
+BILLING_REQUIRED=false
+```
+
+- When `BILLING_REQUIRED` is set to `false` (the default for local/Docker), all subscription checks are bypassed and users have full access to all features.
+- For **hosted/cloud deployments**, set `BILLING_REQUIRED=true` in your production environment to enforce Stripe subscription checks and restrict access for non-subscribed users.
+
+This dual-mode logic allows you to develop and test locally without payment requirements, while ensuring proper billing enforcement in production. See `DEPLOYMENT.md` for more details on configuring this for your deployment target.
+
 The system relies on environment variables for configuration, including API keys, secrets, and agent model selection. For Gemini, set the `GOOGLE_API_KEY` environment variable. Refer to `backend/.env.example` for a template.
 
 ### Agent Model Selection

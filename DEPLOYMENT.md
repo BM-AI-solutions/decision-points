@@ -96,6 +96,16 @@ Handled automatically by GitHub Actions (`.github/workflows/backend-cloudrun.yml
 
 ## 6. Environment Configuration
 
+
+### Dual-Mode Billing/Subscription Enforcement
+
+The backend supports dual-mode operation for subscription enforcement, controlled by the `BILLING_REQUIRED` environment variable:
+
+- **Local/Docker Development:** Set `BILLING_REQUIRED=false` (the default in `backend/.env.example`). All subscription checks are bypassed and users have full access.
+- **Hosted/Cloud Production:** Set `BILLING_REQUIRED=true` in your production environment (e.g., in Google Secret Manager or your cloud provider's env config). This enforces Stripe subscription checks and restricts access for non-subscribed users.
+
+This allows seamless local development and testing without payment requirements, while ensuring proper billing enforcement in production.
+
 - Backend: All required variables are listed in `backend/.env.production.template`. These must be created as secrets in Google Secret Manager.
 - Frontend: Public keys and config are set via Firebase environment config.
 
@@ -154,6 +164,9 @@ Handled automatically by GitHub Actions (`.github/workflows/backend-cloudrun.yml
 - User and subscription data are stored in Google Cloud Datastore.
 
 ### d. Subscription Status Enforcement
+
+- Subscription enforcement is controlled by the `BILLING_REQUIRED` environment variable. See Section 6 above for details on dual-mode configuration.
+
 - Protected resources and endpoints should check for an active subscription using the provided helper (`has_active_subscription`).
 - The `/profile` endpoint now returns a `subscription_active` field for the authenticated user.
 - Extend this logic to other endpoints as needed for your business model.

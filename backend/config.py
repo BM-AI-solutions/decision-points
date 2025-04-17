@@ -45,6 +45,10 @@ class Config:
     STRIPE_API_KEY = os.environ.get('STRIPE_API_KEY')
     STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET')
 
+    # SaaS/Billing mode
+    BILLING_REQUIRED = os.environ.get('BILLING_REQUIRED', 'false').lower() == 'true'
+
+
     # Feature flags
     FEATURES = {
         'subscriptions': os.environ.get('FEATURE_SUBSCRIPTIONS', 'false').lower() == 'true',
