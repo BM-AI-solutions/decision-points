@@ -898,7 +898,7 @@ body.menu-open {
 }
 
 .dashboard-image {
-    flex: 1;
+    flex: 1.5; /* Increased flex value to make image wider */
     position: relative;
     border-radius: var(--radius-xl);
     overflow: hidden;
