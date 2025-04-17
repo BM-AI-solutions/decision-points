@@ -96,7 +96,6 @@ Handled automatically by GitHub Actions (`.github/workflows/backend-cloudrun.yml
 
 ## 6. Environment Configuration
 
-
 ### Dual-Mode Billing/Subscription Enforcement
 
 The backend supports dual-mode operation for subscription enforcement, controlled by the `BILLING_REQUIRED` environment variable:
@@ -108,6 +107,42 @@ This allows seamless local development and testing without payment requirements,
 
 - Backend: All required variables are listed in `backend/.env.production.template`. These must be created as secrets in Google Secret Manager.
 - Frontend: Public keys and config are set via Firebase environment config.
+
+---
+
+## 6a. Environment Variable Requirements by Deployment Mode
+
+The following table summarizes which environment variables are required for each deployment mode. See `backend/.env.example` for a complete, annotated template and `readme.md` for setup instructions.
+
+| Variable                | Local/Self-Hosted | Hosted/SaaS (Billing) | Description / Notes                                 |
+|-------------------------|:-----------------:|:---------------------:|-----------------------------------------------------|
+| BILLING_REQUIRED        |        ✔️         |          ✔️           | Set to `false` for local/dev, `true` for SaaS/prod  |
+| SECRET_KEY              |        ✔️         |          ✔️           | Strong random value, see below                      |
+| GOOGLE_API_KEY          |        ✔️         |          ✔️           | Required for AI agents                              |
+| STRIPE_API_KEY          |                   |          ✔️           | Only required if `BILLING_REQUIRED=true`            |
+| STRIPE_WEBHOOK_SECRET   |                   |          ✔️           | Only required if `BILLING_REQUIRED=true`            |
+| ACTION_AGENT_MODEL      |        ✔️         |          ✔️           | Optional, overrides default agent model             |
+| GUIDE_AGENT_MODEL       |        ✔️         |          ✔️           | Optional, overrides default agent model             |
+| ARCHON_AGENT_MODEL      |        ✔️         |          ✔️           | Optional, overrides default agent model             |
+| ...other integrations   |   optional        |       optional        | See `.env.example` for more                         |
+
+**SECRET_KEY:**  
+- Used for cryptographic signing (sessions, tokens, etc.).
+- Must be a strong, random value.
+- Generate with:
+    ```bash
+    python -c "import secrets; print(secrets.token_hex(32))"
+    ```
+- Never share or commit your real SECRET_KEY.
+
+**BILLING_REQUIRED:**  
+- Set to `false` for local/self-hosted development (no billing, all features enabled).
+- Set to `true` for hosted/SaaS deployments (billing enforced, users must subscribe).
+- Stripe keys are only required if `BILLING_REQUIRED=true`.
+
+**Best Practices:**  
+- For production, use a secure secret manager (e.g., Google Secret Manager) and never commit secrets to version control.
+- Reference `backend/.env.example` and `readme.md` for full setup instructions and best practices.
 
 ---
 

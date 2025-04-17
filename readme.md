@@ -58,7 +58,6 @@ Two primary methods are supported for local development and testing:
         ```
         (Requires [Stripe CLI](https://stripe.com/docs/stripe-cli))
 
-
 2.  **Python Virtual Environment (venv):**
     *   Ensure Python 3.8+ or 3.9+ is installed.
     *   Create and activate a virtual environment:
@@ -73,21 +72,69 @@ Two primary methods are supported for local development and testing:
     *   Configure required environment variables (e.g., set them in your shell or create a `.env` file, ensuring you set `GOOGLE_API_KEY` for Gemini and any agent model overrides).
     *   Run the Flask development server (refer to Flask documentation or project specifics).
 
-**Environment Variables:**  
-### Dual-Mode Billing/Subscription Enforcement
+---
 
-By default, local Docker and development environments **do not require a Stripe subscription**. This is controlled by the `BILLING_REQUIRED` environment variable in `backend/.env.example`:
+## Environment Variables & Dual Deployment Modes
+
+The system supports two deployment modes, each with different environment variable requirements:
+
+| Variable                | Local/Self-Hosted | Hosted/SaaS (Billing) | Description / Notes                                 |
+|-------------------------|:-----------------:|:---------------------:|-----------------------------------------------------|
+| BILLING_REQUIRED        |        ✔️         |          ✔️           | Set to `false` for local/dev, `true` for SaaS/prod  |
+| SECRET_KEY              |        ✔️         |          ✔️           | Strong random value, see below                      |
+| GOOGLE_API_KEY          |        ✔️         |          ✔️           | Required for AI agents                              |
+| STRIPE_API_KEY          |                   |          ✔️           | Only required if `BILLING_REQUIRED=true`            |
+| STRIPE_WEBHOOK_SECRET   |                   |          ✔️           | Only required if `BILLING_REQUIRED=true`            |
+| ACTION_AGENT_MODEL      |        ✔️         |          ✔️           | Optional, overrides default agent model             |
+| GUIDE_AGENT_MODEL       |        ✔️         |          ✔️           | Optional, overrides default agent model             |
+| ARCHON_AGENT_MODEL      |        ✔️         |          ✔️           | Optional, overrides default agent model             |
+| ...other integrations   |   optional        |       optional        | See `.env.example` for more                         |
+
+- See `backend/.env.example` for a complete, annotated template.
+
+### BILLING_REQUIRED
+
+- **Local/Self-Hosted:** Set `BILLING_REQUIRED=false` (default). Stripe and billing variables are ignored; all features are enabled for all users.
+- **Hosted/SaaS:** Set `BILLING_REQUIRED=true`. Stripe keys and webhook secret are required; users must have an active subscription to access premium features.
+
+### SECRET_KEY
+
+- Used for cryptographic signing (sessions, tokens, etc.).
+- **Must be a strong, random value.**
+- Generate with:
+    ```bash
+    python -c "import secrets; print(secrets.token_hex(32))"
+    ```
+- Never share or commit your real SECRET_KEY.
+
+### Example .env for Local Development
 
 ```
 BILLING_REQUIRED=false
+SECRET_KEY=your_local_dev_secret_key
+GOOGLE_API_KEY=your_google_api_key
+ACTION_AGENT_MODEL=gemini-2.5-pro-exp-03-25
+GUIDE_AGENT_MODEL=gemini-2.5-pro-exp-03-25
+ARCHON_AGENT_MODEL=gemini-2.5-pro-exp-03-25
 ```
 
-- When `BILLING_REQUIRED` is set to `false` (the default for local/Docker), all subscription checks are bypassed and users have full access to all features.
-- For **hosted/cloud deployments**, set `BILLING_REQUIRED=true` in your production environment to enforce Stripe subscription checks and restrict access for non-subscribed users.
+### Example .env for Hosted/SaaS Deployment
 
-This dual-mode logic allows you to develop and test locally without payment requirements, while ensuring proper billing enforcement in production. See `DEPLOYMENT.md` for more details on configuring this for your deployment target.
+```
+BILLING_REQUIRED=true
+SECRET_KEY=your_strong_production_secret_key
+GOOGLE_API_KEY=your_google_api_key
+STRIPE_API_KEY=your_stripe_api_key
+STRIPE_WEBHOOK_SECRET=your_stripe_webhook_secret
+ACTION_AGENT_MODEL=gemini-2.5-pro-exp-03-25
+GUIDE_AGENT_MODEL=gemini-2.5-pro-exp-03-25
+ARCHON_AGENT_MODEL=gemini-2.5-pro-exp-03-25
+```
 
-The system relies on environment variables for configuration, including API keys, secrets, and agent model selection. For Gemini, set the `GOOGLE_API_KEY` environment variable. Refer to `backend/.env.example` for a template.
+- For production, use a secure secret manager (e.g., Google Secret Manager) and never commit secrets to version control.
+- See `DEPLOYMENT.md` for cloud/production deployment details.
+
+---
 
 ### Agent Model Selection
 
@@ -108,6 +155,8 @@ ARCHON_AGENT_MODEL=gemini-pro
 
 If a variable is not set, the system default (`gemini-pro`) will be used.  
 You may override these in `.env.production` for production deployments (see `backend/.env.production.template` for examples).
+
+---
 
 ### Production Deployment
 
