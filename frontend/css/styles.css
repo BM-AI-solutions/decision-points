@@ -91,6 +91,7 @@ body {
     overflow-x: hidden;
     min-height: 100vh;
     letter-spacing: 0.01em;
+    padding-top: 80px; /* Account for fixed navbar height */
 }
 
 /* Premium glassmorphism for main sections */
@@ -426,10 +427,10 @@ img {
 /* Hero Section */
 .hero {
     position: relative;
-    padding: 180px 0 120px;
+    padding: 180px 0 120px; /* Adjusted padding if needed, but margin removed */
     overflow: hidden;
     background: linear-gradient(120deg, #7b0612 0%, #d90429 60%, #1a0909 100%);
-    margin-top: 80px; /* Prevent overlap with fixed navbar */
+    /* margin-top: 80px; /* Removed: Handled by body padding-top */
     box-shadow: 0 8px 32px rgba(255,30,0,0.10);
 }
 
