@@ -74,40 +74,70 @@ class ApiClient {
       requestOptions.signal = controller.signal;
 
       // Make the request
+      console.log(`Making ${method} request to ${url}`);
       const response = await fetch(url, requestOptions);
       clearTimeout(timeoutId);
+      
+      console.log(`Response status: ${response.status} ${response.statusText}`);
+      console.log(`Response headers:`, Object.fromEntries([...response.headers.entries()]));
 
       // Handle HTTP errors
       if (!response.ok) {
         let errorData = {};
+        let responseText = '';
+        
         try {
-            // Try to parse error response as JSON
-            errorData = await response.json();
-        } catch (e) {
-            // If not JSON, maybe plain text?
+            // First get the raw text
+            responseText = await response.text();
+            console.log(`Raw error response: ${responseText.substring(0, 200)}${responseText.length > 200 ? '...' : ''}`);
+            
+            // Then try to parse as JSON
             try {
-                errorData = { message: await response.text() };
-            } catch (textError) {
-                // If reading text fails, use a generic message
-                errorData = { message: 'Failed to parse error response.' };
+                errorData = JSON.parse(responseText);
+                console.log(`Parsed error data:`, errorData);
+            } catch (jsonError) {
+                console.error(`Error parsing JSON response: ${jsonError}`);
+                errorData = { message: responseText || 'Unknown error' };
             }
+        } catch (textError) {
+            console.error(`Error reading response text: ${textError}`);
+            errorData = { message: 'Failed to parse error response.' };
         }
+        
         console.error(`API Error ${response.status}:`, errorData); // Log the error details
         throw {
           status: response.status,
           statusText: response.statusText,
           data: errorData, // Include parsed error data if available
+          rawResponse: responseText.substring(0, 500) // Include part of the raw response for debugging
         };
       }
 
       // Handle empty response body for certain statuses (e.g., 204 No Content)
       if (response.status === 204) {
+        console.log('Received 204 No Content response');
         return null; // Or return an empty object/success indicator as needed
       }
 
       // Parse JSON response for other successful requests
-      const responseData = await response.json();
-      return responseData;
+      try {
+        // First get the raw text
+        const responseText = await response.text();
+        console.log(`Raw success response: ${responseText.substring(0, 200)}${responseText.length > 200 ? '...' : ''}`);
+        
+        // Then parse as JSON
+        const responseData = JSON.parse(responseText);
+        console.log(`Parsed response data:`, responseData);
+        return responseData;
+      } catch (e) {
+        console.error(`Error parsing successful response: ${e}`);
+        throw {
+          status: response.status,
+          statusText: 'JSON Parse Error',
+          data: { message: 'Failed to parse successful response as JSON.' },
+          error: e.toString()
+        };
+      }
     } catch (error) {
       // Handle timeout errors specifically
       if (error.name === 'AbortError') {
@@ -186,13 +216,62 @@ const apiService = {
 
   // User authentication
   login: (email, password) => {
-    console.log("API Call: login"); // Added logging (don't log password)
-    return apiClientInstance.post('/auth/login', { email, password });
+    console.log("API Call: login with email:", email); // Added logging (don't log password)
+    
+    // Check if the URL is correct
+    const loginUrl = '/api/auth/login';
+    console.log("Login URL:", loginUrl);
+    
+    // Make the request with detailed error handling
+    return apiClientInstance.post(loginUrl, { email, password })
+      .catch(error => {
+        console.error("Login request failed:", error);
+        
+        // Log more details about the error
+        if (error.status) {
+          console.error(`Status: ${error.status}, Status Text: ${error.statusText}`);
+        }
+        
+        if (error.data) {
+          console.error("Error data:", error.data);
+        }
+        
+        throw error; // Re-throw the error for the component to handle
+      });
   },
 
   signup: (userData) => {
-    console.log("API Call: signup", userData); // Added logging
-    return apiClientInstance.post('/auth/register', userData); // Corrected path from /signup
+    console.log("API Call: signup with email:", userData.email); // Added logging (don't log password)
+    
+    // Check if the URL is correct
+    const signupUrl = '/api/auth/signup';
+    console.log("Signup URL:", signupUrl);
+    
+    // Make the request with detailed error handling
+    return apiClientInstance.post(signupUrl, userData)
+      .catch(error => {
+        console.error("Signup request failed:", error);
+        
+        // Log more details about the error
+        if (error.status) {
+          console.error(`Status: ${error.status}, Status Text: ${error.statusText}`);
+        }
+        
+        if (error.data) {
+          console.error("Error data:", error.data);
+        }
+        
+        // Check for specific error conditions
+        if (error.status === 409 || (error.data && error.data.message && error.data.message.includes('already registered'))) {
+          console.log("Email already registered error detected");
+          // Enhance the error object with a more specific status if the backend didn't provide it
+          if (error.status !== 409) {
+            error.status = 409;
+          }
+        }
+        
+        throw error; // Re-throw the error for the component to handle
+      });
   },
 
   logout: () => {

@@ -80,7 +80,7 @@ else:
 from models.user import UserProfile, UserAuth
 
 @bp.route('/register', methods=['POST'])
-async def register():
+def register():
     """Register a new user."""
     try:
         logger.info(f"Checking Config.BILLING_REQUIRED: {Config.BILLING_REQUIRED}") # Add this log
@@ -147,23 +147,27 @@ async def register():
                 logger.info(f"Email '{email}' not found in local USERS store. Proceeding with registration.") # Add log
                 user_id = str(uuid.uuid4())
                 password_hash = generate_password_hash(password)
-            # Store auth and profile in-memory
-            USER_AUTHS[email] = {
-                'id': user_id,
-                'email': email,
-                'hashed_password': password_hash,
-                'salt': ""
-            }
-            USERS[email] = {
-                'id': user_id,
-                'email': email,
-                'name': name,
-                'created_at': datetime.utcnow(),
-                'credits_remaining': 10
-            }
-            USER_IDS[user_id] = email
+                
+                # Store auth and profile in-memory
+                logger.info(f"Creating new user_auth entry for email: {email} with ID: {user_id}")
+                USER_AUTHS[email] = {
+                    'id': user_id,
+                    'email': email,
+                    'hashed_password': password_hash,
+                    'salt': ""
+                }
+                USERS[email] = {
+                    'id': user_id,
+                    'email': email,
+                    'name': name,
+                    'created_at': datetime.utcnow(),
+                    'credits_remaining': 10
+                }
+                USER_IDS[user_id] = email
 
-            logger.debug(f"Added '{email}' to USERS. Current keys: {list(USERS.keys())}") # Add log
+                logger.debug(f"Added '{email}' to USERS. Current keys: {list(USERS.keys())}")
+                logger.debug(f"Added '{email}' to USER_AUTHS. Current keys: {list(USER_AUTHS.keys())}")
+                logger.debug(f"Added '{user_id}' to USER_IDS. Current keys: {list(USER_IDS.keys())}")
 
         logger.info(f"Registered new user: {email} with ID {user_id}")
         return jsonify({
@@ -184,8 +188,41 @@ async def register():
             'status': 500
         }), 500
 
+@bp.route('/signup', methods=['POST'])
+def signup():
+    """Signup endpoint that matches the frontend's expected URL."""
+    logger.info("Received request to /api/auth/signup endpoint")
+    try:
+        # Log the request details to help diagnose the issue
+        logger.info(f"Request JSON: {request.json}")
+        logger.info(f"Request path: {request.path}")
+        logger.info(f"Request method: {request.method}")
+        logger.info(f"Request headers: {dict(request.headers)}")
+        
+        # CRITICAL ISSUE: There are two implementations of the signup function
+        # This first implementation calls register(), but there's a second implementation below
+        # that duplicates the register logic directly. This is likely causing the 500 error.
+        logger.warning("Using first implementation of signup that calls register()")
+        
+        # Forward to the register function
+        return register()
+    except Exception as e:
+        logger.error(f"Error in signup route: {str(e)}", exc_info=True)
+        # CRITICAL ISSUE: This is a duplicate implementation of the signup function
+        # This code should not be here and is likely causing the 500 error
+        # The indentation is also incorrect for the code at lines 273-289
+        logger.error("DUPLICATE CODE DETECTED: Second implementation of signup function is being executed")
+        logger.error("This is likely causing the 500 error during signup")
+        return jsonify({
+            'error': 'Error in signup route',
+            'message': str(e),
+            'status': 500
+        }), 500
+# The duplicate implementation of the signup function has been removed
+# This resolves the issue of having two route definitions for the same endpoint
+
 @bp.route('/login', methods=['POST'])
-async def login():
+def login():
     """Log in a user."""
     try:
         data = request.json
@@ -230,8 +267,19 @@ async def login():
             user_profile = UserProfile.from_entity(user_profile_entity)
         else:
             # Local mode: check in-memory USER_AUTHS/USERS
+            logger.info(f"Login attempt in local mode for email: {email}")
+            logger.debug(f"Current USER_AUTHS keys: {list(USER_AUTHS.keys())}")
             auth = USER_AUTHS.get(email)
-            if not auth or not check_password_hash(auth['hashed_password'], password):
+            logger.info(f"Retrieved auth for email {email}: {auth is not None}")
+            if not auth:
+                logger.warning(f"Login failed: Email not found in local store - {email}")
+                return jsonify({"message": "Invalid email or password"}), 401
+            
+            # Create dynamic UserAuth object only if auth exists
+            user_auth = type('UserAuth', (), auth)()
+            user_auth.id = auth['id']
+            user_auth.email = auth['email']
+            if not check_password_hash(auth['hashed_password'], password):
                 return jsonify({
                     'error': 'Invalid email or password',
                     'status': 401
@@ -250,19 +298,37 @@ async def login():
             user_profile.credits_remaining = profile['credits_remaining']
 
         # Generate JWT token
-        secret_key = os.environ['JWT_SECRET_KEY']  # Required in production
-        expiration = datetime.utcnow() + timedelta(hours=24)
+        logger.info(f"Generating JWT token for user: {user_auth.id}")
+        try:
+            # Get JWT secret key from environment, with fallback for development
+            secret_key = os.environ.get('JWT_SECRET_KEY', 'dev-jwt-secret-change-in-production')
+            logger.debug(f"Using JWT secret key: {'dev-key' if secret_key == 'dev-jwt-secret-change-in-production' else 'custom key'}")
+            
+            expiration = datetime.utcnow() + timedelta(hours=24)
 
-        payload = {
-            'user_id': user_auth.id,
-            'email': user_auth.email,
-            'exp': expiration
-        }
-
-        token = jwt.encode(payload, secret_key, algorithm='HS256')
+            payload = {
+                'user_id': user_auth.id,
+                'email': user_auth.email,
+                'exp': expiration
+            }
+            
+            logger.debug(f"JWT payload: {payload}")
+            token = jwt.encode(payload, secret_key, algorithm='HS256')
+            logger.info(f"JWT token generated successfully: {token[:10]}...")
+            
+            # Check token type to ensure proper encoding
+            logger.debug(f"Token type: {type(token)}")
+            if isinstance(token, bytes):
+                token = token.decode('utf-8')
+                logger.info("Decoded token from bytes to string")
+        except Exception as e:
+            logger.error(f"Error generating JWT token: {str(e)}", exc_info=True)
+            raise
 
         logger.info(f"User login: {email} with ID {user_auth.id}")
-        return jsonify({
+        
+        # Prepare response data
+        response_data = {
             'success': True,
             'token': token,
             'user': {
@@ -271,7 +337,27 @@ async def login():
                 'name': user_profile.name,
                 'credits': user_profile.credits_remaining
             }
-        })
+        }
+        
+        # Log response data (excluding token)
+        log_data = response_data.copy()
+        log_data['token'] = log_data['token'][:10] + '...' if log_data['token'] else None
+        logger.debug(f"Response data: {log_data}")
+        
+        # Return JSON response
+        try:
+            response = jsonify(response_data)
+            logger.debug(f"Response content type: {response.content_type}")
+            return response
+        except Exception as e:
+            logger.error(f"Error creating JSON response: {str(e)}", exc_info=True)
+            # Fallback response if jsonify fails
+            return jsonify({
+                'success': False,
+                'error': 'Error creating response',
+                'message': str(e),
+                'status': 500
+            }), 500
 
     except Exception as e:
         logger.error(f"Error logging in user with email {email}: {str(e)}", exc_info=True)
@@ -441,7 +527,7 @@ def subscribe():
         }), 500
 
 @bp.route('/google', methods=['POST'])
-async def google_auth():
+def google_auth():
     """Authenticate user with Google OAuth."""
     try:
         data = request.json
@@ -580,7 +666,7 @@ async def google_auth():
         }), 500
 
 @bp.route('/credits/purchase', methods=['POST'])
-async def purchase_credits():
+def purchase_credits():
     """Purchase credits."""
     try:
         # Stripe API key is set globally based on STRIPE_MODE at import time

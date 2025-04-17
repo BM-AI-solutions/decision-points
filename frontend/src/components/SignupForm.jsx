@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import apiService from '../services/api.js'; // Import the API service
 
-function SignupForm() {
+function SignupForm({ onAuthSuccess }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -34,10 +34,29 @@ function SignupForm() {
     try {
       const response = await apiService.signup(userData);
       console.log('Signup successful:', response);
-      // Success handling could be added here (redirect, show success message, etc.)
+      
+      // Store token and user info
+      if (response && response.success && response.token && response.user) {
+        localStorage.setItem('authToken', response.token);
+        localStorage.setItem('user', JSON.stringify(response.user));
+        // Notify parent (Header) of successful signup
+        if (onAuthSuccess) {
+          onAuthSuccess(response.user);
+        }
+        // Redirect to dashboard or home page
+        window.location.href = '/dashboard';
+      }
     } catch (error) {
       console.error('Signup failed:', error);
-      setError('Signup failed. Please try again with a different email.');
+      
+      // Check for specific error conditions
+      if (error.status === 409) {
+        setError('Email already registered. Please use a different email or log in.');
+      } else if (error.data && error.data.message) {
+        setError(`Signup failed: ${error.data.message}`);
+      } else {
+        setError('Signup failed. Please try again later.');
+      }
     } finally {
       setIsLoading(false);
     }

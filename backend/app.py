@@ -27,7 +27,11 @@ app.config.from_object(Config)
 # Allow specific origin for production, add localhost for development
 allowed_origins = ["https://decisionpoints.intellisol.cc"]
 # Allow development origin if FLASK_ENV is development OR if billing is not required (local dev setup)
-if app.config['ENV'] == 'development' or not app.config.get('BILLING_REQUIRED', True):
+if (
+    os.environ.get('FLASK_ENV') == 'development'
+    or app.config.get('ENV') == 'development'
+    or not app.config.get('BILLING_REQUIRED', True)
+):
     # Assuming frontend runs on port 8000 for local dev based on previous setup
     # Vite default is often 5173, adjust if needed.
     allowed_origins.append("http://localhost:8000") # Keep existing dev origin

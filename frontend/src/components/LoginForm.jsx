@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import apiService from '../services/api.js'; // Import the API service
 
-function LoginForm() {
+function LoginForm({ onAuthSuccess }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -14,12 +14,30 @@ function LoginForm() {
     setError('');
     
     try {
+      console.log('Attempting login with email:', email);
       const response = await apiService.login(email, password);
       console.log('Login successful:', response);
-      // Success handling could be added here (redirect, show success message, etc.)
+      
+      // Check if response has the expected structure
+      if (response && response.success && response.token && response.user) {
+        console.log('Valid login response received');
+        // Store token in localStorage
+        localStorage.setItem('authToken', response.token);
+        // Store user info
+        localStorage.setItem('user', JSON.stringify(response.user));
+        // Notify parent (Header) of successful login
+        if (onAuthSuccess) {
+          onAuthSuccess(response.user);
+        }
+        window.location.href = '/dashboard'; // Redirect to dashboard or home page
+      } else {
+        console.error('Invalid response structure:', response);
+        setError('Login failed. Received invalid response from server.');
+      }
     } catch (error) {
       console.error('Login failed:', error);
-      setError('Login failed. Please check your credentials and try again.');
+      const errorMessage = error.data?.message || 'Please check your credentials and try again.';
+      setError(`Login failed. ${errorMessage}`);
     } finally {
       setIsLoading(false);
     }

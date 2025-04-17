@@ -10,6 +10,23 @@ function Header() {
   const [showSignup, setShowSignup] = useState(false); // State for signup form visibility
   const googleButtonRef = useRef(null); // Ref for the button container
 
+  // Check localStorage for auth state on mount
+  useEffect(() => {
+    const token = localStorage.getItem('authToken');
+    const user = localStorage.getItem('user');
+    if (token && user) {
+      setIsLoggedIn(true);
+      try {
+        setUserInfo(JSON.parse(user));
+      } catch {
+        setUserInfo(null);
+      }
+    } else {
+      setIsLoggedIn(false);
+      setUserInfo(null);
+    }
+  }, []);
+
   // Toggle Mobile Menu
   const toggleMobileMenu = () => {
     setIsMobileMenuOpen(!isMobileMenuOpen);
@@ -68,14 +85,17 @@ function Header() {
         const decodedToken = JSON.parse(jsonPayload);
         console.log("Decoded JWT payload:", decodedToken);
 
-        // Update state
+        // Update state and persist to localStorage
         setIsLoggedIn(true);
-        setUserInfo({
+        const userObj = {
           id: decodedToken.sub,
           name: decodedToken.name,
           email: decodedToken.email,
           picture: decodedToken.picture,
-        });
+        };
+        setUserInfo(userObj);
+        localStorage.setItem('authToken', response.credential);
+        localStorage.setItem('user', JSON.stringify(userObj));
 
         // TODO: Send token to backend for verification and session management
         console.log("TODO: Send token to backend:", response.credential.substring(0, 15) + "...");
@@ -83,7 +103,6 @@ function Header() {
         // Simulate redirect or update UI further
         // alert(`Welcome, ${decodedToken.name}! (Sign-in successful, backend verification pending)`);
         console.log(`Welcome, ${decodedToken.name}! (Sign-in successful, backend verification pending)`);
-
 
       } catch (error) {
         console.error("Error decoding credential or updating state:", error);
@@ -99,11 +118,13 @@ function Header() {
 
   // Basic Logout Function
   const handleLogout = () => {
-    // Basic logout: clear state
-    // In a real app, you'd also call google.accounts.id.disableAutoSelect()
-    // and potentially revoke the token on the backend.
+    // Clear localStorage and state
+    localStorage.removeItem('authToken');
+    localStorage.removeItem('user');
     setIsLoggedIn(false);
     setUserInfo(null);
+    setShowLogin(false);
+    setShowSignup(false);
     console.log("User logged out (client-side).");
 
     // Ensure Google API is loaded before trying to re-render button
@@ -127,6 +148,8 @@ function Header() {
     } else {
         console.log("Google API not ready to re-render button after logout or ref not available.");
     }
+    // Optionally redirect to home page
+    window.location.href = '/';
   };
 
   useEffect(() => {
@@ -243,7 +266,6 @@ function Header() {
   return (
     <> {/* Use Fragment to return multiple elements */}
       <nav className="navbar">
-        {/* ... rest of the navbar content ... */}
         <div className="container">
           <div className="logo">
             <img src="images/logo.svg" alt="Decision Points AI Logo" />
@@ -296,6 +318,16 @@ function Header() {
                 Testimonials
               </a>
             </li>
+            {isLoggedIn && (
+              <li>
+                <a
+                  href="/dashboard"
+                  className="nav-link"
+                >
+                  Dashboard
+                </a>
+              </li>
+            )}
             <li className="auth-item">
               {isLoggedIn ? (
                 <div className="user-info">
@@ -306,7 +338,7 @@ function Header() {
                       className="user-avatar"
                     />
                   )}
-                  <span className="user-name">{userInfo?.name || 'User'}</span>
+                  <span className="user-name">{userInfo?.name || userInfo?.email || 'User'}</span>
                   <button
                     onClick={handleLogout}
                     className="btn btn-secondary logout-btn"
@@ -362,22 +394,34 @@ function Header() {
 
       {/* Conditionally render Login Form */}
       {showLogin && (
-        <div className="modal-overlay"> {/* Basic overlay for context */}
+        <div className="modal-overlay">
           <div className="modal-content">
-             <button onClick={() => setShowLogin(false)} style={{float: 'right'}}>X</button> {/* Simple close button */}
+             <button onClick={() => setShowLogin(false)} style={{float: 'right'}}>X</button>
              <h2>Login</h2>
-             <LoginForm />
+             <LoginForm
+               onAuthSuccess={(user) => {
+                 setIsLoggedIn(true);
+                 setUserInfo(user);
+                 setShowLogin(false);
+               }}
+             />
           </div>
         </div>
       )}
 
       {/* Conditionally render Signup Form */}
       {showSignup && (
-        <div className="modal-overlay"> {/* Basic overlay for context */}
+        <div className="modal-overlay">
           <div className="modal-content">
-            <button onClick={() => setShowSignup(false)} style={{float: 'right'}}>X</button> {/* Simple close button */}
+            <button onClick={() => setShowSignup(false)} style={{float: 'right'}}>X</button>
             <h2>Sign Up</h2>
-            <SignupForm />
+            <SignupForm
+              onAuthSuccess={(user) => {
+                setIsLoggedIn(true);
+                setUserInfo(user);
+                setShowSignup(false);
+              }}
+            />
           </div>
         </div>
       )}
