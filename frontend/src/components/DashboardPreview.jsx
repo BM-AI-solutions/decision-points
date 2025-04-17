@@ -1,4 +1,5 @@
 import React from 'react';
+import { Line, Bar } from 'react-chartjs-2';
 
 function DashboardPreview() {
   return (
@@ -43,11 +44,124 @@ function DashboardPreview() {
               <div className="dashboard-main">
                 <div className="dashboard-widget revenue">
                   <h4>Monthly Revenue</h4>
-                  <div className="chart-placeholder"></div>
+                  <div style={{ height: '120px' }}>
+                    <Line
+                      data={{
+                        labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+                        datasets: [
+                          {
+                            label: 'Revenue',
+                            data: [4200, 5100, 5800, 6300, 7100, 7800],
+                            borderColor: '#3b82f6',
+                            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                            fill: true,
+                            tension: 0.4,
+                            pointBackgroundColor: '#3b82f6',
+                            pointBorderColor: '#fff',
+                            pointBorderWidth: 2,
+                            pointRadius: 3,
+                            pointHoverRadius: 5
+                          }
+                        ]
+                      }}
+                      options={{
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                          legend: {
+                            display: false
+                          },
+                          tooltip: {
+                            callbacks: {
+                              label: function(context) {
+                                return `$${context.raw}`;
+                              }
+                            }
+                          }
+                        },
+                        scales: {
+                          x: {
+                            display: true,
+                            grid: {
+                              display: false
+                            },
+                            ticks: {
+                              font: {
+                                size: 10
+                              }
+                            }
+                          },
+                          y: {
+                            display: true,
+                            grid: {
+                              color: 'rgba(0, 0, 0, 0.05)'
+                            },
+                            ticks: {
+                              callback: function(value) {
+                                return '$' + value;
+                              },
+                              font: {
+                                size: 10
+                              }
+                            }
+                          }
+                        }
+                      }}
+                    />
+                  </div>
                 </div>
                 <div className="dashboard-widget customers">
                   <h4>Customer Growth</h4>
-                  <div className="chart-placeholder"></div>
+                  <div style={{ height: '120px' }}>
+                    <Bar
+                      data={{
+                        labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+                        datasets: [
+                          {
+                            label: 'New Customers',
+                            data: [45, 52, 68, 74, 83, 95],
+                            backgroundColor: 'rgba(59, 130, 246, 0.7)',
+                            borderColor: '#3b82f6',
+                            borderWidth: 1,
+                            borderRadius: 3
+                          }
+                        ]
+                      }}
+                      options={{
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                          legend: {
+                            display: false
+                          }
+                        },
+                        scales: {
+                          x: {
+                            display: true,
+                            grid: {
+                              display: false
+                            },
+                            ticks: {
+                              font: {
+                                size: 10
+                              }
+                            }
+                          },
+                          y: {
+                            display: true,
+                            grid: {
+                              color: 'rgba(0, 0, 0, 0.05)'
+                            },
+                            ticks: {
+                              font: {
+                                size: 10
+                              }
+                            }
+                          }
+                        }
+                      }}
+                    />
+                  </div>
                 </div>
                 <div className="dashboard-widget insights">
                   <h4>AI Insights</h4>

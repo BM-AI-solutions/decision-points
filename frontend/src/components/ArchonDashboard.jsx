@@ -1,6 +1,33 @@
 import React, { useState, useEffect } from 'react';
 // Import the refactored apiService
 import apiService from '../services/api.js';
+// Import Chart.js components
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler
+} from 'chart.js';
+import { Line, Bar } from 'react-chartjs-2';
+
+// Register Chart.js components
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler
+);
 
 function ArchonDashboard() {
   const [incomeStreams, setIncomeStreams] = useState([]);
@@ -25,38 +52,40 @@ function ArchonDashboard() {
   const [forecastParams, setForecastParams] = useState({ months: 12, growth_rate: 5.0 }); // State for forecast inputs
   const [forecastResult, setForecastResult] = useState(null); // State for forecast result
   const [isForecasting, setIsForecasting] = useState(false); // State for forecast loading
-  // State variables already added in the previous (failed) attempt, no change needed here.
+  // State variables for deployment guide
+  const [isGeneratingGuide, setIsGeneratingGuide] = useState(false);
+  const [deploymentGuideResult, setDeploymentGuideResult] = useState(null);
 
+  // Define fetchStreams outside useEffect so it can be called from other functions
+  const fetchStreams = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+        // Use the imported apiService
+        // The ApiClient returns the data directly on success
+        // The backend route seems to return { success: true, data: [...] }
+        const result = await apiService.get('/archon/income-streams');
+        if (result && result.success) {
+            setIncomeStreams(result.data);
+            if (result.data.length > 0) {
+              setSelectedStream(result.data[0]); // Select the first stream by default
+            }
+        } else {
+            // Handle cases where the API call succeeded but the operation failed
+             throw new Error(result.error || 'Failed to fetch streams from API');
+        }
+      } catch (err) {
+        console.error("Error fetching income streams:", err);
+        // Use error details from ApiClient if available
+        const message = err?.data?.message || err?.message || 'Failed to load income streams.';
+        setError(message);
+      } finally {
+        setLoading(false);
+      }
+    };
 
   useEffect(() => {
-    const fetchStreams = async () => { // Define fetchStreams inside useEffect
-      try {
-        setLoading(true);
-        setError(null);
-          // Use the imported api instance
-          // The ApiClient returns the data directly on success
-          // The backend route seems to return { success: true, data: [...] }
-          const result = await api.get('/archon/income-streams');
-          if (result && result.success) {
-              setIncomeStreams(result.data);
-              if (result.data.length > 0) {
-                setSelectedStream(result.data[0]); // Select the first stream by default
-              }
-          } else {
-              // Handle cases where the API call succeeded but the operation failed
-               throw new Error(result.error || 'Failed to fetch streams from API');
-          }
-        } catch (err) {
-          console.error("Error fetching income streams:", err);
-          // Use error details from ApiClient if available
-          const message = err?.data?.message || err?.message || 'Failed to load income streams.';
-          setError(message);
-        } finally {
-          setLoading(false);
-        }
-      };
-
-      fetchStreams(); // Call fetchStreams inside useEffect
+    fetchStreams(); // Call fetchStreams inside useEffect
   }, []); // Empty dependency array ensures this runs only once on mount
 
   const handleSelectStream = (stream) => {
@@ -87,7 +116,7 @@ function ArchonDashboard() {
       setIsSubmitting(true);
       setFormError(null);
       try {
-          const newStream = await api.post('/archon/income-streams', formData);
+          const newStream = await apiService.post('/archon/income-streams', formData);
           if (newStream && newStream.success) {
               setShowForm(false);
               setFormData(initialFormData); // Reset form
@@ -120,7 +149,7 @@ function ArchonDashboard() {
               throw new Error("Invalid JSON in Agent Parameters.");
           }
 
-          const result = await api.post('/archon/run-agent', {
+          const result = await apiService.post('/archon/run-agent', {
               income_stream_id: selectedStream.id,
               agent_parameters: parsedParams // Send parsed JSON object
           });
@@ -153,7 +182,7 @@ function ArchonDashboard() {
       setIsForecasting(true);
       setForecastResult(null); // Clear previous results
       try {
-          const result = await api.post('/archon/forecast', forecastParams);
+          const result = await apiService.post('/archon/forecast', forecastParams);
           if (result && result.success) {
               setForecastResult(result.data); // Store the successful result data
           } else {
@@ -168,8 +197,31 @@ function ArchonDashboard() {
           setIsForecasting(false);
       }
   };
+// Handler function for generating deployment guide
+const handleGenerateDeploymentGuide = async () => {
+  if (!selectedStream) return;
+  setIsGeneratingGuide(true);
+  setDeploymentGuideResult(null); // Clear previous results
+  try {
+    const result = await apiService.post('/archon/deployment-guide', {
+      income_stream_id: selectedStream.id
+    });
+    
+    if (result && result.success) {
+      setDeploymentGuideResult(result.data); // Store the successful result data
+    } else {
+      throw new Error(result.error || 'Failed to generate deployment guide');
+    }
+  } catch (err) {
+    console.error("Error generating deployment guide:", err);
+    const message = err?.data?.message || err?.message || 'Failed to generate deployment guide.';
+    // Display error within the deployment guide result area
+    setDeploymentGuideResult({ error: message });
+  } finally {
+    setIsGeneratingGuide(false);
+  }
+};
 
-  // Handler function already added in the previous (failed) attempt, no change needed here.
 
 
   const renderTabContent = () => {
@@ -212,6 +264,62 @@ function ArchonDashboard() {
                 <span className="label text-gray-600">Required Services</span>
                 <span className="value font-medium">{selectedStream.required_services?.join(', ') || 'None'}</span>
               </div>
+              
+              {/* Mini Revenue Chart */}
+              {selectedStream.monthly_revenue > 0 && (
+                <div className="mt-4 pt-4 border-t border-gray-200">
+                  <h5 className="text-sm font-medium text-gray-700 mb-2">Revenue Trend</h5>
+                  <div style={{ height: '80px' }}>
+                    <Line
+                      data={{
+                        labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+                        datasets: [
+                          {
+                            data: [
+                              selectedStream.monthly_revenue * 0.85,
+                              selectedStream.monthly_revenue * 0.9,
+                              selectedStream.monthly_revenue * 0.95,
+                              selectedStream.monthly_revenue,
+                              selectedStream.monthly_revenue * 1.05,
+                              selectedStream.monthly_revenue * 1.1
+                            ],
+                            borderColor: '#3b82f6',
+                            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                            fill: true,
+                            tension: 0.4,
+                            pointRadius: 0
+                          }
+                        ]
+                      }}
+                      options={{
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                          legend: {
+                            display: false
+                          },
+                          tooltip: {
+                            enabled: false
+                          }
+                        },
+                        scales: {
+                          x: {
+                            display: false
+                          },
+                          y: {
+                            display: false
+                          }
+                        },
+                        elements: {
+                          line: {
+                            borderWidth: 2
+                          }
+                        }
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         );
@@ -355,8 +463,125 @@ function ArchonDashboard() {
                                     </table>
                                 </div>
                             </div>
-                            {/* TODO: Add Chart visualization if needed */}
-                            {/* <div className="forecast-chart w-full h-64 mt-6 bg-gray-200 rounded">Chart Placeholder</div> */}
+                            
+                            {/* Revenue Chart */}
+                            <div className="forecast-chart w-full h-64 mt-6 bg-white p-4 rounded-md border border-gray-300">
+                                <h4 className="text-lg font-semibold text-gray-700 mb-3">Revenue Projection</h4>
+                                <div className="chart-container" style={{ height: '250px' }}>
+                                    <Line
+                                        data={{
+                                            labels: forecastResult.monthly_projections?.map(month => `Month ${month.month}`) || [],
+                                            datasets: [
+                                                {
+                                                    label: 'Projected Revenue',
+                                                    data: forecastResult.monthly_projections?.map(month => month.revenue) || [],
+                                                    borderColor: '#3b82f6',
+                                                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                                                    fill: true,
+                                                    tension: 0.4,
+                                                    pointBackgroundColor: '#3b82f6',
+                                                    pointBorderColor: '#fff',
+                                                    pointBorderWidth: 2,
+                                                    pointRadius: 4,
+                                                    pointHoverRadius: 6
+                                                }
+                                            ]
+                                        }}
+                                        options={{
+                                            responsive: true,
+                                            maintainAspectRatio: false,
+                                            scales: {
+                                                y: {
+                                                    beginAtZero: true,
+                                                    grid: {
+                                                        color: 'rgba(0, 0, 0, 0.05)'
+                                                    },
+                                                    ticks: {
+                                                        callback: function(value) {
+                                                            return '$' + value.toFixed(2);
+                                                        }
+                                                    }
+                                                },
+                                                x: {
+                                                    grid: {
+                                                        color: 'rgba(0, 0, 0, 0.05)'
+                                                    }
+                                                }
+                                            },
+                                            plugins: {
+                                                legend: {
+                                                    display: true,
+                                                    position: 'top'
+                                                },
+                                                tooltip: {
+                                                    callbacks: {
+                                                        label: function(context) {
+                                                            return `Revenue: $${context.raw.toFixed(2)}`;
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }}
+                                    />
+                                </div>
+                            </div>
+                            
+                            {/* Growth Rate Chart */}
+                            <div className="forecast-chart w-full h-64 mt-6 bg-white p-4 rounded-md border border-gray-300">
+                                <h4 className="text-lg font-semibold text-gray-700 mb-3">Monthly Growth</h4>
+                                <div className="chart-container" style={{ height: '250px' }}>
+                                    <Bar
+                                        data={{
+                                            labels: forecastResult.monthly_projections?.map(month => `Month ${month.month}`) || [],
+                                            datasets: [
+                                                {
+                                                    label: 'Growth Rate (%)',
+                                                    data: forecastResult.monthly_projections?.map(month => parseFloat(month.growth)) || [],
+                                                    backgroundColor: 'rgba(59, 130, 246, 0.7)',
+                                                    borderColor: '#3b82f6',
+                                                    borderWidth: 1,
+                                                    borderRadius: 4
+                                                }
+                                            ]
+                                        }}
+                                        options={{
+                                            responsive: true,
+                                            maintainAspectRatio: false,
+                                            scales: {
+                                                y: {
+                                                    beginAtZero: true,
+                                                    grid: {
+                                                        color: 'rgba(0, 0, 0, 0.05)'
+                                                    },
+                                                    ticks: {
+                                                        callback: function(value) {
+                                                            return value + '%';
+                                                        }
+                                                    }
+                                                },
+                                                x: {
+                                                    grid: {
+                                                        color: 'rgba(0, 0, 0, 0.05)'
+                                                    }
+                                                }
+                                            },
+                                            plugins: {
+                                                legend: {
+                                                    display: true,
+                                                    position: 'top'
+                                                },
+                                                tooltip: {
+                                                    callbacks: {
+                                                        label: function(context) {
+                                                            return `Growth: ${context.raw}%`;
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }}
+                                    />
+                                </div>
+                            </div>
                         </>
                     )}
                 </div>
