@@ -5,7 +5,7 @@ from typing import Dict, Any, List
 # Import the shared decorator
 from utils.decorators import require_subscription_or_local
 from modules.guide_agent import GuideAgentManager
-from backend.utils.logger import setup_logger
+from utils.logger import setup_logger
 
 bp = Blueprint('market', __name__, url_prefix='/api/market') # Added url_prefix
 logger = setup_logger('routes.market')

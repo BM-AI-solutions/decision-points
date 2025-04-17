@@ -3,9 +3,9 @@ import uuid
 from typing import Dict, Any, List
 
 # Import the shared decorator
-from backend.utils.decorators import require_subscription_or_local
-from backend.modules.action_agent import ActionAgentManager
-from backend.utils.logger import setup_logger
+from utils.decorators import require_subscription_or_local
+from modules.action_agent import ActionAgentManager
+from utils.logger import setup_logger
 
 bp = Blueprint('deployment', __name__, url_prefix='/api/deployment') # Added url_prefix
 logger = setup_logger('routes.deployment')

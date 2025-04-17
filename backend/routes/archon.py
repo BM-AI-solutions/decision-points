@@ -8,9 +8,9 @@ from flask import Blueprint, request, jsonify, current_app
 from pydantic import BaseModel, Field
 
 # Import the shared decorator
-from backend.utils.decorators import require_subscription_or_local
-from backend.utils.logger import setup_logger # Use consistent logger setup
-from backend.modules.archon_agent import ArchonAgent
+from utils.decorators import require_subscription_or_local
+from utils.logger import setup_logger # Use consistent logger setup
+from modules.archon_agent import ArchonAgent
 
 # Create blueprint
 archon_bp = Blueprint('archon', __name__, url_prefix='/api/archon')

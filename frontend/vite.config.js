@@ -13,6 +13,17 @@ export default defineConfig({
     // Sourcemaps can be enabled for debugging production builds
     // sourcemap: true,
   },
+  server: { // Add server configuration
+    proxy: {
+      // Proxy /api requests to backend server running on port 5000
+      '/api': {
+        target: 'http://backend:5000', // Target the backend service in Docker
+        changeOrigin: true, // Necessary for proxying
+        // secure: false, // Keep commented unless needed
+        rewrite: (path) => path.replace(/^\/api/, ''), // Remove /api prefix before forwarding
+      }
+    }
+  },
   // Vite automatically uses postcss.config.js if present
   // css: {
   //   postcss: './postcss.config.js'
