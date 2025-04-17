@@ -209,4 +209,4 @@ Contributions are welcome. Please refer to `CONTRIBUTING.md` (to be created) for
 
 ## License
 
-License information TBD. Please see the `LICENSE` file (to be created).
+Apache License
