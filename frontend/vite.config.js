@@ -1,5 +1,4 @@
 import { defineConfig } from 'vite';
-import legacy from '@vitejs/plugin-legacy';
 import react from '@vitejs/plugin-react';
 
 export default defineConfig({
@@ -7,9 +6,6 @@ export default defineConfig({
   // We can be explicit if needed: root: '.',
   plugins: [
     react(), // Add the React plugin
-    legacy({
-      targets: ['defaults', 'not IE 11'], // Adjust browser targets as needed
-    }),
   ],
   build: {
     // Output directory is 'dist' by default, relative to the root.

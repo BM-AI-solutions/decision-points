@@ -9,7 +9,6 @@
     "deploy": "echo 'Deploying frontend...'"
   },
   "devDependencies": {
-    "@vitejs/plugin-legacy": "^6.1.0",
     "@vitejs/plugin-react": "^4.4.0",
     "postcss": "^8.5.3",
     "vite": "^6.3.1"
