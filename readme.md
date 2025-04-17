@@ -47,6 +47,17 @@ Two primary methods are supported for local development and testing:
     *   Ensure Docker Desktop is installed.
     *   Configure required environment variables (copy `.env.example` to `.env` and fill in values, including your `GOOGLE_API_KEY` for Gemini and any agent model overrides).
     *   Run: `docker compose up --build`
+    *   The backend and frontend are fully Dockerized for local development and production builds.
+    *   The backend uses a multi-stage Dockerfile supporting both development (hot-reload, volume mount) and production (Gunicorn) modes. Compose uses the dev stage by default for local development.
+    *   The frontend uses a Dockerfile to build static assets with npm, then serves them via nginx in production. For local development, the dist/ directory is mounted for live updates.
+    *   Both services are orchestrated via `docker-compose.yml`, which sets up a shared network so the frontend can reach the backend at `http://backend:5000`.
+    *   Environment variables for the backend are managed via `.env` files (see `backend/.env.example`). Compose loads these automatically for the backend service.
+    *   To forward Stripe webhooks to your backend during local development, use the Stripe CLI:
+        ```bash
+        stripe listen --forward-to localhost:5000/api/stripe/webhook
+        ```
+        (Requires [Stripe CLI](https://stripe.com/docs/stripe-cli))
+
 
 2.  **Python Virtual Environment (venv):**
     *   Ensure Python 3.8+ or 3.9+ is installed.

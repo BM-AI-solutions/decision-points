@@ -1,3 +1,4 @@
+.github/
 # Environment variables
 .env
 .env.local

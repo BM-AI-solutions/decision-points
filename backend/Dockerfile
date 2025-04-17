@@ -1,17 +1,49 @@
-# Use the official Python 3.9 slim image as the base
-FROM python:3.9-slim-buster
+# syntax=docker/dockerfile:1
 
-# Set the working directory in the container to /app
+############################
+# Base image for dependencies
+############################
+FROM python:3.9-slim-buster AS base
+
 WORKDIR /app
 
-# Copy requirements.txt first to leverage Docker cache
-COPY requirements.txt .
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
+# Install pip dependencies
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the backend code into the container
+############################
+# Development image
+############################
+FROM base AS dev
+
+ENV FLASK_ENV=development
+ENV PYTHONUNBUFFERED=1
+
+# Install dev dependencies (if any)
+RUN pip install --no-cache-dir flask python-dotenv
+
+# Copy all code (for dev image, but will be mounted in compose)
 COPY . .
 
-# Set the default command to run the application with gunicorn
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "main:app"]
+# Expose port for Flask dev server
+EXPOSE 5000
+
+CMD ["flask", "run", "--host=0.0.0.0", "--port=5000"]
+
+############################
+# Production image
+############################
+FROM base AS prod
+
+ENV FLASK_ENV=production
+
+COPY . .
+
+EXPOSE 5000
+
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "app:app"]

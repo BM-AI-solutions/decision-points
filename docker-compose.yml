@@ -1,23 +1,51 @@
+version: "3.8"
 
 services:
   backend:
-    build: ./backend
+    build:
+      context: ./backend
+      target: dev
+    env_file:
+      - ./backend/.env
     working_dir: /app
     ports:
       - "5000:5000"
-    environment:
-      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
-      - FLASK_ENV=${FLASK_ENV:-production}
-      - SECRET_KEY=${SECRET_KEY:-your-secret-key-change-in-production}
     volumes:
       - ./backend:/app
-    restart: always
-    command: gunicorn --bind 0.0.0.0:5000 main:app
+    restart: unless-stopped
+    command: flask run --host=0.0.0.0 --port=5000
+    networks:
+      - appnet
 
   frontend:
-    image: nginx:alpine
+    build:
+      context: ./frontend
+      target: prod
     ports:
       - "8000:80"
     volumes:
-      - ./frontend:/usr/share/nginx/html
-    restart: always
+      # For development, mount source; for production, comment this out
+      - ./frontend/dist:/usr/share/nginx/html
+    restart: unless-stopped
+    depends_on:
+      - backend
+    networks:
+      - appnet
+
+networks:
+  appnet:
+    driver: bridge
+
+# =========================
+# .env Usage Instructions
+# =========================
+# Copy backend/.env.example to backend/.env and fill in your values.
+# docker-compose will automatically load environment variables from backend/.env for the backend service.
+# For production, use backend/.env.production.template as a starting point.
+
+# =========================
+# Stripe CLI Webhook Forwarding
+# =========================
+# To forward Stripe webhooks to your backend in local development, run:
+#   stripe listen --forward-to localhost:5000/api/stripe/webhook
+# (Requires Stripe CLI: https://stripe.com/docs/stripe-cli)

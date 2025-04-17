@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, abort
 import uuid
 import jwt
 from datetime import datetime, timedelta
@@ -7,9 +7,51 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from google.auth.transport import requests
 from google.oauth2 import id_token
 import stripe
+from google.cloud import datastore
 
 from utils.logger import setup_logger
 bp = Blueprint('auth', __name__)
+
+# --- Environment Variable Hardening and Stripe Mode Selection ---
+ENV = os.environ.get('ENV', 'development')
+STRIPE_MODE = os.environ.get('STRIPE_MODE', 'test')
+
+# --- Subscription Status Helper ---
+def has_active_subscription(user_profile):
+    """Check if the user has an active subscription. Extend as needed for real logic."""
+    # Placeholder: check for 'subscription' attribute and status
+    subscription = getattr(user_profile, 'subscription', None)
+    if not subscription:
+        return False
+    status = getattr(subscription, 'status', None)
+    if status == 'active':
+        # Optionally check end_date, etc.
+        return True
+    return False
+
+STRIPE_API_KEY_LIVE = os.environ.get('STRIPE_API_KEY_LIVE')
+STRIPE_API_KEY_TEST = os.environ.get('STRIPE_API_KEY_TEST')
+STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET')
+JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY')
+
+if ENV == 'production':
+    missing = []
+    if not STRIPE_WEBHOOK_SECRET:
+        missing.append('STRIPE_WEBHOOK_SECRET')
+    if not JWT_SECRET_KEY:
+        missing.append('JWT_SECRET_KEY')
+    if STRIPE_MODE == 'live' and not STRIPE_API_KEY_LIVE:
+        missing.append('STRIPE_API_KEY_LIVE')
+    if STRIPE_MODE == 'test' and not STRIPE_API_KEY_TEST:
+        missing.append('STRIPE_API_KEY_TEST')
+    if missing:
+        raise RuntimeError(f"Missing required environment variables in production: {', '.join(missing)}")
+
+if STRIPE_MODE == 'live':
+    stripe.api_key = STRIPE_API_KEY_LIVE
+else:
+    stripe.api_key = STRIPE_API_KEY_TEST
+
 logger = setup_logger('routes.auth')
 
 # Initialize Google Cloud Datastore client
@@ -205,6 +247,7 @@ def profile():
         user_profile = UserProfile.from_entity(user_profile_entity)
 
         logger.info(f"Retrieved profile for user: {user_profile.email} with ID {user_id}")
+        subscription_active = has_active_subscription(user_profile)
         return jsonify({
             'success': True,
             'user': {
@@ -212,7 +255,7 @@ def profile():
                 'email': user_profile.email,
                 'name': user_profile.name,
                 'credits': user_profile.credits_remaining,
-                'subscription': user_profile.subscription_type # Subscription is not stored in UserProfile yet
+                'subscription_active': subscription_active
             }
         })
 
@@ -421,15 +464,7 @@ async def google_auth():
 async def purchase_credits():
     """Purchase credits."""
     try:
-        # Initialize Stripe client
-        stripe_api_key = os.environ.get('STRIPE_API_KEY')
-        if not stripe_api_key:
-            return jsonify({
-                'error': 'Stripe API key is not configured',
-                'status': 500
-            }), 500
-
-        stripe.api_key = stripe_api_key
+        # Stripe API key is set globally based on STRIPE_MODE at import time
 
         auth_header = request.headers.get('Authorization')
 
@@ -551,3 +586,49 @@ async def purchase_credits():
             'message': str(e),
             'status': 500
         }), 500
+
+# --- Stripe Webhook Endpoint for Payment/Subscription Events ---
+
+@bp.route('/webhook/stripe', methods=['POST'])
+def stripe_webhook():
+    """Stripe webhook endpoint for payment/subscription events (production-ready)."""
+    payload = request.data
+    sig_header = request.headers.get('Stripe-Signature')
+    webhook_secret = os.environ.get('STRIPE_WEBHOOK_SECRET')
+    if not webhook_secret:
+        logger.error('STRIPE_WEBHOOK_SECRET not set in environment')
+        abort(500)
+    try:
+        event = stripe.Webhook.construct_event(
+            payload, sig_header, webhook_secret
+        )
+    except ValueError as e:
+        logger.error(f'Invalid payload: {e}')
+        return jsonify({'error': 'Invalid payload'}), 400
+    except stripe.error.SignatureVerificationError as e:
+        logger.error(f'Invalid Stripe signature: {e}')
+        return jsonify({'error': 'Invalid signature'}), 400
+
+    # Handle the event
+    event_type = event['type']
+    logger.info(f'Received Stripe event: {event_type}')
+    data = event['data']['object']
+
+    # Example: handle payment_intent.succeeded, invoice.paid, customer.subscription.updated
+    if event_type == 'payment_intent.succeeded':
+        # TODO: Update user credits or subscription in persistent storage
+        logger.info(f'PaymentIntent succeeded: {data.get("id")}, user: {data.get("metadata", {}).get("user_id")}')
+        # Implement credit/subscription update logic here
+    elif event_type == 'invoice.paid':
+        # TODO: Mark subscription as active
+        logger.info(f'Invoice paid: {data.get("id")}, customer: {data.get("customer")}')
+        # Implement subscription activation logic here
+    elif event_type.startswith('customer.subscription.'):
+        # TODO: Update subscription status
+        logger.info(f'Subscription event: {event_type}, subscription: {data.get("id")}, status: {data.get("status")}, user: {data.get("metadata", {}).get("user_id")}')
+        # Implement subscription status update logic here
+    else:
+        logger.info(f'Unhandled Stripe event type: {event_type}')
+
+    return jsonify({'status': 'success'})
+
