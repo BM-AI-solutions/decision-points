@@ -209,36 +209,42 @@ function HowItWorks() {
     `;
 
   return (
-    <section id="how-it-works" className="how-it-works-section">
+    <section id="how-it-works" className="how-it-works">
        <style>{shakeKeyframes}</style> {/* Inject CSS */}
       <div className="container">
-        <div className="section-header">
+        <div className="section-header animate-on-scroll">
           <h2>How Decision Points AI <span className="accent-text">Works</span></h2>
           <p>Streamlined process to launch and automate your business with AI</p>
         </div>
-        <div className="how-it-works-steps">
-          <div className="step-card">
-            <span className="step-number">1</span>
-            <h3>Enter Market Details</h3>
-            <p>Provide information about the market segment you're targeting.</p>
+        <div className="steps">
+          <div className="step animate-on-scroll">
+            <div className="step-number">1</div>
+            <div className="step-content">
+              <h3>Enter Market Details</h3>
+              <p>Provide information about the market segment you're targeting.</p>
+            </div>
           </div>
-          <div className="step-card">
-            <span className="step-number">2</span>
-            <h3>AI Analysis</h3>
-            <p>Our AI performs market analysis to identify business models.</p>
+          <div className="step animate-on-scroll">
+            <div className="step-number">2</div>
+            <div className="step-content">
+              <h3>AI Analysis</h3>
+              <p>Our AI performs market analysis to identify business models.</p>
+            </div>
           </div>
-          <div className="step-card">
-            <span className="step-number">3</span>
-            <h3>Select and Implement</h3>
-            <p>Choose a business model and implement it with our tools.</p>
+          <div className="step animate-on-scroll">
+            <div className="step-number">3</div>
+            <div className="step-content">
+              <h3>Select and Implement</h3>
+              <p>Choose a business model and implement it with our tools.</p>
+            </div>
           </div>
         </div>
 
         {/* Market Analysis Form / Results - Moved here */}
-        <div className="market-analysis-interactive">
+        <div className="market-analysis-interactive animate-on-scroll">
           {!showResults ? (
             <div className="market-analysis-form">
-              <h3>Analyze Your Market Potential</h3>
+              <h3 className="ember-glow">Analyze Your Market Potential</h3>
               <div className="form-row">
                 <div className={`input-group ${validationErrors.marketSegment ? 'error' : ''}`}>
                   <label htmlFor="market-segment">Target Market Segment</label>
@@ -273,7 +279,7 @@ function HowItWorks() {
               </div>
               <button
                 id="analyze-btn"
-                className="btn btn-primary"
+                className="btn btn-primary ember-glow"
                 onClick={handleAnalyzeClick}
                 disabled={isLoading}
               >
@@ -317,7 +323,7 @@ function HowItWorks() {
               )}
 
               {/* Always show Back button */}
-              <button className="btn btn-secondary" onClick={handleBackClick} style={{ marginTop: '1rem' }}>
+              <button className="btn btn-secondary" onClick={handleBackClick} style={{ marginTop: '1.5rem' }}>
                 <i className="fas fa-arrow-left"></i> Back to Analysis
               </button>
             </div>

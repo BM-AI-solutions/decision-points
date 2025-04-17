@@ -16,29 +16,30 @@ function Pricing() {
   return (
     <section id="pricing" className="pricing-section">
       <div className="container">
-        <div className="section-header">
+        <div className="section-header animate-on-scroll">
           <h2>Choose Your <span className="accent-text">Plan</span></h2>
           <p>Preferential pricing for startups, growing businesses, and large enterprises</p>
         </div>
 
         {/* Pricing Toggle Switch */}
-        <div className="pricing-toggle-container">
+        <div className="pricing-toggle-container animate-on-scroll">
           <span>Monthly</span>
           <label className="pricing-toggle switch">
             <input type="checkbox" checked={isYearly} onChange={togglePricing} />
             <span className="slider round"></span>
           </label>
-          <span>Yearly (Save 20%)</span>
+          <span>Yearly <span className="save-badge">Save 20%</span></span>
         </div>
 
-        <div className="pricing-table">
+        <div className="pricing-cards">
           {/* Free Plan Card (No price change) */}
-          <div className="pricing-card free">
-            <div className="card-header">
+          <div className="pricing-card animate-on-scroll">
+            <div className="pricing-header">
               <h3>Free Plan</h3>
-              <div className="price-info">
-                <div className="price">$0</div>
-                <div className="term">per month</div>
+              <div className="price">
+                <span className="currency">$</span>
+                <span className="amount">0</span>
+                <span className="period">/mo</span>
               </div>
             </div>
             <ul className="pricing-features">
@@ -51,15 +52,16 @@ function Pricing() {
           </div>
 
           {/* Starter Plan Card */}
-          <div className="pricing-card starter">
-            <div className="card-header">
-              <div className="best-value">Best Value</div>
+          <div className="pricing-card featured animate-on-scroll">
+            <div className="popular-badge">Most Popular</div>
+            <div className="pricing-header">
               <h3>Starter Plan</h3>
-              <div className="price-info">
-                <div className="price amount">{isYearly ? `$${Math.round(starterYearlyPrice / 12)}` : `$${starterMonthlyPrice}`}</div>
-                <div className="term period">{isYearly ? '/mo (billed annually)' : '/mo'}</div>
-                {isYearly && <div className="yearly-total">Total ${starterYearlyPrice}/yr</div>}
+              <div className="price">
+                <span className="currency">$</span>
+                <span className="amount">{isYearly ? Math.round(starterYearlyPrice / 12) : starterMonthlyPrice}</span>
+                <span className="period">{isYearly ? '/mo (billed annually)' : '/mo'}</span>
               </div>
+              {isYearly && <div className="yearly-total">Total ${starterYearlyPrice}/yr</div>}
             </div>
             <ul className="pricing-features">
               <li><i className="fas fa-check"></i> Enhanced Market Analysis</li>
@@ -67,18 +69,19 @@ function Pricing() {
               <li><i className="fas fa-check"></i> Advanced Analytics</li>
               <li><i className="fas fa-check"></i> Premium Features</li>
             </ul>
-            <button className="btn btn-primary">Choose Starter</button>
+            <button className="btn btn-primary ember-glow">Choose Starter</button>
           </div>
 
           {/* Enterprise Plan Card */}
-          <div className="pricing-card enterprise">
-            <div className="card-header">
+          <div className="pricing-card animate-on-scroll">
+            <div className="pricing-header">
               <h3>Enterprise Plan</h3>
-              <div className="price-info">
-                 <div className="price amount">{isYearly ? `$${Math.round(enterpriseYearlyPrice / 12)}` : `$${enterpriseMonthlyPrice}`}</div>
-                 <div className="term period">{isYearly ? '/mo (billed annually)' : '/mo'}</div>
-                 {isYearly && <div className="yearly-total">Total ${enterpriseYearlyPrice}/yr</div>}
+              <div className="price">
+                <span className="currency">$</span>
+                <span className="amount">{isYearly ? Math.round(enterpriseYearlyPrice / 12) : enterpriseMonthlyPrice}</span>
+                <span className="period">{isYearly ? '/mo (billed annually)' : '/mo'}</span>
               </div>
+              {isYearly && <div className="yearly-total">Total ${enterpriseYearlyPrice}/yr</div>}
             </div>
             <ul className="pricing-features">
               <li><i className="fas fa-check"></i> Unlimited Business Models</li>

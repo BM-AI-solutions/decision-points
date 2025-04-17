@@ -103,12 +103,12 @@ function Testimonials() {
   return (
     <section id="testimonials" className="testimonials-section">
       <div className="container">
-        <div className="section-header">
+        <div className="section-header animate-on-scroll">
           <h2>What Our <span className="accent-text">Clients Say</span></h2>
           <p>Success stories from entrepreneurs using Decision Points AI</p>
         </div>
         {/* Add ref to the slider container */}
-        <div className="testimonial-slider" ref={sliderRef}>
+        <div className="testimonial-slider animate-on-scroll" ref={sliderRef}>
           {/* Map through testimonials, only render the active one */}
           {testimonialsData.map((testimonial, index) => (
             <div
@@ -130,7 +130,7 @@ function Testimonials() {
           ))}
           <div className="testimonial-controls">
              {/* Add onClick handler */}
-            <button className="testimonial-control prev" aria-label="Previous testimonial" onClick={prevSlide}>
+            <button className="testimonial-control prev ember-glow" aria-label="Previous testimonial" onClick={prevSlide}>
               <i className="fas fa-chevron-left"></i>
             </button>
             <div className="testimonial-dots">
@@ -144,7 +144,7 @@ function Testimonials() {
               ))}
             </div>
              {/* Add onClick handler */}
-            <button className="testimonial-control next" aria-label="Next testimonial" onClick={nextSlide}>
+            <button className="testimonial-control next ember-glow" aria-label="Next testimonial" onClick={nextSlide}>
               <i className="fas fa-chevron-right"></i>
             </button>
           </div>
