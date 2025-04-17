@@ -46,7 +46,7 @@ Two primary methods are supported for local development and testing:
 1.  **Docker Desktop (Recommended):**
     *   Ensure Docker Desktop is installed.
     *   Configure required environment variables (copy `.env.example` to `.env` and fill in values, including your `GOOGLE_API_KEY` for Gemini and any agent model overrides).
-    *   Run: `docker compose up --build`
+    *   Run: `docker compose -f docker-compose.dev.yml up -d --build`
     *   The backend and frontend are fully Dockerized for local development and production builds.
     *   The backend uses a multi-stage Dockerfile supporting both development (hot-reload, volume mount) and production (Gunicorn) modes. Compose uses the dev stage by default for local development.
     *   The frontend uses a Dockerfile to build static assets with npm, then serves them via nginx in production. For local development, the dist/ directory is mounted for live updates.
