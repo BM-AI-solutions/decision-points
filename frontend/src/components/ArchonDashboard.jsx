@@ -230,7 +230,7 @@ const handleGenerateDeploymentGuide = async () => {
     switch (activeTab) {
       case 'overview':
         return (
-          <div className="income-stream-overview grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="income-stream-overview grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
             <div className="overview-card bg-white border border-gray-300 rounded-md p-5">
               <h4 className="text-lg font-semibold text-gray-700 mb-4">Details</h4>
               <div className="overview-item flex justify-between mb-2 text-sm">
@@ -313,6 +313,9 @@ const handleGenerateDeploymentGuide = async () => {
                         elements: {
                           line: {
                             borderWidth: 2
+                          },
+                          point: {
+                            radius: 0
                           }
                         }
                       }}
@@ -326,14 +329,14 @@ const handleGenerateDeploymentGuide = async () => {
       case 'implement':
         return (
           <div className="implement-tab-content">
-            <div className="implement-actions bg-white border border-gray-300 rounded-md p-5 mb-6">
+            <div className="implement-actions bg-white border border-gray-300 rounded-md p-4 md:p-5 mb-6">
               <p className="text-sm text-gray-700 mb-4">Use the Archon Agent to implement this income stream with minimal human intervention.</p>
               <div className="input-group mb-4">
                 <label htmlFor="agent-params" className="block mb-1.5 font-medium text-sm text-gray-700">Agent Parameters (JSON)</label>
                 <textarea
                     id="agent-params"
-                    className="form-input w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-300 font-mono h-24"
-                    placeholder='Enter agent parameters as JSON, e.g., {"strategy": "aggressive"}'
+                    className="form-input w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-300 font-mono h-20 md:h-24"
+                    placeholder='{"strategy": "aggressive"}'
                     value={agentParams}
                     onChange={(e) => setAgentParams(e.target.value)}
                 ></textarea>
@@ -350,7 +353,7 @@ const handleGenerateDeploymentGuide = async () => {
 
             {/* Agent Result Area */}
             {(isAgentRunning || agentResult) && (
-                 <div id="agent-result" className="agent-result bg-white border border-gray-300 rounded-md p-5">
+                 <div id="agent-result" className="agent-result bg-white border border-gray-300 rounded-md p-4 md:p-5">
                     {isAgentRunning && <p>Running Archon Agent, please wait...</p>}
                     {agentResult && agentResult.error && (
                         <p className="text-red-600">Failed to run Archon agent: {agentResult.error}</p>
@@ -360,7 +363,7 @@ const handleGenerateDeploymentGuide = async () => {
                             <div className="result-section mb-6">
                                 <h4 className="text-lg font-semibold text-gray-700 mb-3">Archon Agent Configuration</h4>
                                 <p className="text-sm text-gray-600 mb-3">The Archon agent has been configured to implement the income stream with the following parameters:</p>
-                                <pre className="code-block bg-gray-100 p-3 rounded-md text-xs overflow-x-auto">
+                                <pre className="code-block bg-gray-100 p-2 md:p-3 rounded-md text-xs overflow-x-auto">
                                     {JSON.stringify(agentResult.archon_run_agent_json || agentResult, null, 2)}
                                 </pre>
                             </div>
@@ -381,7 +384,7 @@ const handleGenerateDeploymentGuide = async () => {
       case 'forecast':
         return (
           <div className="forecast-tab-content">
-            <div className="forecast-controls bg-white border border-gray-300 rounded-md p-5 mb-6 flex items-center gap-4 flex-wrap">
+            <div className="forecast-controls bg-white border border-gray-300 rounded-md p-4 md:p-5 mb-6 flex items-center gap-3 md:gap-4 flex-wrap">
               <div className="input-group inline-block">
                 <label htmlFor="forecast-months" className="block mb-1 font-medium text-sm text-gray-700">Months</label>
                 <input
@@ -418,23 +421,23 @@ const handleGenerateDeploymentGuide = async () => {
 
             {/* Forecast Result Area */}
             {(isForecasting || forecastResult) && (
-                <div id="forecast-result" className="forecast-result bg-white border border-gray-300 rounded-md p-5">
+                <div id="forecast-result" className="forecast-result bg-white border border-gray-300 rounded-md p-4 md:p-5 overflow-hidden">
                     {isForecasting && <p>Generating forecast, please wait...</p>}
                     {forecastResult && forecastResult.error && (
                         <p className="text-red-600">Failed to generate forecast: {forecastResult.error}</p>
                     )}
                     {forecastResult && !forecastResult.error && (
                         <>
-                            <div className="forecast-summary grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-                                <div className="forecast-metric bg-gray-100 rounded-md p-4 text-center">
+                            <div className="forecast-summary grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-4 mb-6">
+                                <div className="forecast-metric bg-gray-100 rounded-md p-3 md:p-4 text-center">
                                     <div className="value text-xl font-semibold text-blue-600 mb-1">${forecastResult.average_monthly_revenue?.toFixed(2) ?? 'N/A'}</div>
                                     <div className="label text-xs text-gray-600">Avg Monthly Revenue</div>
                                 </div>
-                                <div className="forecast-metric bg-gray-100 rounded-md p-4 text-center">
+                                <div className="forecast-metric bg-gray-100 rounded-md p-3 md:p-4 text-center">
                                     <div className="value text-xl font-semibold text-blue-600 mb-1">${forecastResult.total_projected_revenue?.toFixed(2) ?? 'N/A'}</div>
                                     <div className="label text-xs text-gray-600">Total {forecastParams.months} Month Revenue</div>
                                 </div>
-                                <div className="forecast-metric bg-gray-100 rounded-md p-4 text-center">
+                                <div className="forecast-metric bg-gray-100 rounded-md p-3 md:p-4 text-center">
                                     <div className="value text-xl font-semibold text-blue-600 mb-1">{forecastResult.growth_rate_monthly}%</div>
                                     <div className="label text-xs text-gray-600">Monthly Growth Rate</div>
                                 </div>
@@ -442,32 +445,39 @@ const handleGenerateDeploymentGuide = async () => {
 
                             <div className="forecast-table">
                                 <h4 className="text-lg font-semibold text-gray-700 mb-3">Monthly Projections</h4>
-                                <div className="overflow-x-auto">
+                                <div className="overflow-x-auto max-w-full">
                                     <table className="table w-full text-sm text-left text-gray-500">
                                         <thead className="text-xs text-gray-700 uppercase bg-gray-50">
                                             <tr>
-                                                <th scope="col" className="px-4 py-2">Month</th>
-                                                <th scope="col" className="px-4 py-2">Revenue</th>
-                                                <th scope="col" className="px-4 py-2">Growth</th>
+                                                <th scope="col" className="px-2 md:px-4 py-2">Month</th>
+                                                <th scope="col" className="px-2 md:px-4 py-2">Revenue</th>
+                                                <th scope="col" className="px-2 md:px-4 py-2">Growth</th>
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {forecastResult.monthly_projections?.map(month => (
+                                            {forecastResult.monthly_projections?.slice(0, 6).map(month => (
                                                 <tr key={month.month} className="bg-white border-b hover:bg-gray-50">
-                                                    <td className="px-4 py-2">Month {month.month}</td>
-                                                    <td className="px-4 py-2">${month.revenue?.toFixed(2) ?? 'N/A'}</td>
-                                                    <td className="px-4 py-2">{month.growth ?? 'N/A'}</td>
+                                                    <td className="px-2 md:px-4 py-2">Month {month.month}</td>
+                                                    <td className="px-2 md:px-4 py-2">${month.revenue?.toFixed(2) ?? 'N/A'}</td>
+                                                    <td className="px-2 md:px-4 py-2">{month.growth ?? 'N/A'}</td>
                                                 </tr>
                                             ))}
+                                            {forecastResult.monthly_projections?.length > 6 && (
+                                                <tr className="bg-white border-b">
+                                                    <td colSpan="3" className="px-2 md:px-4 py-2 text-center text-blue-600">
+                                                        + {forecastResult.monthly_projections.length - 6} more months
+                                                    </td>
+                                                </tr>
+                                            )}
                                         </tbody>
                                     </table>
                                 </div>
                             </div>
                             
                             {/* Revenue Chart */}
-                            <div className="forecast-chart w-full h-64 mt-6 bg-white p-4 rounded-md border border-gray-300">
+                            <div className="forecast-chart w-full h-64 mt-6 bg-white p-4 rounded-md border border-gray-300 overflow-hidden">
                                 <h4 className="text-lg font-semibold text-gray-700 mb-3">Revenue Projection</h4>
-                                <div className="chart-container" style={{ height: '250px' }}>
+                                <div className="chart-container" style={{ height: '220px' }}>
                                     <Line
                                         data={{
                                             labels: forecastResult.monthly_projections?.map(month => `Month ${month.month}`) || [],
@@ -499,19 +509,36 @@ const handleGenerateDeploymentGuide = async () => {
                                                     ticks: {
                                                         callback: function(value) {
                                                             return '$' + value.toFixed(2);
+                                                        },
+                                                        maxTicksLimit: 6,
+                                                        font: {
+                                                            size: 10
                                                         }
                                                     }
                                                 },
                                                 x: {
                                                     grid: {
                                                         color: 'rgba(0, 0, 0, 0.05)'
+                                                    },
+                                                    ticks: {
+                                                        maxRotation: 45,
+                                                        minRotation: 45,
+                                                        font: {
+                                                            size: 10
+                                                        }
                                                     }
                                                 }
                                             },
                                             plugins: {
                                                 legend: {
                                                     display: true,
-                                                    position: 'top'
+                                                    position: 'top',
+                                                    labels: {
+                                                        boxWidth: 12,
+                                                        font: {
+                                                            size: 11
+                                                        }
+                                                    }
                                                 },
                                                 tooltip: {
                                                     callbacks: {
@@ -527,9 +554,9 @@ const handleGenerateDeploymentGuide = async () => {
                             </div>
                             
                             {/* Growth Rate Chart */}
-                            <div className="forecast-chart w-full h-64 mt-6 bg-white p-4 rounded-md border border-gray-300">
+                            <div className="forecast-chart w-full h-64 mt-6 bg-white p-4 rounded-md border border-gray-300 overflow-hidden">
                                 <h4 className="text-lg font-semibold text-gray-700 mb-3">Monthly Growth</h4>
-                                <div className="chart-container" style={{ height: '250px' }}>
+                                <div className="chart-container" style={{ height: '220px' }}>
                                     <Bar
                                         data={{
                                             labels: forecastResult.monthly_projections?.map(month => `Month ${month.month}`) || [],
@@ -556,19 +583,36 @@ const handleGenerateDeploymentGuide = async () => {
                                                     ticks: {
                                                         callback: function(value) {
                                                             return value + '%';
+                                                        },
+                                                        maxTicksLimit: 6,
+                                                        font: {
+                                                            size: 10
                                                         }
                                                     }
                                                 },
                                                 x: {
                                                     grid: {
                                                         color: 'rgba(0, 0, 0, 0.05)'
+                                                    },
+                                                    ticks: {
+                                                        maxRotation: 45,
+                                                        minRotation: 45,
+                                                        font: {
+                                                            size: 10
+                                                        }
                                                     }
                                                 }
                                             },
                                             plugins: {
                                                 legend: {
                                                     display: true,
-                                                    position: 'top'
+                                                    position: 'top',
+                                                    labels: {
+                                                        boxWidth: 12,
+                                                        font: {
+                                                            size: 11
+                                                        }
+                                                    }
                                                 },
                                                 tooltip: {
                                                     callbacks: {
@@ -591,7 +635,7 @@ const handleGenerateDeploymentGuide = async () => {
       case 'deploy':
         return (
           <div className="deploy-tab-content">
-            <div className="deployment-actions bg-white border border-gray-300 rounded-md p-5 mb-6">
+            <div className="deployment-actions bg-white border border-gray-300 rounded-md p-4 md:p-5 mb-6">
               <p className="text-sm text-gray-700 mb-4">Generate a comprehensive deployment guide for this income stream.</p>
               <button
                 id="generate-guide-btn"
@@ -605,7 +649,7 @@ const handleGenerateDeploymentGuide = async () => {
 
             {/* Deployment Guide Result Area */}
             {(isGeneratingGuide || deploymentGuideResult) && (
-                <div id="deployment-guide" className="deployment-guide bg-white border border-gray-300 rounded-md p-5">
+                <div id="deployment-guide" className="deployment-guide bg-white border border-gray-300 rounded-md p-4 md:p-5 overflow-hidden">
                     {isGeneratingGuide && <p>Generating deployment guide, please wait...</p>}
                     {deploymentGuideResult && deploymentGuideResult.error && (
                         <p className="text-red-600">Failed to generate deployment guide: {deploymentGuideResult.error}</p>
@@ -681,7 +725,7 @@ const handleGenerateDeploymentGuide = async () => {
 
 
   return (
-    <div className="container mx-auto px-4 py-8 archon-container bg-gray-50 rounded-lg shadow-md my-8">
+    <div className="container mx-auto px-4 py-8 archon-container bg-gray-50 rounded-lg shadow-md my-8 max-w-full overflow-hidden">
       {/* Header */}
       <div className="archon-header bg-gradient-to-r from-blue-600 to-blue-800 text-white p-6 text-center rounded-t-lg">
         <h2 className="text-3xl font-bold mb-2">Archon Passive Income Generator</h2>
@@ -689,11 +733,11 @@ const handleGenerateDeploymentGuide = async () => {
       </div>
 
       {/* Content Area */}
-      <div className="archon-content flex min-h-[500px]">
+      <div className="archon-content flex flex-col md:flex-row min-h-[500px] overflow-hidden">
         {/* Sidebar */}
-        <div className="archon-sidebar w-[300px] bg-gray-100 border-r border-gray-300 p-6">
-          <div className="archon-section mb-8">
-            <h3 className="text-xl font-semibold border-b border-gray-300 pb-2 mb-4">Income Streams</h3>
+        <div className="archon-sidebar w-full md:w-[280px] lg:w-[300px] bg-gray-100 border-r border-gray-300 p-4 md:p-6">
+          <div className="archon-section mb-6 md:mb-8">
+            <h3 className="text-lg md:text-xl font-semibold border-b border-gray-300 pb-2 mb-4">Income Streams</h3>
             <div id="income-streams-list" className="income-streams-list mb-4">
               {loading && <p>Loading streams...</p>}
               {error && <p className="text-red-600">{error}</p>}
@@ -726,11 +770,11 @@ const handleGenerateDeploymentGuide = async () => {
         </div>
 
         {/* Main Content */}
-        <div className="archon-main flex-1 p-6">
+        <div className="archon-main flex-1 p-4 md:p-6 overflow-x-hidden">
           {/* Income Stream Form (conditionally rendered) */}
           {showForm && (
             <div id="income-stream-form-container" className="archon-section mb-8">
-              <h3 className="text-xl font-semibold border-b border-gray-300 pb-2 mb-4">Create Income Stream</h3>
+              <h3 className="text-lg md:text-xl font-semibold border-b border-gray-300 pb-2 mb-4">Create Income Stream</h3>
               <form id="income-stream-form" onSubmit={handleCreateStreamSubmit}>
                  {formError && <p className="text-red-600 mb-4">{formError}</p>}
                 <div className="input-group mb-5">
@@ -794,22 +838,22 @@ const handleGenerateDeploymentGuide = async () => {
             <div id="income-stream-details" className="archon-section">
               {/* Header */}
               <div id="income-stream-header" className="mb-6">
-                <h3 className="text-2xl font-bold flex items-center">
-                  {selectedStream.name}
-                  <span className="badge text-xs px-2.5 py-1 rounded-full bg-blue-100 text-blue-600 ml-3">{selectedStream.type}</span>
+                <h3 className="text-xl md:text-2xl font-bold flex flex-wrap items-center">
+                  <span className="mr-2">{selectedStream.name}</span>
+                  <span className="badge text-xs px-2.5 py-1 rounded-full bg-blue-100 text-blue-600 mt-1 md:mt-0">{selectedStream.type}</span>
                 </h3>
                 <p className="text-gray-700 mt-1">{selectedStream.description}</p>
               </div>
 
               {/* Tabs */}
-              <div className="archon-tabs flex border-b border-gray-300 mb-6">
+              <div className="archon-tabs flex flex-wrap border-b border-gray-300 mb-6">
                 {['overview', 'implement', 'forecast', 'deploy'].map(tab => (
                   <button
                     key={tab}
-                    className={`tab-btn px-5 py-2 text-sm capitalize transition-colors duration-150 ${activeTab === tab ? 'font-medium text-blue-600 border-b-2 border-blue-600' : 'text-gray-600 hover:text-blue-600'}`}
+                    className={`tab-btn px-3 md:px-5 py-2 text-sm capitalize transition-colors duration-150 ${activeTab === tab ? 'font-medium text-blue-600 border-b-2 border-blue-600' : 'text-gray-600 hover:text-blue-600'}`}
                     onClick={() => setActiveTab(tab)}
                   >
-                    {tab === 'forecast' ? 'Revenue Forecast' : tab === 'deploy' ? 'Deployment Guide' : tab}
+                    {tab === 'forecast' ? (window.innerWidth < 768 ? 'Forecast' : 'Revenue Forecast') : tab === 'deploy' ? (window.innerWidth < 768 ? 'Deploy' : 'Deployment Guide') : tab}
                   </button>
                 ))}
               </div>
