@@ -15,18 +15,25 @@ function Dashboard() {
       setLoading(true);
       setError('');
       try {
+        console.log("Dashboard: Fetching business models");
         const modelsRes = await apiService.getBusinessModels();
+        console.log("Dashboard: Business models response:", modelsRes);
         const models = modelsRes?.business_models || [];
+        console.log("Dashboard: Extracted models:", models);
         setBusinessModels(models);
 
         if (models.length > 0) {
           const businessId = models[0].id;
+          console.log("Dashboard: Fetching forecast for business ID:", businessId);
           const forecastRes = await apiService.getCashflowForecast(businessId);
+          console.log("Dashboard: Forecast response:", forecastRes);
           setForecast(forecastRes?.forecast || null);
         } else {
+          console.log("Dashboard: No business models found, skipping forecast");
           setForecast(null);
         }
       } catch (err) {
+        console.error("Dashboard: Error fetching data:", err);
         setError('Failed to load dashboard data.');
         setForecast(null);
       }

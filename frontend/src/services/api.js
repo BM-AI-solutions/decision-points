@@ -195,7 +195,8 @@ const apiService = {
   // Business models
   getBusinessModels: () => {
     console.log("API Call: getBusinessModels"); // Added logging
-    return apiClientInstance.get('/api/business/models');
+    console.log("Calling correct endpoint: /api/business/list");
+    return apiClientInstance.get('/api/business/list');
   },
 
   getBusinessModel: (modelId) => {
