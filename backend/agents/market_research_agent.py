@@ -1,7 +1,10 @@
 import os
 import json
-import requests
+# import requests # Removed, using httpx
+import httpx # Added for async requests
 import asyncio
+import traceback # Add traceback import
+import logging # Add logging import
 from typing import List, Optional, Dict, Any, Union
 from pydantic import BaseModel, Field, HttpUrl, ValidationError
 
@@ -12,13 +15,14 @@ from google.adk.runtime.event import Event, EventSeverity
 
 # Assuming Exa and Firecrawl libraries are installed
 from exa_py import Exa
-from firecrawl import FirecrawlApp
-import openai # Keep openai import for now, though ADK might provide its own LLM client
+from firecrawl import FirecrawlApp, AsyncFirecrawlApp # Import AsyncFirecrawlApp
+import openai # Keep openai import for now, ADK might provide its own LLM client
 
-# Placeholder for logger setup (assuming utils.logger exists)
-# from utils.logger import setup_logger
-# logger = setup_logger(__name__)
-print(f"Attempting to load API keys from environment variables...") # Basic logging
+# Setup basic logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+logger.info("Attempting to load API keys from environment variables...")
 
 # --- Configuration ---
 # Load API keys from environment variables
@@ -92,30 +96,33 @@ class MarketResearchAgent(Agent):
             # In ADK, initialization errors should ideally prevent agent loading
             # or be reported during startup. Raising here is okay for now.
             raise ValueError("FIRECRAWL_API_KEY environment variable not set.")
-        self.firecrawl_client = FirecrawlApp(api_key=self.firecrawl_api_key)
+        # Use AsyncFirecrawlApp
+        self.firecrawl_client = AsyncFirecrawlApp(api_key=self.firecrawl_api_key)
 
         if self.search_provider == "exa":
             if not self.exa_api_key:
                 raise ValueError("EXA_API_KEY environment variable not set for Exa search provider.")
             self.exa_client = Exa(api_key=self.exa_api_key)
-            print("Using Exa for competitor search.")
+            logger.info("Using Exa for competitor search.")
         elif self.search_provider == "perplexity":
             if not self.perplexity_api_key:
                 raise ValueError("PERPLEXITY_API_KEY environment variable not set for Perplexity search provider.")
-            print("Using Perplexity for competitor search.")
+            # Initialize httpx client for Perplexity
+            self.http_client = httpx.AsyncClient(timeout=30.0) # Reuse client
+            logger.info("Using Perplexity for competitor search.")
         else:
             raise ValueError(f"Unsupported SEARCH_PROVIDER: {self.search_provider}. Use 'exa' or 'perplexity'.")
 
         if not self.openai_api_key:
             # ADK might handle LLM client injection differently.
             # Log a warning, but don't prevent initialization. run_async will handle the error.
-            print("Warning: OPENAI_API_KEY not set. Analysis step might fail if using direct OpenAI call.")
+            logger.warning("OPENAI_API_KEY not set. Analysis step might fail if using direct OpenAI call.")
 
 
     async def _find_competitor_urls_exa(self, topic: str, target_url: Optional[str], num_results: int) -> List[str]:
         """Finds competitor URLs using Exa asynchronously."""
         try:
-            print(f"Searching Exa for companies related to topic/URL: {topic or target_url}")
+            logger.info(f"Searching Exa for companies related to topic/URL: {topic or target_url}")
             # Wrap synchronous Exa calls in run_in_executor
             loop = asyncio.get_running_loop()
             if target_url:
@@ -140,11 +147,10 @@ class MarketResearchAgent(Agent):
                     )
                 )
             urls = [item.url for item in result.results]
-            print(f"Exa found URLs: {urls}")
+            logger.info(f"Exa found URLs: {urls}")
             return urls
         except Exception as e:
-            print(f"Error fetching competitor URLs from Exa: {str(e)}")
-            # logger.error(f"Error fetching competitor URLs from Exa: {str(e)}", exc_info=True)
+            logger.error(f"Error fetching competitor URLs from Exa: {str(e)}", exc_info=True)
             return [] # Return empty list on error, handled in run_async
 
     async def _find_competitor_urls_perplexity(self, topic: str, target_url: Optional[str], num_results: int) -> List[str]:
@@ -159,7 +165,7 @@ class MarketResearchAgent(Agent):
             content += f"related to the topic: {topic}"
         content += ". ONLY RESPOND WITH THE URLS, each on a new line, NO OTHER TEXT."
 
-        print(f"Querying Perplexity: {content}")
+        logger.info(f"Querying Perplexity API...") # Don't log the full content potentially containing sensitive info
 
         payload = {
             "model": "sonar-large-32k-online", # Use online model for web search
@@ -177,13 +183,10 @@ class MarketResearchAgent(Agent):
         }
 
         try:
-            # Use an async HTTP client like httpx if added as dependency, otherwise wrap sync requests
-            loop = asyncio.get_running_loop()
-            # NOTE: Consider replacing 'requests' with 'httpx' for native async
-            response = await loop.run_in_executor(
-                None,
-                lambda: requests.post(perplexity_url, json=payload, headers=headers, timeout=30) # Add timeout
-            )
+            # Use native async httpx client
+            async with self.http_client as client: # Use the initialized client
+                 response = await client.post(perplexity_url, json=payload, headers=headers) # Removed timeout here, set on client init
+
             response.raise_for_status() # Raise HTTPError for bad responses (4xx or 5xx)
             response_data = response.json()
             message_content = response_data.get('choices', [{}])[0].get('message', {}).get('content', '')
@@ -192,30 +195,24 @@ class MarketResearchAgent(Agent):
                 url.strip() for url in message_content.strip().split('\n')
                 if url.strip().startswith('http')
             ]
-            print(f"Perplexity found URLs: {urls}")
+            logger.info(f"Perplexity found URLs: {urls}")
             return urls[:num_results] # Ensure we only return the requested number
-        except requests.exceptions.RequestException as e:
-            print(f"Error fetching competitor URLs from Perplexity: {str(e)}")
-            # logger.error(f"Error fetching competitor URLs from Perplexity: {str(e)}", exc_info=True)
-            if e.response is not None:
-                try:
-                    print(f"Perplexity Response Status: {e.response.status_code}")
-                    print(f"Perplexity Response Body: {e.response.text}")
-                except Exception:
-                    pass # Ignore errors during error logging
+        except httpx.HTTPStatusError as e: # Catch httpx specific error
+            logger.error(f"HTTP error fetching competitor URLs from Perplexity: {e.response.status_code} - {e.response.text}", exc_info=True)
+            return [] # Return empty list on error
+        except httpx.RequestError as e: # Catch other httpx request errors
+            logger.error(f"Request error fetching competitor URLs from Perplexity: {str(e)}", exc_info=True)
             return [] # Return empty list on error
         except Exception as e:
-            print(f"Unexpected error processing Perplexity response: {str(e)}")
-            # logger.error(f"Unexpected error processing Perplexity response: {str(e)}", exc_info=True)
+            logger.error(f"Unexpected error processing Perplexity response: {str(e)}", exc_info=True)
             return [] # Return empty list on error
 
 
     async def _extract_competitor_info(self, competitor_url: str) -> Optional[CompetitorInfo]:
-        """Extracts structured data from a competitor URL using Firecrawl asynchronously."""
-        print(f"Extracting data from URL: {competitor_url}")
+        """Extracts structured data from a competitor URL using AsyncFirecrawlApp."""
+        logger.info(f"Extracting data from URL: {competitor_url} using AsyncFirecrawlApp")
         try:
-            # Wrap synchronous Firecrawl calls in run_in_executor
-            # NOTE: Check if FirecrawlApp offers an async client/methods
+            # Use AsyncFirecrawlApp directly
             extraction_prompt = """
             Extract detailed information about the company's offerings from its website ({competitor_url}), focusing on:
             - Company name and basic information
@@ -227,23 +224,20 @@ class MarketResearchAgent(Agent):
 
             Analyze the website content to provide comprehensive information for each field based *only* on the website's content. If information isn't found, indicate 'N/A' or omit the field.
             """
-            loop = asyncio.get_running_loop()
-            response = await loop.run_in_executor(
-                None,
-                lambda: self.firecrawl_client.extract(
-                    url=competitor_url,
-                    params={
-                        'extractorOptions': {
-                            'mode': 'llm-extraction',
-                            'extractionPrompt': extraction_prompt.format(competitor_url=competitor_url),
-                            'extractionSchema': FirecrawlExtractSchema.model_json_schema(),
-                        },
-                        'pageOptions': {
-                            'onlyMainContent': True # Focus extraction
-                        }
+            # Call async extract method
+            response = await self.firecrawl_client.extract(
+                url=competitor_url,
+                params={
+                    'extractorOptions': {
+                        'mode': 'llm-extraction',
+                        'extractionPrompt': extraction_prompt.format(competitor_url=competitor_url),
+                        'extractionSchema': FirecrawlExtractSchema.model_json_schema(),
                     },
-                    timeout=60 # Add timeout for extraction
-                )
+                    'pageOptions': {
+                        'onlyMainContent': True # Focus extraction
+                    }
+                },
+                timeout=60 # Keep timeout for extraction
             )
 
             if response and isinstance(response, dict) and response.get('data'):
@@ -258,18 +252,17 @@ class MarketResearchAgent(Agent):
                     marketing_focus=extracted_data.get('marketing_focus'),
                     customer_feedback=extracted_data.get('customer_feedback')
                 )
-                print(f"Successfully extracted data for {competitor_url}")
+                logger.info(f"Successfully extracted data for {competitor_url}")
                 return info
             else:
-                 print(f"Firecrawl extraction did not return valid data for {competitor_url}. Response: {response}")
+                 logger.warning(f"Firecrawl extraction did not return valid data for {competitor_url}. Response: {response}")
                  return None
 
         except (ValidationError, TypeError) as e:
-             print(f"Pydantic validation error processing Firecrawl data for {competitor_url}: {e}")
+             logger.error(f"Pydantic validation error processing Firecrawl data for {competitor_url}: {e}", exc_info=True)
              return None
         except Exception as e:
-            print(f"Error extracting data from {competitor_url}: {str(e)}")
-            # logger.error(f"Error extracting data from {competitor_url}: {str(e)}", exc_info=True)
+            logger.error(f"Error extracting data from {competitor_url}: {str(e)}", exc_info=True)
             return None # Return None on error, handled in run_async
 
     async def _generate_analysis(self, competitors_data: List[CompetitorInfo]) -> Union[MarketOpportunityReport, str]:
@@ -277,10 +270,10 @@ class MarketResearchAgent(Agent):
         Analyzes competitor data using an LLM to generate the final report asynchronously.
         Returns MarketOpportunityReport on success, or an error message string on failure.
         """
-        print("Generating analysis using LLM...")
+        logger.info("Generating analysis using LLM...")
         if not self.openai_api_key:
              error_msg = "OPENAI_API_KEY is required for the analysis step but is not configured."
-             print(f"Error: {error_msg}")
+             logger.error(error_msg)
              return error_msg # Return error message string
 
         # Prepare data, ensuring it's valid JSON
@@ -288,7 +281,7 @@ class MarketResearchAgent(Agent):
             competitors_json = json.dumps([c.model_dump(exclude_none=True) for c in competitors_data], indent=2)
         except TypeError as e:
             error_msg = f"Failed to serialize competitor data to JSON: {e}"
-            print(f"Error: {error_msg}")
+            logger.error(error_msg, exc_info=True)
             return error_msg
 
         system_prompt = f"""
@@ -350,28 +343,25 @@ Focus on actionable insights derived *only* from the provided competitor data. B
                 feature_recommendations=analysis_data.get("feature_recommendations", []),
                 target_audience_suggestions=analysis_data.get("target_audience_suggestions", [])
             )
-            print("Successfully generated and validated analysis.")
+            logger.info("Successfully generated and validated analysis.")
             return report # Return the Pydantic model instance
 
         except ImportError:
              error_msg = "OpenAI library not installed or async client not available. Cannot perform analysis."
-             print(f"Error: {error_msg}")
+             logger.error(error_msg, exc_info=True)
              return error_msg
         except openai.APIError as e:
             error_msg = f"OpenAI API error during analysis: {e}"
-            print(f"Error: {error_msg}")
-            # logger.error(error_msg, exc_info=True)
+            logger.error(error_msg, exc_info=True)
             return error_msg
         except (json.JSONDecodeError, ValueError, ValidationError, TypeError) as e: # Catch JSON, structure, Pydantic, and Type errors
             error_msg = f"Failed to process or validate LLM response: {e}. Response received: {analysis_json_str}"
-            print(f"Error: {error_msg}")
-            # logger.error(error_msg, exc_info=True)
+            logger.error(error_msg, exc_info=True)
             return error_msg # Return error message string
         except Exception as e:
             # Catch any other unexpected errors
             error_msg = f"Unexpected error during LLM analysis: {str(e)}"
-            print(f"Error: {error_msg}")
-            # logger.error(error_msg, exc_info=True)
+            logger.error(error_msg, exc_info=True)
             return error_msg # Return error message string
 
 
@@ -380,7 +370,7 @@ Focus on actionable insights derived *only* from the provided competitor data. B
         Executes the market research workflow asynchronously according to ADK spec.
         Reads input from context, performs research, and returns an Event.
         """
-        print(f"Received invocation for MarketResearchAgent (ID: {context.invocation_id})")
+        logger.info(f"Received invocation for MarketResearchAgent (ID: {context.invocation_id})")
         agent_id = context.agent_id
         invocation_id = context.invocation_id
 
@@ -390,11 +380,10 @@ Focus on actionable insights derived *only* from the provided competitor data. B
                 if not isinstance(context.input, dict):
                      raise TypeError(f"Expected dict input, got {type(context.input)}")
                 inputs = MarketResearchInput(**context.input)
-                print(f"Parsed input: Topic='{inputs.initial_topic}', Target URL='{inputs.target_url}', Num Competitors={inputs.num_competitors}")
+                logger.info(f"Parsed input: Topic='{inputs.initial_topic}', Target URL='{inputs.target_url}', Num Competitors={inputs.num_competitors}")
             except (ValidationError, TypeError) as e:
                 error_msg = f"Input validation/parsing failed: {e}"
-                print(f"Error: {error_msg}")
-                # logger.error(error_msg, exc_info=True)
+                logger.error(error_msg, exc_info=True)
                 return Event(
                     agent_id=agent_id,
                     invocation_id=invocation_id,
@@ -404,7 +393,7 @@ Focus on actionable insights derived *only* from the provided competitor data. B
                 )
 
             # 2. Find Competitor URLs (using configured provider)
-            print(f"Finding competitors using {self.search_provider}...")
+            logger.info(f"Finding competitors using {self.search_provider}...")
             target_url_str = str(inputs.target_url) if inputs.target_url else None
             if self.search_provider == "exa":
                 competitor_urls = await self._find_competitor_urls_exa(
@@ -430,7 +419,7 @@ Focus on actionable insights derived *only* from the provided competitor data. B
 
             if not competitor_urls:
                 warning_msg = "No competitor URLs found for the given topic/URL."
-                print(f"Warning: {warning_msg}")
+                logger.warning(warning_msg)
                 # Return a successful event but indicate no competitors found via payload
                 empty_report = MarketOpportunityReport(
                     competitors=[],
@@ -453,7 +442,7 @@ Focus on actionable insights derived *only* from the provided competitor data. B
                 )
 
             # 3. Extract Data for each Competitor (concurrently)
-            print(f"Attempting to extract data for {len(competitor_urls)} competitors: {competitor_urls}")
+            logger.info(f"Attempting to extract data for {len(competitor_urls)} competitors: {competitor_urls}")
             extraction_tasks = [self._extract_competitor_info(url) for url in competitor_urls]
             # Use gather with return_exceptions=True to handle individual extraction failures
             results = await asyncio.gather(*extraction_tasks, return_exceptions=True)
@@ -468,16 +457,15 @@ Focus on actionable insights derived *only* from the provided competitor data. B
                     failed_extractions += 1
                     error_detail = f"URL: {competitor_urls[i]}, Error: {str(res)}"
                     extraction_errors.append(error_detail)
-                    print(f"Warning: Failed extraction for {competitor_urls[i]}. Error: {res}")
-                    # logger.warning(f"Failed extraction for {competitor_urls[i]}", exc_info=res if isinstance(res, Exception) else None)
+                    logger.warning(f"Failed extraction for {competitor_urls[i]}. Error: {res}", exc_info=res if isinstance(res, Exception) else None)
 
 
             if not competitors_data:
                  error_msg = "Could not extract data from any identified competitor URLs."
-                 print(f"Error: {error_msg}")
+                 logger.error(f"{error_msg} Errors: {extraction_errors}")
                  # Return error event as extraction failed completely
                  return Event(
-                    agent_id=agent_id,
+                     agent_id=agent_id,
                     invocation_id=invocation_id,
                     severity=EventSeverity.ERROR, # Extraction failure is an error
                     message=error_msg,
@@ -488,15 +476,15 @@ Focus on actionable insights derived *only* from the provided competitor data. B
             partial_extraction_warning = ""
             if failed_extractions > 0:
                 partial_extraction_warning = f" Failed to extract data for {failed_extractions} URL(s)."
-                print(f"Warning: Proceeding with data from {len(competitors_data)} out of {len(competitor_urls)} competitors.")
+                logger.warning(f"Proceeding with data from {len(competitors_data)} out of {len(competitor_urls)} competitors. Errors: {extraction_errors}")
 
             # 4. Generate Final Analysis Report using LLM
-            print(f"Generating final analysis report based on data from {len(competitors_data)} competitors...")
+            logger.info(f"Generating final analysis report based on data from {len(competitors_data)} competitors...")
             analysis_result = await self._generate_analysis(competitors_data)
 
             if isinstance(analysis_result, str): # Check if analysis returned an error message string
                 error_msg = f"Analysis generation failed: {analysis_result}"
-                print(f"Error: {error_msg}")
+                logger.error(error_msg)
                 # Return error event, include extracted data for debugging
                 return Event(
                     agent_id=agent_id,
@@ -512,7 +500,7 @@ Focus on actionable insights derived *only* from the provided competitor data. B
             # If analysis succeeded, analysis_result is a MarketOpportunityReport
             final_report: MarketOpportunityReport = analysis_result
             success_message = f"Market research completed. Analyzed {len(competitors_data)} competitors." + partial_extraction_warning
-            print(success_message)
+            logger.info(success_message)
 
             # 5. Return Success Event
             return Event(
@@ -526,8 +514,7 @@ Focus on actionable insights derived *only* from the provided competitor data. B
         except Exception as e:
             # Catch-all for unexpected errors during the main execution flow
             error_msg = f"Unexpected fatal error in MarketResearchAgent execution: {str(e)}"
-            print(f"Fatal Error: {error_msg}")
-            # logger.error(error_msg, exc_info=True)
+            logger.critical(error_msg, exc_info=True) # Use critical for fatal errors
             # Use severity FATAL for unhandled exceptions in the main flow
             return Event(
                 agent_id=agent_id if 'agent_id' in locals() else 'unknown', # Use agent_id if available

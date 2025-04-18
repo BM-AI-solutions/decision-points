@@ -14,16 +14,14 @@ from google.adk.runtime import InvocationContext
 from google.adk.runtime.event import Event, EventType
 
 # --- Configuration ---
-# URLs for the individual agent services (replace with actual URLs when deployed)
-AGENT_URLS = {
-    "market_research": os.getenv("MARKET_RESEARCH_AGENT_URL", "http://localhost:8001/run"),
-    "improvement": os.getenv("IMPROVEMENT_AGENT_URL", "http://localhost:8002/run"),
-    "branding": os.getenv("BRANDING_AGENT_URL", "http://localhost:8003/run"),
-    "deployment": os.getenv("DEPLOYMENT_AGENT_URL", "http://localhost:8004/run"),
-}
-AGENT_TIMEOUT = int(os.getenv("AGENT_TIMEOUT_SECONDS", 300)) # Timeout for agent calls
+AGENT_TIMEOUT_SECONDS = int(os.getenv("AGENT_TIMEOUT_SECONDS", 300)) # Timeout for A2A calls
 
 # --- Data Models (Input/Output Schemas) ---
+# These should ideally match the actual schemas defined in the respective agent files.
+# Simplified versions are kept here for clarity and potential fallback.
+# NOTE: These models are used for structuring data internally within the workflow manager,
+#       but the actual A2A calls will send/receive data compatible with the target agent's
+#       expected input/output Event schemas.
 # These should ideally match the actual schemas defined in the respective agent files.
 # Simplified versions are kept here for clarity and potential fallback.
 
@@ -98,18 +96,6 @@ class WorkflowStage(str, Enum):
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
 
-# --- Agent Communication Payloads ---
-class AgentRequest(BaseModel):
-    task_id: str # Corresponds to ADK invocation_id
-    stage: str # Identifier for the agent's task
-    input_data: Dict[str, Any]
-
-class AgentResponse(BaseModel):
-    task_id: str
-    status: str # "success" or "failure"
-    result: Optional[Dict[str, Any]] = None
-    error_message: Optional[str] = None
-
 # --- Workflow Manager Agent ---
 
 class WorkflowManagerAgent(Agent):
@@ -122,91 +108,91 @@ class WorkflowManagerAgent(Agent):
         super().__init__(agent_id="workflow_manager_agent")
         print("WorkflowManagerAgent initialized (ADK compliant).")
         # Async HTTP client for A2A calls
-        self._http_client = httpx.AsyncClient(timeout=AGENT_TIMEOUT)
+        self._http_client = httpx.AsyncClient(timeout=AGENT_TIMEOUT_SECONDS)
 
     async def close(self):
         """Clean up resources, like the HTTP client."""
         await self._http_client.aclose()
         print("WorkflowManagerAgent closed.")
 
-    async def _async_call_agent(
+    async def _invoke_a2a_agent(
         self,
         agent_name: str,
+        agent_env_var: str, # e.g., "MARKET_RESEARCH_AGENT_URL"
+        endpoint_suffix: str, # e.g., "market_research"
         invocation_id: str,
-        stage_name: str,
-        input_payload: BaseModel,
-        expected_result_model: Optional[type[BaseModel]] = None
-    ) -> Dict[str, Any]:
-        """Helper function to call another agent asynchronously via REST API."""
-        agent_url = AGENT_URLS.get(agent_name)
-        if not agent_url:
-            raise ValueError(f"URL for agent '{agent_name}' not configured.")
+        payload: Dict[str, Any],
+    ) -> Event:
+        """
+        Helper function to invoke another agent's A2A endpoint asynchronously.
 
-        request_body = AgentRequest(
-            task_id=invocation_id,
-            stage=stage_name,
-            input_data=input_payload.model_dump(exclude_none=True, mode='json') # Ensure JSON serializable
-        )
+        Args:
+            agent_name: User-friendly name of the agent (for logging).
+            agent_env_var: Environment variable name holding the agent's base URL.
+            endpoint_suffix: The specific part for the A2A route (e.g., 'market_research').
+            invocation_id: The current workflow invocation ID (for logging).
+            payload: The data dictionary to send as the JSON body.
 
-        print(f"[{invocation_id}] Calling {agent_name} agent at {agent_url} for stage {stage_name}...")
+        Returns:
+            An Event object representing the result or error from the agent.
+        """
+        agent_base_url = os.getenv(agent_env_var)
+        if not agent_base_url:
+            error_msg = f"URL for agent '{agent_name}' ({agent_env_var}) not configured in environment."
+            print(f"[{invocation_id}] Error: {error_msg}")
+            return Event(type=EventType.ERROR, data={"error": error_msg})
+
+        # Construct the full A2A endpoint URL
+        endpoint_url = f"{agent_base_url.rstrip('/')}/a2a/{endpoint_suffix}/invoke"
         headers = {'Content-Type': 'application/json', 'Accept': 'application/json'}
+
+        print(f"[{invocation_id}] Invoking {agent_name} A2A endpoint at {endpoint_url}...")
 
         try:
             response = await self._http_client.post(
-                agent_url,
+                endpoint_url,
+                json=payload, # httpx handles JSON serialization
                 headers=headers,
-                content=request_body.model_dump_json() # Send as JSON string
+                timeout=AGENT_TIMEOUT_SECONDS # Use configured timeout
             )
             response.raise_for_status() # Raise HTTPError for bad responses (4xx or 5xx)
 
-            response_data = response.json()
-            agent_response = AgentResponse(**response_data)
+            # Deserialize response directly into an Event object
+            event_data = response.json()
+            result_event = Event(**event_data)
 
-            if agent_response.status != "success":
-                error_msg = f"Agent '{agent_name}' failed: {agent_response.error_message or 'Unknown error'}"
-                print(f"[{invocation_id}] {error_msg}")
-                raise RuntimeError(error_msg)
+            # Basic validation: Check if it looks like a valid Event structure
+            if not hasattr(result_event, 'type') or not hasattr(result_event, 'data'):
+                 raise ValidationError("Response is not a valid Event structure.")
 
-            if not agent_response.result:
-                 error_msg = f"Agent '{agent_name}' succeeded but returned no result data."
-                 print(f"[{invocation_id}] {error_msg}")
-                 raise RuntimeError(error_msg)
-
-            # Validate the result against the expected Pydantic model if provided
-            if expected_result_model:
-                try:
-                    validated_result = expected_result_model(**agent_response.result).model_dump()
-                    print(f"[{invocation_id}] Agent '{agent_name}' succeeded.")
-                    return validated_result
-                except ValidationError as ve:
-                    error_msg = f"Agent '{agent_name}' response validation failed: {ve}"
-                    print(f"[{invocation_id}] {error_msg}")
-                    raise RuntimeError(error_msg)
-            else:
-                 print(f"[{invocation_id}] Agent '{agent_name}' succeeded (no result validation).")
-                 return agent_response.result # Return raw dict if no model provided
+            print(f"[{invocation_id}] Agent '{agent_name}' A2A call successful. Event Type: {result_event.type}")
+            return result_event
 
         except httpx.TimeoutException:
-            error_msg = f"Timeout calling {agent_name} agent at {agent_url}"
+            error_msg = f"Timeout calling {agent_name} A2A endpoint at {endpoint_url}"
             print(f"[{invocation_id}] Error: {error_msg}")
-            raise TimeoutError(error_msg)
+            return Event(type=EventType.ERROR, data={"error": error_msg, "details": "Timeout"})
         except httpx.RequestError as e:
+            # Includes ConnectionError, HTTPStatusError (from raise_for_status), etc.
             error_detail = str(e)
             if e.response:
                 try:
-                    error_detail += f" | Response: {e.response.text}"
-                except Exception: pass
-            error_msg = f"HTTP error calling {agent_name} agent: {error_detail}"
+                    error_detail += f" | Status: {e.response.status_code} | Response: {e.response.text[:500]}" # Limit response size
+                except Exception: pass # Ignore errors reading response text
+            error_msg = f"HTTP error calling {agent_name} A2A endpoint: {error_detail}"
             print(f"[{invocation_id}] Error: {error_msg}")
-            raise ConnectionError(error_msg)
+            return Event(type=EventType.ERROR, data={"error": error_msg, "details": "HTTP Request Error"})
         except (json.JSONDecodeError, ValidationError, TypeError) as e:
-            error_msg = f"Failed to process or validate response from {agent_name}: {e}"
+            # Handles issues with response format or deserializing into Event
+            error_msg = f"Failed to process or validate A2A response from {agent_name}: {e}"
             print(f"[{invocation_id}] Error: {error_msg}")
-            raise ValueError(error_msg)
+            return Event(type=EventType.ERROR, data={"error": error_msg, "details": "Invalid Response Format"})
         except Exception as e:
-            error_msg = f"Unexpected error during {agent_name} call: {e}"
+            # Catch unexpected errors during the call
+            error_msg = f"Unexpected error during {agent_name} A2A call: {type(e).__name__}: {e}"
             print(f"[{invocation_id}] Error: {error_msg}")
-            raise e # Re-raise unexpected errors
+            # Consider logging the full traceback here
+            return Event(type=EventType.ERROR, data={"error": error_msg, "details": "Unexpected Error"})
 
 
     async def run_async(self, context: InvocationContext) -> Event:
@@ -238,69 +224,140 @@ class WorkflowManagerAgent(Agent):
             # --- Stage 1: Market Research ---
             current_stage = WorkflowStage.MARKET_RESEARCH
             print(f"\n[{invocation_id}] --- Starting Stage 1: {current_stage.value} ---")
-            market_input = MarketResearchInput(initial_topic=initial_topic, target_url=target_url)
-            market_report_data = await self._async_call_agent(
-                "market_research", invocation_id, "stage_1_market_research", market_input, MarketOpportunityReport
+            # Prepare payload for Market Research Agent A2A call
+            market_research_payload = MarketResearchInput(
+                initial_topic=initial_topic,
+                target_url=target_url
+            ).model_dump(exclude_none=True)
+
+            market_event = await self._invoke_a2a_agent(
+                agent_name="Market Research",
+                agent_env_var="MARKET_RESEARCH_AGENT_URL",
+                endpoint_suffix="market_research",
+                invocation_id=invocation_id,
+                payload=market_research_payload,
             )
-            # Ensure necessary fields exist for the next step, even if optional in the model
-            market_report_data.setdefault('competitor_weaknesses', [])
-            market_report_data.setdefault('market_gaps', [])
-            market_report_data.setdefault('target_audience_suggestions', [])
-            market_report_data.setdefault('feature_recommendations', [])
+
+            if market_event.type == EventType.ERROR:
+                raise RuntimeError(f"Market Research Agent failed: {market_event.data.get('error', 'Unknown error')}")
+            if not market_event.data:
+                 raise RuntimeError("Market Research Agent returned no data.")
+
+            # Use the internal model for structure, but data comes from the event
+            try:
+                market_report = MarketOpportunityReport(**market_event.data)
+                market_report_data = market_report.model_dump() # Keep data as dict for consistency
+            except ValidationError as ve:
+                raise RuntimeError(f"Market Research Agent response validation failed: {ve}")
+
             print(f"[{invocation_id}] --- Stage 1 Complete ---")
 
 
             # --- Stage 2: Product Improvement ---
             current_stage = WorkflowStage.IMPROVEMENT
             print(f"\n[{invocation_id}] --- Starting Stage 2: {current_stage.value} ---")
-            # TODO: Determine business_model_type properly if needed
-            business_model_type = "saas" # Placeholder
-            improvement_input = ImprovementAgentInput(
-                product_concept=initial_topic, # Or derive from market_report?
-                competitor_weaknesses=market_report_data['competitor_weaknesses'],
-                market_gaps=market_report_data['market_gaps'],
-                target_audience_suggestions=market_report_data['target_audience_suggestions'],
-                feature_recommendations_from_market=market_report_data['feature_recommendations'],
-                business_model_type=business_model_type
+            # Prepare payload for Improvement Agent A2A call
+            # Ensure necessary fields exist, providing defaults if missing from market report
+            improvement_payload = ImprovementAgentInput(
+                product_concept=initial_topic, # Base concept
+                competitor_weaknesses=market_report_data.get('competitor_weaknesses', []),
+                market_gaps=market_report_data.get('market_gaps', []),
+                target_audience_suggestions=market_report_data.get('target_audience_suggestions', []),
+                feature_recommendations_from_market=market_report_data.get('feature_recommendations', []),
+                business_model_type="saas" # Placeholder - should ideally be determined earlier or passed in
+            ).model_dump(exclude_none=True)
+
+            improvement_event = await self._invoke_a2a_agent(
+                agent_name="Improvement",
+                agent_env_var="IMPROVEMENT_AGENT_URL",
+                endpoint_suffix="improvement",
+                invocation_id=invocation_id,
+                payload=improvement_payload,
             )
-            product_spec_data = await self._async_call_agent(
-                "improvement", invocation_id, "stage_2_improvement", improvement_input, ImprovedProductSpec
-            )
+
+            if improvement_event.type == EventType.ERROR:
+                raise RuntimeError(f"Improvement Agent failed: {improvement_event.data.get('error', 'Unknown error')}")
+            if not improvement_event.data:
+                 raise RuntimeError("Improvement Agent returned no data.")
+
+            try:
+                product_spec = ImprovedProductSpec(**improvement_event.data)
+                product_spec_data = product_spec.model_dump()
+            except ValidationError as ve:
+                raise RuntimeError(f"Improvement Agent response validation failed: {ve}")
+
             print(f"[{invocation_id}] --- Stage 2 Complete ---")
 
 
             # --- Stage 3: Rebranding ---
             current_stage = WorkflowStage.BRANDING
             print(f"\n[{invocation_id}] --- Starting Stage 3: {current_stage.value} ---")
-            # TODO: Extract keywords more intelligently
-            keywords = product_spec_data['product_concept'].lower().split()[:5]
-            branding_input = BrandingAgentInput(
-                product_concept=product_spec_data['product_concept'],
-                target_audience=product_spec_data['target_audience'],
+            # Prepare payload for Branding Agent A2A call
+            # Extract keywords simply for now
+            keywords = product_spec_data.get('product_concept', '').lower().split()[:5]
+            branding_payload = BrandingAgentInput(
+                product_concept=product_spec_data.get('product_concept', initial_topic),
+                target_audience=product_spec_data.get('target_audience', []),
                 keywords=keywords,
-                business_model_type=business_model_type # Pass from previous stage
+                business_model_type=improvement_payload.get('business_model_type') # Pass from previous input
+            ).model_dump(exclude_none=True)
+
+            branding_event = await self._invoke_a2a_agent(
+                agent_name="Branding",
+                agent_env_var="BRANDING_AGENT_URL",
+                endpoint_suffix="branding",
+                invocation_id=invocation_id,
+                payload=branding_payload,
             )
-            brand_package_data = await self._async_call_agent(
-                "branding", invocation_id, "stage_3_branding", branding_input, BrandPackage
-            )
+
+            if branding_event.type == EventType.ERROR:
+                raise RuntimeError(f"Branding Agent failed: {branding_event.data.get('error', 'Unknown error')}")
+            if not branding_event.data:
+                 raise RuntimeError("Branding Agent returned no data.")
+
+            try:
+                brand_package = BrandPackage(**branding_event.data)
+                brand_package_data = brand_package.model_dump()
+            except ValidationError as ve:
+                raise RuntimeError(f"Branding Agent response validation failed: {ve}")
+
             print(f"[{invocation_id}] --- Stage 3 Complete ---")
 
 
             # --- Stage 4: Deployment ---
             current_stage = WorkflowStage.DEPLOYMENT
             print(f"\n[{invocation_id}] --- Starting Stage 4: {current_stage.value} ---")
-            deployment_input = DeploymentAgentInput(
-                brand_name=brand_package_data['brand_name'],
-                product_concept=product_spec_data['product_concept'],
-                key_features=product_spec_data['key_features']
-            )
-            deployment_result_data = await self._async_call_agent(
-                "deployment", invocation_id, "stage_4_deployment", deployment_input, DeploymentResult
+            # Prepare payload for Deployment Agent A2A call
+            deployment_payload = DeploymentAgentInput(
+                brand_name=brand_package_data.get('brand_name', 'Unnamed Brand'),
+                product_concept=product_spec_data.get('product_concept', initial_topic),
+                key_features=product_spec_data.get('key_features', [])
+            ).model_dump(exclude_none=True)
+
+            deployment_event = await self._invoke_a2a_agent(
+                agent_name="Deployment",
+                agent_env_var="DEPLOYMENT_AGENT_URL",
+                endpoint_suffix="deployment",
+                invocation_id=invocation_id,
+                payload=deployment_payload,
             )
 
+            if deployment_event.type == EventType.ERROR:
+                raise RuntimeError(f"Deployment Agent failed: {deployment_event.data.get('error', 'Unknown error')}")
+            if not deployment_event.data:
+                 raise RuntimeError("Deployment Agent returned no data.")
+
+            try:
+                # DeploymentResult is used internally, data comes from event
+                deployment_result = DeploymentResult(**deployment_event.data)
+                deployment_result_data = deployment_result.model_dump()
+            except ValidationError as ve:
+                 raise RuntimeError(f"Deployment Agent response validation failed: {ve}")
+
             # Check status within the deployment result itself
-            if deployment_result_data.get('status') != "ACTIVE":
-                 raise RuntimeError(f"Deployment simulation resulted in status: {deployment_result_data.get('status', 'UNKNOWN')}")
+            # Assuming the Deployment Agent returns status in its Event data
+            if deployment_result_data.get('status', '').upper() != "ACTIVE":
+                 raise RuntimeError(f"Deployment Agent reported non-ACTIVE status: {deployment_result_data.get('status', 'UNKNOWN')}")
 
             print(f"[{invocation_id}] --- Stage 4 Complete ---")
 

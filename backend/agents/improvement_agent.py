@@ -3,6 +3,8 @@ import random
 import asyncio # Added for async
 import logging # Added for logging
 from typing import List, Optional, Dict, Any
+import google.generativeai as genai
+import json # For parsing LLM JSON output
 
 from pydantic import BaseModel, Field, ValidationError
 
@@ -43,122 +45,42 @@ class ImprovementAgent(Agent): # Inherit from ADK Agent
         super().__init__() # Call parent initializer
         self.logger = logging.getLogger(self.__class__.__name__) # Setup logger
         self.logger.info("Initializing ImprovementAgent...")
-        # In a real scenario, load feature ideas from feature.manager.py logic or a database
-        self._load_feature_ideas()
+        # Initialize the Gemini client
+        # TODO: Make model name configurable (e.g., via environment variable or config)
+        try:
+            # Check if API key is configured (as done in app.py)
+            if os.getenv('GEMINI_API_KEY'):
+                 self.llm = genai.GenerativeModel('gemini-pro') # Or a more advanced model if needed
+                 self.logger.info("Gemini GenerativeModel initialized.")
+            else:
+                 self.llm = None
+                 self.logger.warning("GEMINI_API_KEY not found. LLM functionality will be disabled.")
+        except Exception as e:
+            self.logger.error(f"Failed to initialize Gemini client: {e}", exc_info=True)
+            self.llm = None # Ensure llm is None if init fails
+
+        # self._load_feature_ideas() # Removed - LLM will generate features
         self.logger.info("ImprovementAgent initialized.")
 
-    def _load_feature_ideas(self):
-        """Loads or defines potential feature ideas (based on feature.manager.py)."""
-        # This is a simplified version of the logic in feature.manager.py
-        # In a real implementation, this could be more dynamic or load from a config/DB
-        self.feature_ideas_by_type = {
-             "generic": [
-                {"name": "Automated Marketing Funnel", "desc": "Nurture prospects via email.", "difficulty": 5, "impact": "Medium"},
-                {"name": "Referral System", "desc": "Encourage word-of-mouth.", "difficulty": 4, "impact": "Medium"},
-                {"name": "Basic Analytics Dashboard", "desc": "Track key metrics.", "difficulty": 3, "impact": "Low"},
-                {"name": "User Feedback Collection", "desc": "Gather input for improvement.", "difficulty": 2, "impact": "Low"},
-            ],
-            "e-commerce": [
-                {"name": "Automated Upsell System", "desc": "Suggest related products.", "difficulty": 6, "impact": "High"},
-                {"name": "Abandoned Cart Recovery", "desc": "Email reminders for carts.", "difficulty": 4, "impact": "High"},
-                {"name": "Dynamic Pricing Engine", "desc": "Adjust prices automatically.", "difficulty": 8, "impact": "High"},
-                {"name": "Customer Loyalty Program", "desc": "Reward repeat customers.", "difficulty": 5, "impact": "Medium"},
-            ],
-            "digital_products": [
-                {"name": "Tiered Access System", "desc": "Multiple pricing/access levels.", "difficulty": 5, "impact": "High"},
-                {"name": "Affiliate Program", "desc": "Allow promotion for commission.", "difficulty": 7, "impact": "High"},
-                {"name": "Limited-Time Offers", "desc": "Create urgency.", "difficulty": 3, "impact": "Medium"},
-                {"name": "Bundle Packages", "desc": "Combine products.", "difficulty": 4, "impact": "Medium"},
-            ],
-            "saas": [
-                {"name": "Annual Billing Discount", "desc": "Incentivize annual payment.", "difficulty": 2, "impact": "High"},
-                {"name": "Feature-Based Pricing Tiers", "desc": "Unlock features per tier.", "difficulty": 6, "impact": "High"},
-                {"name": "Enterprise Custom Quotes", "desc": "Handle large client needs.", "difficulty": 4, "impact": "High"},
-                {"name": "Referral Rewards", "desc": "Reward user referrals.", "difficulty": 5, "impact": "Medium"},
-                {"name": "Usage-Based Billing", "desc": "Charge based on consumption.", "difficulty": 7, "impact": "High"},
-                {"name": "API Access for Integrations", "desc": "Allow other tools to connect.", "difficulty": 6, "impact": "Medium"},
-            ]
-        }
-        self.logger.debug("Loaded basic feature ideas.")
+    # Removed _load_feature_ideas as LLM will handle this.
 
-
-    def _select_features(self, inputs: ImprovementAgentInput) -> List[Dict[str, Any]]:
-        """Selects and prioritizes features based on input."""
-        potential_features = []
-        # Add generic features
-        potential_features.extend(self.feature_ideas_by_type.get("generic", []))
-        # Add features based on business model type
-        if inputs.business_model_type:
-            potential_features.extend(self.feature_ideas_by_type.get(inputs.business_model_type.lower(), []))
-
-        # TODO: Add more sophisticated logic here using LLM or rules:
-        # - Prioritize features addressing competitor weaknesses/market gaps.
-        # - Align features with target audience suggestions.
-        # - Consider features from market research recommendations.
-        # - Avoid redundant features.
-
-        # For now, randomly select a few relevant features as a placeholder
-        num_features_to_select = random.randint(3, 5)
-        selected_features_info = []
-
-        # Simple selection logic (placeholder)
-        candidates = potential_features + [{"name": f"Custom: {feat}", "desc": "From market research", "difficulty": random.randint(3,7), "impact": "Medium"} for feat in inputs.feature_recommendations_from_market]
-        # De-duplicate based on name
-        unique_candidates_dict = {feat['name']: feat for feat in candidates}
-        unique_candidates = list(unique_candidates_dict.values())
-
-
-        if len(unique_candidates) <= num_features_to_select:
-             selected_features_info = unique_candidates
-        else:
-             # Ensure random.sample gets a list, not a dict_values object if needed by older python versions
-             selected_features_info = random.sample(unique_candidates, num_features_to_select)
-
-        # Format for output
-        formatted_features = [
-            {
-                "feature_name": f.get("name"),
-                "description": f.get("desc"),
-                "estimated_difficulty": f.get("difficulty"),
-                "estimated_impact": f.get("impact"),
-                # Add placeholder implementation steps (could be LLM generated later)
-                "implementation_steps": [
-                    f"Define requirements for {f.get('name')}",
-                    "Develop backend logic",
-                    "Implement frontend interface",
-                    "Test feature thoroughly"
-                ]
-            } for f in selected_features_info
-        ]
-
-        return formatted_features
-
-    def _generate_usps(self, inputs: ImprovementAgentInput, selected_features: List[Dict[str, Any]]) -> List[str]:
-        """Generates Unique Selling Propositions based on inputs and selected features."""
-        usps = []
-        # Simple heuristic: focus on features addressing weaknesses/gaps
-        # TODO: Use LLM for better USP generation
-        if inputs.competitor_weaknesses:
-            usps.append(f"Addresses key competitor weakness: {random.choice(inputs.competitor_weaknesses)}")
-        if inputs.market_gaps:
-             usps.append(f"Fills market gap: {random.choice(inputs.market_gaps)}")
-        if selected_features:
-             # Highlight a potentially high-impact or unique feature
-             high_impact_features = [f for f in selected_features if f.get("estimated_impact") == "High"]
-             if high_impact_features:
-                 usps.append(f"Offers unique high-impact feature: {random.choice(high_impact_features)['feature_name']}")
-             elif selected_features: # Ensure selected_features is not empty before choosing
-                 usps.append(f"Includes key feature: {random.choice(selected_features)['feature_name']}")
-
-        return list(set(usps))[:3] # Limit to 3 unique USPs
-
+    # Removed _select_features and _generate_usps methods. Logic moved to LLM call in run_async.
     async def run_async(self, context: InvocationContext) -> Event: # Changed to async def run_async
-        """Executes the product improvement workflow asynchronously."""
+        """Executes the product improvement workflow asynchronously using an LLM."""
         self.logger.info(f"Received invocation: {context.invocation_id}")
+
+        # Check if LLM is available
+        if not self.llm:
+            self.logger.error("LLM client not initialized. Cannot proceed.")
+            return ErrorEvent(
+                error_code="LLM_NOT_INITIALIZED",
+                message="LLM client (Gemini) is not available. Check API key and configuration.",
+            )
+
         try:
             # 1. Validate and parse input payload
             if not isinstance(context.input_event.payload, dict):
-                 raise ValueError("Input payload must be a dictionary.")
+                raise ValueError("Input payload must be a dictionary.")
             try:
                 inputs = ImprovementAgentInput(**context.input_event.payload)
                 self.logger.info(f"Starting product improvement analysis for concept: {inputs.product_concept}")
@@ -170,39 +92,66 @@ class ImprovementAgent(Agent): # Inherit from ADK Agent
                     details=e.errors()
                 )
 
-            # 2. Refine Product Concept (Placeholder - could use LLM)
-            # Note: If LLM calls are added, make them async
-            refined_concept = f"Improved {inputs.product_concept} focusing on identified market opportunities."
+            # 2. Prepare Prompt for LLM
+            prompt = self._build_llm_prompt(inputs)
+            self.logger.debug(f"Generated LLM Prompt:\n{prompt}") # Log the prompt for debugging
 
-            # 3. Define Target Audience (Use suggestions or refine with LLM)
-            target_audience = inputs.target_audience_suggestions if inputs.target_audience_suggestions else ["General Audience"]
+            # 3. Call LLM Asynchronously
+            self.logger.info("Calling LLM for product improvement analysis...")
+            try:
+                # Configure for JSON output if the model supports it directly
+                # generation_config = genai.types.GenerationConfig(response_mime_type="application/json")
+                # response = await self.llm.generate_content_async(prompt, generation_config=generation_config)
 
-            # 4. Select Key Features (Synchronous for now)
-            selected_features = self._select_features(inputs)
+                # If direct JSON output isn't reliable/supported, ask for JSON in the prompt and parse manually
+                response = await self.llm.generate_content_async(prompt)
 
-            # 5. Generate USPs (Synchronous for now)
-            usps = self._generate_usps(inputs, selected_features)
+                self.logger.info("LLM call completed.")
+                # Accessing response text - adjust based on actual genai library structure if needed
+                llm_output_text = response.text
 
-            # 6. Estimate Difficulty and Impact (Simple aggregation for now)
-            total_difficulty = sum(f.get("estimated_difficulty", 5) for f in selected_features)
-            avg_difficulty = total_difficulty / len(selected_features) if selected_features else None
-            # Simple impact assessment
-            has_high_impact = any(f.get("estimated_impact") == "High" for f in selected_features)
-            potential_impact = "High" if has_high_impact else "Medium" if selected_features else "Low"
+            except Exception as llm_error:
+                self.logger.error(f"LLM call failed: {llm_error}", exc_info=True)
+                return ErrorEvent(
+                    error_code="LLM_API_ERROR",
+                    message=f"Error interacting with the LLM: {str(llm_error)}",
+                    details={"exception_type": type(llm_error).__name__, "exception_args": llm_error.args}
+                )
+
+            # 4. Parse and Validate LLM Output
+            try:
+                # Clean the output if necessary (e.g., remove markdown code fences)
+                cleaned_output = llm_output_text.strip().removeprefix("```json").removesuffix("```").strip()
+                llm_data = json.loads(cleaned_output)
+                spec = ImprovedProductSpec(**llm_data)
+                self.logger.info("LLM output parsed and validated successfully.")
+            except json.JSONDecodeError as json_err:
+                self.logger.error(f"Failed to parse LLM JSON output: {json_err}")
+                self.logger.debug(f"Raw LLM Output:\n{llm_output_text}") # Log raw output for debugging
+                return ErrorEvent(
+                    error_code="LLM_OUTPUT_PARSE_ERROR",
+                    message=f"Failed to parse JSON from LLM response: {json_err}",
+                    details={"raw_output": llm_output_text}
+                )
+            except ValidationError as validation_err:
+                self.logger.error(f"LLM output validation failed: {validation_err}")
+                self.logger.debug(f"Parsed LLM Data:\n{llm_data}") # Log parsed data for debugging
+                return ErrorEvent(
+                    error_code="LLM_OUTPUT_VALIDATION_ERROR",
+                    message=f"LLM output did not match expected format: {validation_err}",
+                    details={"parsed_data": llm_data, "validation_errors": validation_err.errors()}
+                )
+            except Exception as parse_err: # Catch any other parsing/validation issues
+                 self.logger.error(f"Error processing LLM output: {parse_err}", exc_info=True)
+                 return ErrorEvent(
+                    error_code="LLM_PROCESSING_ERROR",
+                    message=f"An unexpected error occurred while processing LLM output: {str(parse_err)}",
+                    details={"exception_type": type(parse_err).__name__, "exception_args": parse_err.args}
+                )
 
 
-            # 7. Construct the Output Specification
-            spec = ImprovedProductSpec(
-                product_concept=refined_concept,
-                target_audience=target_audience,
-                key_features=selected_features,
-                unique_selling_propositions=usps,
-                implementation_difficulty_estimate=int(round(avg_difficulty)) if avg_difficulty is not None else None,
-                potential_revenue_impact_estimate=potential_impact
-            )
-
-            self.logger.info("Product improvement analysis finished successfully.")
-            # 8. Return result as an ADK Event
+            # 5. Return result as an ADK Event
+            self.logger.info("Product improvement analysis finished successfully using LLM.")
             return Event(
                 event_type="product.improvement.completed",
                 payload=spec.model_dump() # Use model_dump for Pydantic v2
@@ -216,5 +165,67 @@ class ImprovementAgent(Agent): # Inherit from ADK Agent
                 message=f"An unexpected error occurred: {str(e)}",
                 details={"exception_type": type(e).__name__, "exception_args": e.args}
             )
+
+    def _build_llm_prompt(self, inputs: ImprovementAgentInput) -> str:
+        """Constructs the prompt for the LLM based on the input data."""
+
+        # Define the desired JSON output structure for the LLM
+        # Use model_json_schema for Pydantic v2
+        output_schema_description = json.dumps(ImprovedProductSpec.model_json_schema(), indent=2)
+
+
+        prompt = f"""
+Analyze the provided market research data and generate an improved product specification.
+
+**Input Data:**
+
+*   **Initial Product Concept:** {inputs.product_concept}
+*   **Competitor Weaknesses:** {inputs.competitor_weaknesses or 'None provided'}
+*   **Market Gaps:** {inputs.market_gaps or 'None provided'}
+*   **Target Audience Suggestions (from research):** {inputs.target_audience_suggestions or 'None provided'}
+*   **Feature Recommendations (from research):** {inputs.feature_recommendations_from_market or 'None provided'}
+*   **Business Model Type:** {inputs.business_model_type or 'Not specified'}
+
+**Task:**
+
+Based on the input data, perform the following analysis and generate a JSON object matching the schema below:
+
+1.  **Refine Product Concept:** Briefly refine the initial concept to incorporate market opportunities or address identified gaps/weaknesses.
+2.  **Define Target Audience:** Specify the primary target audience(s) for the improved product, considering the research suggestions.
+3.  **Identify Key Features:** Propose 3-5 core features for the improved product. Prioritize features that:
+    *   Address competitor weaknesses or market gaps.
+    *   Align with the target audience and business model.
+    *   Incorporate relevant recommendations from the initial research.
+    *   For each feature, provide a name (`feature_name`: string), description (`description`: string), estimated implementation difficulty (`estimated_difficulty`: integer 1-10), estimated potential impact (`estimated_impact`: string "Low", "Medium", or "High"), and brief potential implementation steps (`implementation_steps`: list of strings).
+4.  **Generate Unique Selling Propositions (USPs):** List 2-3 compelling USPs based on the refined concept and key features. Highlight what makes this product stand out.
+5.  **Estimate Overall Difficulty & Impact:** Provide an overall implementation difficulty estimate (`implementation_difficulty_estimate`: integer 1-10) and potential revenue impact estimate (`potential_revenue_impact_estimate`: string "Low", "Medium", or "High") for the entire proposed specification.
+
+**Output Format:**
+
+Generate ONLY a valid JSON object adhering to the following Pydantic schema. Do not include any explanatory text, markdown formatting, or code fences before or after the JSON object.
+
+```json
+{output_schema_description}
+```
+
+**Example Feature Structure (within key_features list):**
+```json
+{{
+  "feature_name": "Example Feature",
+  "description": "Detailed description of what the feature does.",
+  "estimated_difficulty": 6,
+  "estimated_impact": "High",
+  "implementation_steps": [
+    "Step 1: Define requirements",
+    "Step 2: Backend development",
+    "Step 3: Frontend integration",
+    "Step 4: Testing"
+  ]
+}}
+```
+
+Now, generate the JSON output based on the provided input data.
+"""
+        return prompt
 
 # Removed the __main__ block as it's not typical for ADK agents

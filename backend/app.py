@@ -18,6 +18,7 @@ from utils.logger import setup_logger
 from routes import auth, market, business, features, deployment, cashflow, workflows, analytics, insights, customers
 from routes import auth, market, business, features, deployment, cashflow, workflows, analytics, insights, customers, revenue
 from routes import orchestrator # Import the new orchestrator blueprint
+from routes.a2a import a2a_bp # Import the new A2A blueprint
 from agents.orchestrator_agent import OrchestratorAgent # Import the agent
 from agents.market_analysis_agent import MarketAnalysisAgent # Import the MarketAnalysisAgent
 from agents.content_generation_agent import ContentGenerationAgent # Import the ContentGenerationAgent
@@ -86,6 +87,12 @@ market_research_agent = MarketResearchAgent() # Assuming basic init for now
 improvement_agent = ImprovementAgent()       # Assuming basic init for now
 branding_agent = BrandingAgent()           # Assuming basic init for now
 deployment_agent = DeploymentAgent()         # Assuming basic init for now
+# Attach specialized workflow agents to the app context
+app.market_research_agent = market_research_agent
+app.improvement_agent = improvement_agent
+app.branding_agent = branding_agent
+app.deployment_agent = deployment_agent
+
 
 # Instantiate Workflow Manager Agent, configuring it with other agent URLs
 # Ensure the corresponding environment variables are set in Config or .env
@@ -159,6 +166,7 @@ app.register_blueprint(customers.customers_bp) # Register the customers blueprin
 app.register_blueprint(revenue.revenue_bp) # Register the revenue blueprint
 
 app.register_blueprint(orchestrator.orchestrator_bp) # Register the orchestrator blueprint
+app.register_blueprint(a2a_bp) # Register the A2A blueprint
 @app.route('/api/health', methods=['GET'])
 def health_check() -> Dict[str, str]:
     """Health check endpoint."""

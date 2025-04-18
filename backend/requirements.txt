@@ -10,7 +10,6 @@ pydantic>=2.7.3,<3
 
 # API clients
 httpx==0.27.0
-requests # Used by MarketResearchAgent for Perplexity (consider replacing with httpx)
 
 # AI and NLP
 pydantic-ai==0.1.2
