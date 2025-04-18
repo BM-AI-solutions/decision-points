@@ -1,14 +1,37 @@
 import React, { useEffect, useState } from 'react';
 import { Line, Bar } from 'react-chartjs-2';
-import { useNavigate } from 'react-router-dom';
 import apiService from '../services/api.js';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler,
+} from 'chart.js';
+
+// Register Chart.js components
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler
+);
 
 function Dashboard() {
   const [businessModels, setBusinessModels] = useState([]);
   const [forecast, setForecast] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const navigate = useNavigate();
 
   useEffect(() => {
     async function fetchData() {
@@ -36,8 +59,9 @@ function Dashboard() {
         console.error("Dashboard: Error fetching data:", err);
         setError('Failed to load dashboard data.');
         setForecast(null);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     }
     fetchData();
   }, []);
@@ -46,10 +70,8 @@ function Dashboard() {
   const monthlyLabels = forecast?.monthly?.map(m => m.month) || ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
   const monthlyRevenue = forecast?.monthly?.map(m => m.revenue) || [4200, 5100, 5800, 6300, 7100, 7800];
 
-  // For customer growth, use growth_rate as a proxy (mocked if not available)
   const growthRate = forecast?.growth_rate ?? 0.15;
   const customerLabels = monthlyLabels;
-  // Mock customer growth based on growth rate
   const baseCustomers = 40;
   const customerGrowth = monthlyLabels.map((_, i) =>
     Math.round(baseCustomers * Math.pow(1 + growthRate, i))
@@ -75,226 +97,250 @@ function Dashboard() {
     },
   ];
 
-  // Sidebar navigation handlers
-  const sidebarLinks = [
-    { label: 'Dashboard', icon: 'fas fa-home', route: '/dashboard' },
-    { label: 'Analytics', icon: 'fas fa-chart-pie', route: '/analytics' },
-    { label: 'Automation', icon: 'fas fa-cogs', route: '/automation' },
-    { label: 'Insights', icon: 'fas fa-lightbulb', route: '/insights' },
-    { label: 'Customers', icon: 'fas fa-users', route: '/customers' },
-    { label: 'Revenue', icon: 'fas fa-dollar-sign', route: '/revenue' },
-  ];
+  // Loading state
+  if (loading) {
+    return (
+      <div style={{ padding: '40px', textAlign: 'center', color: '#fff' }}>
+        <span>Loading dashboard data...</span>
+      </div>
+    );
+  }
 
+  // Error state
+  if (error) {
+    return (
+      <div style={{ padding: '40px', textAlign: 'center', color: '#ff4713' }}>
+        <span>{error}</span>
+      </div>
+    );
+  }
+
+  // Main dashboard content
   return (
-    <section className="dashboard-full">
-      <div className="dashboard-container">
-        <div className="dashboard-content animate-on-scroll">
-          <h2>
-            Ease of Use with a Powerful <span className="accent-text">Dashboard</span>
-          </h2>
-          <p>Manage and automate your business with an intuitive and powerful dashboard.</p>
-
-          <ul className="dashboard-features">
-            <li>
-              <i className="fas fa-chart-line"></i> Real-time analytics and reporting
-            </li>
-            <li>
-              <i className="fas fa-robot"></i> Automated business processes
-            </li>
-            <li>
-              <i className="fas fa-th-large"></i> Customizable widgets and modules
-            </li>
-            <li>
-              <i className="fas fa-brain"></i> Integrated AI-powered insights
-            </li>
-            <li>
-              <i className="fas fa-bolt"></i> Lightning-fast performance
-            </li>
-          </ul>
-
-          <button className="btn btn-primary ember-glow">
-            Explore Dashboard <i className="fas fa-arrow-right"></i>
-          </button>
-        </div>
-
-        <div className="dashboard-image animate-on-scroll">
-          <div className="dashboard-mockup">
-            <div className="dashboard-header">
-              <div className="dashboard-logo">
-                <i className="fas fa-fire"></i> Decision Points AI
-              </div>
-              <div className="dashboard-controls">
-                <i className="fas fa-bell"></i>
-                <i className="fas fa-cog"></i>
-                <i className="fas fa-user-circle"></i>
-              </div>
-            </div>
-            <div className="dashboard-content-area">
-              <div className="dashboard-sidebar">
-                {sidebarLinks.map((link, idx) => (
-                  <div
-                    key={link.label}
-                    className={`sidebar-item${idx === 0 ? ' active' : ''}`}
-                    onClick={() => navigate(link.route)}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    <i className={link.icon}></i> {link.label}
-                  </div>
-                ))}
-              </div>
-              <div className="dashboard-main">
-                <div className="dashboard-widget revenue">
-                  <h4>Monthly Revenue</h4>
-                  <div className="chart-container">
-                    <Line
-                      data={{
-                        labels: monthlyLabels,
-                        datasets: [
-                          {
-                            label: 'Revenue',
-                            data: monthlyRevenue,
-                            borderColor: '#3b82f6',
-                            backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                            fill: true,
-                            tension: 0.4,
-                            pointBackgroundColor: '#3b82f6',
-                            pointBorderColor: '#fff',
-                            pointBorderWidth: 2,
-                            pointRadius: 2,
-                            pointHoverRadius: 4,
-                          },
-                        ],
-                      }}
-                      options={{
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                          legend: {
-                            display: false,
-                          },
-                          tooltip: {
-                            callbacks: {
-                              label: function (context) {
-                                return `$${context.raw}`;
-                              },
-                            },
-                          },
+    <div style={{
+      padding: '20px',
+      display: 'grid',
+      gridTemplateColumns: 'repeat(3, 1fr)',
+      gridTemplateRows: 'auto auto',
+      gap: '20px',
+      height: '100%',
+      overflow: 'auto'
+    }}>
+      {businessModels.length > 0 && forecast ? (
+        <>
+          {/* Monthly Revenue Chart - Spans 2 columns */}
+          <div style={{
+            gridColumn: '1 / 3',
+            background: 'rgba(13, 13, 13, 0.7)',
+            borderRadius: '12px',
+            padding: '20px',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
+            border: '1px solid rgba(59, 130, 246, 0.2)'
+          }}>
+            <h4 style={{ 
+              marginBottom: '15px', 
+              fontSize: '16px', 
+              fontWeight: '600',
+              color: '#fff'
+            }}>Monthly Revenue</h4>
+            <div style={{ height: '220px' }}>
+              <Line
+                data={{
+                  labels: monthlyLabels,
+                  datasets: [
+                    {
+                      label: 'Revenue',
+                      data: monthlyRevenue,
+                      borderColor: '#3b82f6',
+                      backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                      fill: true,
+                      tension: 0.4,
+                      pointBackgroundColor: '#3b82f6',
+                      pointBorderColor: '#fff',
+                      pointBorderWidth: 2,
+                      pointRadius: 3,
+                      pointHoverRadius: 5,
+                    },
+                  ],
+                }}
+                options={{
+                  responsive: true,
+                  maintainAspectRatio: false,
+                  plugins: {
+                    legend: {
+                      display: false
+                    }
+                  },
+                  scales: {
+                    x: {
+                      grid: {
+                        display: false
+                      },
+                      ticks: {
+                        color: 'rgba(255, 255, 255, 0.7)',
+                        font: {
+                          size: 10
+                        }
+                      }
+                    },
+                    y: {
+                      grid: {
+                        color: 'rgba(255, 255, 255, 0.1)'
+                      },
+                      ticks: {
+                        color: 'rgba(255, 255, 255, 0.7)',
+                        font: {
+                          size: 10
                         },
-                        scales: {
-                          x: {
-                            display: true,
-                            grid: {
-                              display: false,
-                            },
-                            ticks: {
-                              font: {
-                                size: 9,
-                              },
-                              maxTicksLimit: 3,
-                            },
-                          },
-                          y: {
-                            display: true,
-                            grid: {
-                              color: 'rgba(0, 0, 0, 0.05)',
-                            },
-                            ticks: {
-                              callback: function (value) {
-                                return '$' + value;
-                              },
-                              font: {
-                                size: 9,
-                              },
-                              maxTicksLimit: 3,
-                            },
-                          },
-                        },
-                      }}
-                    />
-                  </div>
-                </div>
-                <div className="dashboard-widget customers">
-                  <h4>Customer Growth</h4>
-                  <div className="chart-container">
-                    <Bar
-                      data={{
-                        labels: customerLabels,
-                        datasets: [
-                          {
-                            label: 'New Customers',
-                            data: customerGrowth,
-                            backgroundColor: 'rgba(59, 130, 246, 0.7)',
-                            borderColor: '#3b82f6',
-                            borderWidth: 1,
-                            borderRadius: 2,
-                          },
-                        ],
-                      }}
-                      options={{
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                          legend: {
-                            display: false,
-                          },
-                        },
-                        scales: {
-                          x: {
-                            display: true,
-                            grid: {
-                              display: false,
-                            },
-                            ticks: {
-                              font: {
-                                size: 9,
-                              },
-                              maxTicksLimit: 3,
-                            },
-                          },
-                          y: {
-                            display: true,
-                            grid: {
-                              color: 'rgba(0, 0, 0, 0.05)',
-                            },
-                            ticks: {
-                              font: {
-                                size: 9,
-                              },
-                              maxTicksLimit: 3,
-                            },
-                          },
-                        },
-                      }}
-                    />
-                  </div>
-                </div>
-                <div className="dashboard-widget insights">
-                  <h4>AI Insights</h4>
-                  <div className="insights-list">
-                    {aiInsights.map((insight, idx) => (
-                      <div className="insight-item" key={idx}>
-                        <i className={insight.icon}></i>
-                        <span>{insight.text}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                {loading && (
-                  <div className="dashboard-loading">
-                    <span>Loading dashboard data...</span>
-                  </div>
-                )}
-                {error && (
-                  <div className="dashboard-error">
-                    <span>{error}</span>
-                  </div>
-                )}
-              </div>
+                        callback: function(value) {
+                          return '$' + value;
+                        }
+                      }
+                    }
+                  }
+                }}
+              />
             </div>
           </div>
+
+          {/* Customer Growth Chart */}
+          <div style={{
+            gridColumn: '3 / 4',
+            background: 'rgba(13, 13, 13, 0.7)',
+            borderRadius: '12px',
+            padding: '20px',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
+            border: '1px solid rgba(59, 130, 246, 0.2)'
+          }}>
+            <h4 style={{ 
+              marginBottom: '15px', 
+              fontSize: '16px', 
+              fontWeight: '600',
+              color: '#fff'
+            }}>Customer Growth</h4>
+            <div style={{
+              height: '220px',
+              position: 'relative',
+              zIndex: 1
+            }}>
+              <Bar
+                data={{
+                  labels: customerLabels,
+                  datasets: [
+                    {
+                      label: 'New Customers',
+                      data: customerGrowth,
+                      backgroundColor: 'rgba(59, 130, 246, 0.7)',
+                      borderColor: '#3b82f6',
+                      borderWidth: 1,
+                      borderRadius: 4,
+                    },
+                  ],
+                }}
+                options={{
+                  responsive: true,
+                  maintainAspectRatio: false,
+                  plugins: {
+                    legend: {
+                      display: false
+                    }
+                  },
+                  scales: {
+                    x: {
+                      grid: {
+                        display: false
+                      },
+                      ticks: {
+                        color: 'rgba(255, 255, 255, 0.7)',
+                        font: {
+                          size: 10
+                        }
+                      }
+                    },
+                    y: {
+                      grid: {
+                        color: 'rgba(255, 255, 255, 0.1)'
+                      },
+                      ticks: {
+                        color: 'rgba(255, 255, 255, 0.7)',
+                        font: {
+                          size: 10
+                        }
+                      }
+                    }
+                  }
+                }}
+              />
+            </div>
+          </div>
+
+          {/* AI Insights */}
+          <div style={{
+            gridColumn: '1 / 4',
+            background: 'rgba(13, 13, 13, 0.7)',
+            borderRadius: '12px',
+            padding: '20px',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
+            border: '1px solid rgba(59, 130, 246, 0.2)'
+          }}>
+            <h4 style={{ 
+              marginBottom: '15px', 
+              fontSize: '16px', 
+              fontWeight: '600',
+              color: '#fff'
+            }}>AI Insights</h4>
+            <div style={{ 
+              display: 'flex', 
+              flexWrap: 'wrap',
+              gap: '15px' 
+            }}>
+              {aiInsights.map((insight, idx) => (
+                <div key={idx} style={{
+                  flex: '1',
+                  minWidth: '200px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                  padding: '15px',
+                  background: 'rgba(30, 0, 0, 0.5)',
+                  borderRadius: '8px',
+                  fontSize: '14px'
+                }}>
+                  <div style={{
+                    width: '36px',
+                    height: '36px',
+                    borderRadius: '50%',
+                    background: 'rgba(255, 71, 19, 0.2)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}>
+                    <i className={insight.icon} style={{ 
+                      color: '#ff4713',
+                      fontSize: '16px'
+                    }}></i>
+                  </div>
+                  <span style={{ color: '#fff' }}>{insight.text}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      ) : (
+        <div style={{ 
+          gridColumn: '1 / 4',
+          padding: '40px', 
+          textAlign: 'center', 
+          color: 'var(--text-secondary)',
+          background: 'rgba(13, 13, 13, 0.7)',
+          borderRadius: '12px',
+          boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)'
+        }}>
+          <h3 style={{ marginBottom: '10px' }}>No Business Models Found</h3>
+          <p>Create a business model to see dashboard data and insights.</p>
         </div>
-      </div>
-    </section>
+      )}
+    </div>
   );
 }
 

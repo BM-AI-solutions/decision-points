@@ -62,18 +62,22 @@ document.addEventListener('DOMContentLoaded', () => {
   const navbar = document.querySelector('.navbar');
   
   const updateNavbarAppearance = () => {
-    if (window.scrollY > 50) {
-      navbar.classList.add('navbar-scrolled');
-    } else {
-      navbar.classList.remove('navbar-scrolled');
+    // Only run if navbar exists
+    if (navbar) {
+      if (window.scrollY > 50) {
+        navbar.classList.add('navbar-scrolled');
+      } else {
+        navbar.classList.remove('navbar-scrolled');
+      }
     }
   };
-  
-  // Initial call to set navbar appearance
-  updateNavbarAppearance();
-  
-  // Add scroll event listener for navbar appearance
-  window.addEventListener('scroll', updateNavbarAppearance);
+
+  // Initial call to set navbar appearance (only if navbar exists)
+  if (navbar) {
+    updateNavbarAppearance();
+    // Add scroll event listener for navbar appearance (only if navbar exists)
+    window.addEventListener('scroll', updateNavbarAppearance);
+  }
   
   // Mobile menu toggle enhancement
   const mobileMenuToggle = document.querySelector('.navbar-toggle');

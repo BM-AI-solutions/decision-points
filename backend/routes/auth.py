@@ -20,7 +20,7 @@ else:
 
 
 from utils.logger import setup_logger
-bp = Blueprint('auth', __name__)
+bp = Blueprint('auth', __name__, url_prefix='/api/auth')
 
 # --- Environment Variable Hardening and Stripe Mode Selection ---
 ENV = os.environ.get('ENV', 'development')
