@@ -9,21 +9,38 @@ const DashboardLayout = ({ children }) => {
 
   useEffect(() => {
     let isMounted = true;
+    console.log("DashboardLayout: Mounting component and checking authentication");
+    
+    // Check if token exists in localStorage
+    const token = localStorage.getItem('authToken');
+    console.log("DashboardLayout: Auth token exists in localStorage:", !!token);
+    if (token) {
+      console.log("DashboardLayout: Token from localStorage:", token.substring(0, 10) + "...");
+    }
+    
     apiService.getCurrentUser()
-      .then(() => {
+      .then((response) => {
+        console.log("DashboardLayout: getCurrentUser successful response:", response);
         if (isMounted) {
+          console.log("DashboardLayout: Setting authenticated to true");
           setAuthenticated(true);
           setLoading(false);
         }
       })
-      .catch(() => {
+      .catch((error) => {
+        console.error("DashboardLayout: getCurrentUser error:", error);
         if (isMounted) {
+          console.log("DashboardLayout: Setting authenticated to false");
           setAuthenticated(false);
           setLoading(false);
+          console.log("DashboardLayout: Redirecting to home page");
           navigate('/', { replace: true });
         }
       });
-    return () => { isMounted = false; };
+    return () => {
+      console.log("DashboardLayout: Unmounting component");
+      isMounted = false;
+    };
   }, [navigate]);
 
   if (loading) {

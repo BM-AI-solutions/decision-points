@@ -29,17 +29,31 @@ STRIPE_MODE = os.environ.get('STRIPE_MODE', 'test')
 # --- Subscription Status Helper ---
 def has_active_subscription(user_profile):
     """Check if the user has an active subscription. Extend as needed for real logic."""
+    logger.info(f"Checking subscription for user: {getattr(user_profile, 'email', 'unknown')}")
+    logger.info(f"BILLING_REQUIRED setting in has_active_subscription: {Config.BILLING_REQUIRED}")
+    
     # Dual-mode: bypass subscription checks if billing is not required
     if not Config.BILLING_REQUIRED:
+        logger.info("BILLING_REQUIRED is False, bypassing subscription check and returning True")
         return True
+        
     # Placeholder: check for 'subscription' attribute and status
     subscription = getattr(user_profile, 'subscription', None)
+    logger.info(f"User subscription object: {subscription}")
+    
     if not subscription:
+        logger.info("No subscription found, returning False")
         return False
+        
     status = getattr(subscription, 'status', None)
+    logger.info(f"Subscription status: {status}")
+    
     if status == 'active':
         # Optionally check end_date, etc.
+        logger.info("Subscription is active, returning True")
         return True
+        
+    logger.info(f"Subscription is not active (status: {status}), returning False")
     return False
 
 STRIPE_API_KEY_LIVE = os.environ.get('STRIPE_API_KEY_LIVE')
@@ -371,35 +385,48 @@ def login():
 def profile():
     """Get user profile information."""
     try:
+        logger.info("=== PROFILE ENDPOINT CALLED ===")
+        logger.info(f"BILLING_REQUIRED setting: {Config.BILLING_REQUIRED}")
+        
         auth_header = request.headers.get('Authorization')
+        logger.info(f"Authorization header present: {auth_header is not None}")
 
         if not auth_header or not auth_header.startswith('Bearer '):
+            logger.warning("Missing or invalid Authorization header")
             return jsonify({
                 'error': 'Authorization required',
                 'status': 401
             }), 401
 
         token = auth_header.split(' ')[1]
+        logger.info(f"Token received: {token[:10]}...")
         secret_key = os.environ.get('JWT_SECRET_KEY', 'dev-jwt-secret-change-in-production')
+        logger.info(f"Using JWT secret key: {'default-dev-key' if secret_key == 'dev-jwt-secret-change-in-production' else 'custom-key'}")
 
         try:
+            logger.info("Attempting to decode JWT token...")
             payload = jwt.decode(token, secret_key, algorithms=['HS256'])
             user_id = payload['user_id']
+            logger.info(f"JWT token decoded successfully for user_id: {user_id}")
         except jwt.ExpiredSignatureError:
+            logger.warning("JWT token expired")
             return jsonify({
                 'error': 'Token expired',
                 'status': 401
             }), 401
-        except jwt.InvalidTokenError:
+        except jwt.InvalidTokenError as e:
+            logger.error(f"Invalid JWT token: {str(e)}")
             return jsonify({
                 'error': 'Invalid token',
                 'status': 401
             }), 401
 
         if Config.BILLING_REQUIRED:
+            logger.info("Using Datastore for user profile (BILLING_REQUIRED=true)")
             # Retrieve user profile entity from Datastore
             user_profile_entity = datastore_client.get(datastore_client.key('User', user_id))
             if not user_profile_entity:
+                logger.warning(f"User profile not found in Datastore for user_id: {user_id}")
                 return jsonify({
                     'error': 'User profile not found',
                     'status': 404
@@ -407,17 +434,25 @@ def profile():
             
             user_profile = UserProfile.from_entity(user_profile_entity)
         else:
+            logger.info("Using in-memory storage for user profile (BILLING_REQUIRED=false)")
             # Local mode: get from in-memory USERS
             email = None
             for e, p in USERS.items():
                 if p['id'] == user_id:
                     email = e
                     break
+            
+            logger.info(f"Looking up user by ID {user_id}, found email: {email}")
+            logger.debug(f"Current USERS keys: {list(USERS.keys())}")
+            logger.debug(f"Current USER_IDS keys: {list(USER_IDS.keys())}")
+            
             if not email:
+                logger.warning(f"User profile not found in memory for user_id: {user_id}")
                 return jsonify({
                     'error': 'User profile not found',
                     'status': 404
                 }), 404
+                
             profile = USERS[email]
             user_profile = type('UserProfile', (), profile)()
             user_profile.id = profile['id']
@@ -426,8 +461,13 @@ def profile():
             user_profile.credits_remaining = profile['credits_remaining']
 
         logger.info(f"Retrieved profile for user: {user_profile.email} with ID {user_id}")
+        
+        # Check subscription status
         subscription_active = has_active_subscription(user_profile)
-        return jsonify({
+        logger.info(f"Subscription active: {subscription_active}")
+        
+        # Prepare response
+        response_data = {
             'success': True,
             'user': {
                 'id': user_profile.id,
@@ -436,7 +476,9 @@ def profile():
                 'credits': user_profile.credits_remaining,
                 'subscription_active': subscription_active
             }
-        })
+        }
+        logger.info(f"Returning user profile: {response_data}")
+        return jsonify(response_data)
 
     except Exception as e:
         logger.error(f"Error retrieving profile: {str(e)}", exc_info=True)

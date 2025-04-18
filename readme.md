@@ -60,7 +60,7 @@ This project now uses separate Docker Compose files for development and producti
 
 *   **Development:** Uses hot-reloading for the backend and the Vite dev server for the frontend. Access the frontend at `http://localhost:8000` and the backend API at `http://localhost:5000`. Run with:
     ```bash
-    docker compose -f docker-compose.dev.yml up -d --build
+    docker compose -f docker-compose.dev.yml down && docker compose -f docker-compose.dev.yml up --build -d
     ```
 *   **Production:** Builds optimized production images for both backend (using Gunicorn) and frontend (serving static files with Nginx). Access the frontend at `http://localhost:8000`. Run with:
     ```bash

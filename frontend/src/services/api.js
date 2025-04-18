@@ -286,7 +286,25 @@ const apiService = {
 
   getCurrentUser: () => {
     console.log("API Call: getCurrentUser"); // Added logging
-    return apiClientInstance.get('/api/auth/profile');
+    console.log("Token in localStorage:", localStorage.getItem('authToken') ? "Present" : "Missing");
+    
+    // Log the full URL being requested
+    const fullUrl = `${apiClientInstance.baseUrl}/api/auth/profile`;
+    console.log("Full URL for getCurrentUser:", fullUrl);
+    
+    return apiClientInstance.get('/api/auth/profile')
+      .then(response => {
+        console.log("getCurrentUser successful response:", response);
+        return response;
+      })
+      .catch(error => {
+        console.error("getCurrentUser error:", error);
+        console.error("Error details:", error.status, error.statusText);
+        if (error.data) {
+          console.error("Error data:", error.data);
+        }
+        throw error;
+      });
   },
 
   // OAuth authentication
