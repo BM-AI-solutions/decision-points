@@ -32,6 +32,8 @@ ENV/
 htmlcov/
 prototypes/
 .prototypes/
+docs/
+.docs/
 # Logs
 *.log
 logs/

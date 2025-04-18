@@ -13,13 +13,13 @@ httpx==0.27.0
 
 # AI and NLP
 pydantic-ai==0.1.2
-google-generativeai # Used by MarketResearchAgent for Gemini analysis
+google-generativeai==0.8.5 # Used by MarketResearchAgent for Gemini analysis
 langchain==0.2.5
 
-# openai # Removed, replaced by google-generativeai
-exa-py # Used by MarketResearchAgent for Exa search
-firecrawl-py # Used by MarketResearchAgent for data extraction
-google-adk
+
+exa-py==1.12.1 # Used by MarketResearchAgent for Exa search
+firecrawl-py==2.0.2 # Used by MarketResearchAgent for data extraction
+google-adk==0.1.0
 # Data processing
 numpy==1.26.4
 pandas==2.2.2
@@ -38,7 +38,7 @@ tenacity==8.2.3
 logfire==0.25.0 # For observability, used in WebSearchAgent
 # Google Cloud Datastore
 google-cloud-datastore==2.19.0
-google-cloud-firestore # For workflow state persistence
+google-cloud-firestore==2.20.2 # For workflow state persistence
 
 # Stripe
 stripe==9.10.0
