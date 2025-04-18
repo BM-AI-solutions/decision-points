@@ -13,8 +13,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install pip dependencies
+RUN pip install pip-tools
+COPY requirements.in .
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip-compile requirements.in -o requirements.txt --no-header --no-annotate && pip install --no-cache-dir -r requirements.txt
 
 ############################
 # Development image
