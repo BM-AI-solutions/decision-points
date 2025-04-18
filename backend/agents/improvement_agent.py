@@ -45,21 +45,31 @@ class ImprovementAgent(Agent): # Inherit from ADK Agent
     ADK Agent responsible for Stage 2: Product Improvement.
     Analyzes market research input and suggests product improvements/features.
     """
-    def __init__(self):
-        """Initialize the Improvement Agent."""
+    def __init__(self, model_name: Optional[str] = None):
+        """
+        Initialize the Improvement Agent.
+
+        Args:
+            model_name: The name of the Gemini model to use for analysis (e.g., 'gemini-1.5-flash-latest').
+                        Defaults to a suitable model if None.
+        """
         super().__init__()
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.info("Initializing ImprovementAgent...")
+
+        # Determine the model name to use
+        effective_model_name = model_name if model_name else 'gemini-1.5-flash-latest' # Default for specialized agent
+        self.model_name = effective_model_name # Store the actual model name used
 
         # --- LLM Client Initialization ---
         gemini_api_key = os.getenv('GEMINI_API_KEY')
         if gemini_api_key:
             try:
-                # TODO: Make model name configurable
-                self.llm = genai.GenerativeModel('gemini-pro')
-                self.logger.info("Gemini GenerativeModel initialized.")
+                # Initialize the Gemini model using the determined model name
+                self.llm = genai.GenerativeModel(self.model_name)
+                self.logger.info(f"Gemini GenerativeModel initialized with model: {self.model_name}.")
             except Exception as e:
-                self.logger.error(f"Failed to initialize Gemini client: {e}", exc_info=True)
+                self.logger.error(f"Failed to initialize Gemini client with model {self.model_name}: {e}", exc_info=True)
                 self.llm = None
         else:
             self.llm = None

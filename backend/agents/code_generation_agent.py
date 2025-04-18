@@ -17,20 +17,35 @@ class CodeGenerationAgent(LlmAgent):
     An agent responsible for generating initial project code based on specifications.
     """
 
-    def __init__(self, config: Dict[str, Any] = None):
+    def __init__(self,
+                 agent_id: str = "code_generation_agent",
+                 model_name: Optional[str] = None, # Added model_name parameter
+                 target_framework: str = "vite-react"):
         """
         Initializes the CodeGenerationAgent.
 
         Args:
-            config: Optional configuration dictionary. May include 'target_framework',
-                    'llm_model', etc.
+            agent_id: The unique identifier for this agent instance.
+            model_name: The name of the Gemini model to use (e.g., 'gemini-1.5-flash-latest').
+                        Defaults to a suitable model if None.
+            target_framework: The target frontend framework (e.g., 'vite-react').
         """
-        super().__init__()
-        self.config = config or {}
-        self.target_framework = self.config.get("target_framework", "vite-react")
-        # TODO: Potentially configure the specific Gemini model from config
-        self.llm_model = genai.GenerativeModel('gemini-pro') # Example model
-        logger.info(f"CodeGenerationAgent initialized for framework: {self.target_framework}")
+        # Determine the model name to use
+        effective_model_name = model_name if model_name else 'gemini-1.5-flash-latest' # Default for specialized agent
+        self.model_name = effective_model_name # Store the actual model name used
+
+        # Initialize the ADK Gemini model
+        adk_model = Gemini(model=self.model_name)
+
+        # Call super().__init__ from LlmAgent, passing the model
+        super().__init__(
+            agent_id=agent_id,
+            model=adk_model # Pass the initialized ADK model object
+            # instruction can be set here if needed, or rely on default/prompt
+        )
+        self.target_framework = target_framework
+        # self.llm_model = genai.GenerativeModel('gemini-pro') # Removed direct instantiation
+        logger.info(f"CodeGenerationAgent initialized with model: {self.model_name} for framework: {self.target_framework}")
 
     async def run_async(self, context: InvocationContext) -> Event:
         """
@@ -64,11 +79,12 @@ class CodeGenerationAgent(LlmAgent):
 
             # 2. Call the LLM
             # TODO: Add retry logic, more sophisticated error handling for LLM calls
-            response = await self.llm_model.generate_content_async(prompt)
+            # Use the LlmAgent's client, configured with the correct model
+            response_text = await self.llm_client.generate_text_async(prompt=prompt)
             logger.info("LLM response received.")
             # Assuming the LLM returns a JSON string mapping file paths to content
             # Need robust parsing and validation here
-            response_text = response.text.strip()
+            # response_text = response.text.strip() # Already have response_text
             logger.debug(f"Raw LLM Response Text:\n{response_text}")
 
              # Attempt to find JSON block within the response

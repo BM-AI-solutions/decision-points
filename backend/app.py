@@ -39,6 +39,23 @@ app = Flask(__name__)
 app.after_request(security_headers)
 app.config.from_object(Config)
 
+# Get LLM Model configurations from environment variables
+orchestrator_model = os.getenv('ORCHESTRATOR_LLM_MODEL', 'gemini-1.5-pro-latest')
+specialized_model = os.getenv('SPECIALIZED_AGENT_LLM_MODEL', 'gemini-1.5-flash-latest') # General fallback
+
+# Specific agent models with fallbacks: Specific Env Var -> General Env Var -> Hardcoded Default
+market_research_model = os.getenv('MARKET_RESEARCH_LLM_MODEL') or specialized_model or 'gemini-1.5-flash-latest'
+improvement_model = os.getenv('IMPROVEMENT_LLM_MODEL') or specialized_model or 'gemini-1.5-flash-latest'
+branding_model = os.getenv('BRANDING_LLM_MODEL') or specialized_model or 'gemini-1.5-flash-latest'
+code_gen_model = os.getenv('CODE_GENERATION_LLM_MODEL') or specialized_model or 'gemini-1.5-flash-latest'
+content_gen_model = os.getenv('CONTENT_GENERATION_LLM_MODEL') or specialized_model or 'gemini-1.5-flash-latest'
+# Add other specific agent models here following the same pattern if needed
+
+# Log the models being used (ensure logger is defined first, or move this log later)
+# logger.info(f"Using Orchestrator Model: {orchestrator_model}")
+# logger.info(f"Using Specialized Agent Model (Fallback): {specialized_model}")
+# logger.info(f"Using Market Research Model: {market_research_model}") # Example logging
+
 # Initialize Firestore client
 # Assumes Application Default Credentials (ADC) are configured.
 # See: https://cloud.google.com/docs/authentication/provide-credentials-adc
@@ -81,8 +98,9 @@ socketio = SocketIO(app, cors_allowed_origins=socketio_cors_origins, async_mode=
 
 app.socketio = socketio # Attach SocketIO instance to app context
 # Initialize Agents
-market_analysis_agent = MarketAnalysisAgent(model_name=Config.MARKET_ANALYSIS_MODEL if hasattr(Config, 'MARKET_ANALYSIS_MODEL') else Config.ORCHESTRATOR_MODEL) # Use specific model or fallback
-content_generation_agent = ContentGenerationAgent(model_name=Config.CONTENT_GENERATION_MODEL if hasattr(Config, 'CONTENT_GENERATION_MODEL') else Config.ORCHESTRATOR_MODEL) # Use specific model or fallback
+# market_analysis_agent = MarketAnalysisAgent(model_name=Config.MARKET_ANALYSIS_MODEL if hasattr(Config, 'MARKET_ANALYSIS_MODEL') else Config.ORCHESTRATOR_MODEL) # Use specific model or fallback # Keep MarketAnalysisAgent as is for now, wasn't in scope
+market_analysis_agent = MarketAnalysisAgent() # Assuming MarketAnalysisAgent doesn't need model_name yet or handles it internally
+content_generation_agent = ContentGenerationAgent(model_name=content_gen_model) # Use specific or fallback model
 # Instantiate LeadGenerationAgent (assuming default model or no specific model needed at init)
 # Get GCP Project ID for FreelanceTaskAgent
 gcp_project_id = os.getenv('GCP_PROJECT_ID')
@@ -100,11 +118,11 @@ web_search_agent = WebSearchAgent() # Instantiate WebSearchAgent
 # Note: These agents might require specific configurations (API keys, etc.) passed during init
 # depending on their implementation, which are assumed to be handled within their constructors
 # using environment variables or other config mechanisms.
-market_research_agent = MarketResearchAgent() # Assuming basic init for now
-improvement_agent = ImprovementAgent()       # Assuming basic init for now
-branding_agent = BrandingAgent()           # Assuming basic init for now
+market_research_agent = MarketResearchAgent(model_name=market_research_model) # Use specific or fallback model
+improvement_agent = ImprovementAgent(model_name=improvement_model)       # Use specific or fallback model
+branding_agent = BrandingAgent(model_name=branding_model)           # Use specific or fallback model
 deployment_agent = DeploymentAgent()         # Assuming basic init for now
-code_generation_agent = CodeGenerationAgent()     # Assuming basic init for now
+code_generation_agent = CodeGenerationAgent(model_name=code_gen_model)     # Use specific or fallback model
 
 marketing_agent = MarketingAgent(content_generation_agent_url=getattr(Config, 'CONTENT_GENERATION_AGENT_URL', None)) # Instantiate MarketingAgent
 # Attach specialized workflow agents to the app context
@@ -156,10 +174,10 @@ agents = {
 }
 
 # Initialize the Orchestrator Agent with SocketIO instance and other agents
-orchestrator_agent = OrchestratorAgent(socketio=socketio, model_name=Config.ORCHESTRATOR_MODEL, agents=agents)
+orchestrator_agent = OrchestratorAgent(socketio=socketio, model_name=orchestrator_model, agents=agents) # Use orchestrator_model
 app.orchestrator_agent = orchestrator_agent # Attach orchestrator agent to app context
 # Optionally attach other agents if needed globally
-# app.market_analysis_agent = market_analysis_agent
+app.market_analysis_agent = market_analysis_agent # Attach market analysis agent
 
 # Enable CORS (Original block moved up and logic reused)
 # Allow specific origin for production, add localhost for development

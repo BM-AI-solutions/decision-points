@@ -40,7 +40,7 @@ import pandas as pd
 import torch
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 import numpy as np
-import openai
+# import openai # Removed OpenAI import
 from pathlib import Path
 
 # Create data directory if it doesn't exist
@@ -50,7 +50,7 @@ pathlib.Path(DATA_FOLDER).mkdir(parents=True, exist_ok=True)
 load_dotenv()
 
 # Get OpenAI key for voice
-openai.api_key = os.getenv("OPENAI_KEY")
+# openai.api_key = os.getenv("OPENAI_KEY") # Removed OpenAI key setting
 
 # Patch httpx
 original_client = httpx.Client
@@ -188,30 +188,31 @@ class SentimentAgent(BaseAgent):
             speech_file = self.audio_dir / f"sentiment_audio_{timestamp}.mp3"
             
             # Generate speech using OpenAI
-            response = openai.audio.speech.create(
-                model=VOICE_MODEL,
-                voice=VOICE_NAME,
-                speed=VOICE_SPEED,
-                input=message
-            )
-            
-            # Save and play the audio
-            with open(speech_file, 'wb') as f:
-                for chunk in response.iter_bytes():
-                    f.write(chunk)
-            
-            # Play the audio
-            if os.name == 'posix':  # macOS/Linux
-                os.system(f"afplay {speech_file}")
-            else:  # Windows
-                os.system(f"start {speech_file}")
-                time.sleep(5)
-            
-            # Clean up
-            try:
-                speech_file.unlink()
-            except Exception as e:
-                print(f"⚠️ Couldn't delete audio file: {e}")
+            # response = openai.audio.speech.create( # Removed OpenAI TTS
+            #     model=VOICE_MODEL,
+            #     voice=VOICE_NAME,
+            #     speed=VOICE_SPEED,
+            #     input=message
+            # )
+            #
+            # # Save and play the audio
+            # with open(speech_file, 'wb') as f: # Removed OpenAI TTS
+            #     for chunk in response.iter_bytes():
+            #         f.write(chunk)
+            #
+            # # Play the audio
+            # if os.name == 'posix':  # macOS/Linux # Removed OpenAI TTS
+            #     os.system(f"afplay {speech_file}")
+            # else:  # Windows
+            #     os.system(f"start {speech_file}")
+            #     time.sleep(5)
+            #
+            # # Clean up
+            # try: # Removed OpenAI TTS
+            #     speech_file.unlink()
+            # except Exception as e:
+            #     print(f"⚠️ Couldn't delete audio file: {e}")
+            print("OpenAI TTS functionality removed.") # Placeholder message
                 
         except Exception as e:
             print(f"❌ Error in text-to-speech: {str(e)}")

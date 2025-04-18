@@ -264,14 +264,14 @@ DEFAULT_ENV_TEMPLATE = """#===========================================
 # (See https://docs.camel-ai.org/key_modules/models.html#)
 #===========================================
 
-# OPENAI API (https://platform.openai.com/api-keys)
-OPENAI_API_KEY='Your_Key'
-# OPENAI_API_BASE_URL=""
+# OPENAI API Reference Removed
+# OPENAI_API_KEY='Your_Key' # Removed
+# OPENAI_API_BASE_URL="" # Removed
 
 # Azure OpenAI API
 # AZURE_OPENAI_BASE_URL=""
 # AZURE_API_VERSION=""
-# AZURE_OPENAI_API_KEY=""
+# AZURE_OPENAI_API_KEY="" # Removed Azure OpenAI Key reference
 # AZURE_DEPLOYMENT_NAME=""
 
 
@@ -624,9 +624,9 @@ def get_api_guide(key: str) -> str:
         str: API guide link or description
     """
     key_lower = key.lower()
-    if "openai" in key_lower:
-        return "https://platform.openai.com/api-keys"
-    elif "qwen" in key_lower or "dashscope" in key_lower:
+    # if "openai" in key_lower: # Removed OpenAI link helper
+    #     return "https://platform.openai.com/api-keys"
+    if "qwen" in key_lower or "dashscope" in key_lower: # Adjusted condition
         return "https://help.aliyun.com/zh/model-studio/developer-reference/get-api-key"
     elif "deepseek" in key_lower:
         return "https://platform.deepseek.com/api_keys"

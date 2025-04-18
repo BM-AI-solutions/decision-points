@@ -59,9 +59,8 @@ This is the primary and recommended method for local development and testing.
         cp .env.example .env
         ```
     *   **Crucially, edit the new `.env` file and fill in *all* required values.** This includes:
-        *   `SECRET_KEY`: Generate a unique secret key (see `.env.example` for command).
-        *   `GEMINI_API_KEY`: Your API key from Google AI Studio.
-        *   `ORCHESTRATOR_MODEL`: The specific Gemini model you want the orchestrator to use (e.g., 'gemini-1.5-flash').
+    *   `SECRET_KEY`: Generate a unique secret key (see `.env.example` for command).
+    *   `GEMINI_API_KEY`: Your API key from Google AI Studio.
 *   **Run:**
     ```bash
     docker compose -f docker-compose.dev.yml up --build -d
@@ -87,11 +86,30 @@ The following environment variables need to be configured in your `.env` file (c
 
 *   `SECRET_KEY`: **(Required)** A strong, unique secret used by Flask for session security. Generate one using `python -c "import secrets; print(secrets.token_hex(32))"`.
 *   `GEMINI_API_KEY`: **(Required)** Your API key for Google Generative AI (Gemini), obtained from Google AI Studio. This is essential for the Orchestrator Panel and other AI features.
-*   `ORCHESTRATOR_MODEL`: **(Required)** The specific Gemini model name to be used by the main Orchestrator agent (e.g., `gemini-1.5-flash`). Check Google's documentation for available models.
+*   `ORCHESTRATOR_LLM_MODEL`: **(Required)** The Gemini model name for the primary Orchestrator agent (e.g., `gemini-1.5-pro-latest`). This agent handles user interaction and often benefits from a more powerful model. Defaults to `gemini-1.5-pro-latest` if not set.
+*   `SPECIALIZED_AGENT_LLM_MODEL`: **(Required)** The default Gemini model name for specialized agents (e.g., Market Research, Branding, Code Generation). These agents perform focused tasks and can often use a faster/cheaper model like `gemini-1.5-flash-latest`. Defaults to `gemini-1.5-flash-latest` if not set.
 *   `VITE_API_BASE_URL`: **(Required)** The URL the frontend uses to reach the backend API. For the default Docker setup, this **must** be `http://localhost:5000`.
 
 *   **(Optional)** `GCP_PROJECT_ID`: Google Cloud Project ID, potentially used by agents like `FreelanceTaskAgent`.
 *   **(Optional)** `BRAVE_API_KEY`: API key for Brave Search, used by `WebSearchAgent`.
+
+### Optional Agent-Specific LLM Models:
+
+You can optionally override the `SPECIALIZED_AGENT_LLM_MODEL` for individual agents by setting specific environment variables. If an agent-specific variable is not set, the agent will use the model defined by `SPECIALIZED_AGENT_LLM_MODEL`. Examples include:
+
+*   `MARKET_RESEARCH_LLM_MODEL`: Model for the Market Research Agent.
+*   `IMPROVEMENT_LLM_MODEL`: Model for the Improvement Agent.
+*   `BRANDING_LLM_MODEL`: Model for the Branding Agent.
+*   `DEPLOYMENT_LLM_MODEL`: Model for the Deployment Agent.
+*   `CODE_GENERATION_LLM_MODEL`: Model for the Code Generation Agent.
+*   `CONTENT_GENERATION_LLM_MODEL`: Model for the Content Generation Agent.
+*   `FREELANCE_TASK_LLM_MODEL`: Model for the Freelance Task Agent.
+*   `LEAD_GENERATION_LLM_MODEL`: Model for the Lead Generation Agent.
+*   `MARKET_ANALYSIS_LLM_MODEL`: Model for the Market Analysis Agent.
+*   `MARKETING_LLM_MODEL`: Model for the Marketing Agent.
+*   `WEB_SEARCH_LLM_MODEL`: Model for the Web Search Agent.
+*   `WORKFLOW_MANAGER_LLM_MODEL`: Model for the Workflow Manager Agent.
+*   *(Add others as needed based on implemented agents)*
 
 ### Autonomous Income Workflow Variables:
 
@@ -106,8 +124,6 @@ The following environment variables need to be configured in your `.env` file (c
 *   `DEPLOYMENT_AGENT_URL`: **(Required)** Endpoint for the `WorkflowManagerAgent` to reach the `DeploymentAgent`. (Example: `http://localhost:5004`)
 *   **(Optional)** `AGENT_TIMEOUT_SECONDS`: Max wait time for sub-agent responses (Default: 300).
 *   **(Conditional)** Deployment Provider Keys (e.g., `VERCEL_API_TOKEN`, `CLOUDFLARE_API_TOKEN`, etc.): Required by the `DeploymentAgent` based on the chosen deployment platform(s). Add the specific keys needed for your setup.
-
-*(Other optional agent-specific models like `ACTION_AGENT_MODEL` can also be set if needed, see `.env.example`)*
 
 ## API Endpoints
 

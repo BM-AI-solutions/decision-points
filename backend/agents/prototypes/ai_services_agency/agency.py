@@ -95,8 +95,8 @@ def main() -> None:
             st.session_state.api_key = openai_api_key
             st.success("API Key accepted!")
         else:
-            st.warning("⚠️ Please enter your OpenAI API Key to proceed")
-            st.markdown("[Get your API key here](https://platform.openai.com/api-keys)")
+            # st.warning("⚠️ Please enter your OpenAI API Key to proceed") # Removed OpenAI warning
+            # st.markdown("[Get your API key here](https://platform.openai.com/api-keys)") # Removed OpenAI link
             return
         
     # Initialize agents with the provided API key

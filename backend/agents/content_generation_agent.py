@@ -15,15 +15,31 @@ class ContentGenerationAgent(LlmAgent):
     and marketing copy based on instructions provided in the InvocationContext.
     """
 
-    def __init__(self, agent_id: str = "content-generation-agent"):
+    def __init__(self,
+                 agent_id: str = "content-generation-agent",
+                 model_name: Optional[str] = None): # Added model_name parameter
         """
         Initializes the ContentGenerationAgent.
 
         Args:
             agent_id: The unique identifier for this agent instance.
+            model_name: The name of the Gemini model to use (e.g., 'gemini-1.5-flash-latest').
+                        Defaults to a suitable model if None.
         """
-        super().__init__(agent_id=agent_id)
-        logger.info(f"Content Generation Agent ({self.agent_id}) initialized.")
+        # Determine the model name to use
+        effective_model_name = model_name if model_name else 'gemini-1.5-flash-latest' # Default for specialized agent
+        self.model_name = effective_model_name # Store the actual model name used
+
+        # Initialize the ADK Gemini model
+        adk_model = Gemini(model=self.model_name)
+
+        # Call super().__init__ from LlmAgent, passing the model
+        super().__init__(
+            agent_id=agent_id,
+            model=adk_model # Pass the initialized ADK model object
+            # instruction can be set here if needed, or rely on default/prompt
+        )
+        logger.info(f"Content Generation Agent ({self.agent_id}) initialized with model: {self.model_name}.")
 
     async def run_async(self, context: InvocationContext) -> Optional[Event]:
         """
@@ -147,10 +163,12 @@ class ContentGenerationAgent(LlmAgent):
         """Generates a content title using the LLM."""
         prompt = f"Generate a catchy {'conversion-focused' if focus == 'conversion' else 'informative'} title for an affiliate marketing article in the '{niche}' niche. Provide only the title text."
         try:
-            response = await self.llm.generate_content_async(prompt)
+            # Use the LlmAgent's client
+            title = await self.llm_client.generate_text_async(prompt=prompt)
             # Accessing text might differ based on the exact LLM client response structure
             # Assuming response.text or similar attribute holds the generated text
-            title = response.text.strip() if hasattr(response, 'text') else str(response).strip()
+            # title = response.text.strip() if hasattr(response, 'text') else str(response).strip() # generate_text_async returns string directly
+            title = title.strip() # Clean whitespace
             # Basic cleanup: remove quotes if the LLM wrapped the title
             if title.startswith('"') and title.endswith('"'):
                 title = title[1:-1]
@@ -170,9 +188,13 @@ class ContentGenerationAgent(LlmAgent):
         """Generates an article body using the LLM."""
         prompt = f"Write a compelling {'conversion-focused' if focus == 'conversion' else 'informative'} affiliate marketing article body (around 200-300 words) about the '{niche}' niche. Focus on providing value and seamlessly integrating potential affiliate links (use placeholders like '[Product Link]')."
         try:
-            # Assuming max_tokens or similar parameter can be passed via generate_content_async options
-            response = await self.llm.generate_content_async(prompt, generation_config={"max_output_tokens": 350})
-            body = response.text.strip() if hasattr(response, 'text') else str(response).strip()
+            # Assuming max_tokens or similar parameter can be passed via generate_text_async options
+            # Note: ADK's generate_text_async might not directly support generation_config like this.
+            # If specific config is needed, might need to use generate_content_async or adjust model defaults.
+            # For now, assume default config is sufficient or handled by model init.
+            body = await self.llm_client.generate_text_async(prompt=prompt) # Removed generation_config for now
+            # body = response.text.strip() if hasattr(response, 'text') else str(response).strip() # generate_text_async returns string directly
+            body = body.strip() # Clean whitespace
             logger.debug(f"[{self.agent_id}] Generated article body (first 50 chars): '{body[:50]}...'")
             return body
         except Exception as e:

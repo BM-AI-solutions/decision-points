@@ -28,7 +28,7 @@ class OrchestratorAgent(LlmAgent):
         self,
         socketio: SocketIO,
         agents: Dict[str, BaseAgent], # Add agents parameter
-        model: Optional[Union[BaseLlm, str]] = None,
+        model_name: Optional[str] = None, # Changed from 'model' to 'model_name'
         instruction: Optional[str] = None,
         name: str = "OrchestratorAgent",
         description: str = "Handles user prompts and orchestrates tasks, potentially delegating to specialized agents.",
@@ -40,16 +40,19 @@ class OrchestratorAgent(LlmAgent):
         Args:
             socketio: The Flask-SocketIO instance.
             agents: A dictionary mapping agent names to agent instances.
-            model: The ADK model instance or model name string (e.g., 'gemini-1.5-flash'). Defaults to Gemini 1.5 Flash.
+            model_name: The name of the Gemini model to use (e.g., 'gemini-1.5-pro-latest').
+                        Defaults to a suitable model for orchestration if None.
             instruction: Default instruction for the LLM agent.
             name: Name of the agent.
             description: Description of the agent.
             **kwargs: Additional arguments for LlmAgent.
         """
-        if model is None:
-            model = Gemini(model='gemini-1.5-flash-latest') # Default to a Gemini model via ADK
-        elif isinstance(model, str):
-             model = Gemini(model=model) # Allow passing model name string
+        # Determine the model name to use
+        effective_model_name = model_name if model_name else 'gemini-1.5-pro-latest' # Default for Orchestrator
+        self.model_name = effective_model_name # Store the actual model name used
+
+        # Initialize the ADK Gemini model
+        adk_model = Gemini(model=self.model_name)
 
         # Ensure instruction is provided, even if basic
         if instruction is None:
@@ -58,13 +61,14 @@ class OrchestratorAgent(LlmAgent):
         super().__init__(
             name=name,
             description=description,
-            model=model,
+            model=adk_model, # Pass the initialized ADK model object
             instruction=instruction,
             **kwargs
         )
         self.socketio = socketio
         self.agents = agents # Store the agents dictionary
-        logger.info(f"{self.name} initialized with SocketIO, model: {self.model.model}, and agents: {list(self.agents.keys())}.")
+        # Use self.model_name which holds the string name, self.model.model also works if super().__init__ sets it
+        logger.info(f"{self.name} initialized with SocketIO, model: {self.model_name}, and agents: {list(self.agents.keys())}.")
 
 
     async def run_async(self, context: InvocationContext) -> Event:
@@ -294,7 +298,7 @@ Based on the user prompt, output ONLY the key of the most appropriate agent from
 
         if target_agent_key == "lead_generator":
             firecrawl_api_key = os.getenv("FIRECRAWL_API_KEY")
-            openai_api_key = os.getenv("OPENAI_API_KEY")
+            # openai_api_key = os.getenv("OPENAI_API_KEY") # Removed OpenAI Key
             composio_api_key = os.getenv("COMPOSIO_API_KEY")
             if not all([firecrawl_api_key, openai_api_key, composio_api_key]):
                  logger.warning(f"Missing API keys for {target_agent_key}. Delegation might fail.")
