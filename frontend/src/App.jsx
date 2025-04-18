@@ -1,15 +1,22 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import Header from './components/Header';
-import Footer from './components/Footer';
 import Hero from './components/Hero';
 import Features from './components/Features';
 import HowItWorks from './components/HowItWorks';
 import DashboardPreview from './components/DashboardPreview';
+import Dashboard from './components/Dashboard';
 import Pricing from './components/Pricing';
 import AppSection from './components/AppSection';
 import Testimonials from './components/Testimonials';
 import ArchonDashboard from './components/ArchonDashboard';
+import AnalyticsPage from './components/AnalyticsPage';
+import AutomationPage from './components/AutomationPage';
+import InsightsPage from './components/InsightsPage';
+import CustomersPage from './components/CustomersPage';
+import RevenuePage from './components/RevenuePage';
+import MarketingLayout from './components/MarketingLayout';
+import DashboardLayout from './components/DashboardLayout';
+import OrchestratorPanel from './components/OrchestratorPanel'; // Import the new panel
 
 function LandingPage() {
   return (
@@ -28,12 +35,28 @@ function LandingPage() {
 function App() {
   return (
     <BrowserRouter>
-      <Header />
       <Routes>
-        <Route path="/" element={<LandingPage />} />
-        <Route path="/dashboard" element={<ArchonDashboard />} />
+        <Route
+          path="/"
+          element={
+            <MarketingLayout>
+              <LandingPage />
+            </MarketingLayout>
+          }
+        />
+        {/* Dashboard Routes with Layout */}
+        <Route path="/dashboard" element={<DashboardLayout />}>
+          {/* Index route for the main dashboard content */}
+          <Route index element={<Dashboard />} />
+          {/* Nested routes for dashboard sections */}
+          <Route path="analytics" element={<AnalyticsPage />} />
+          <Route path="automation" element={<AutomationPage />} />
+          <Route path="insights" element={<InsightsPage />} />
+          <Route path="customers" element={<CustomersPage />} />
+          <Route path="revenue" element={<RevenuePage />} />
+        </Route>
+          <Route path="orchestrator" element={<OrchestratorPanel />} />
       </Routes>
-      <Footer />
       {/* Modals */}
       <div id="login-modal" className="modal">
         <div className="modal-content">

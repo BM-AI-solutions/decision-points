@@ -1,8 +1,9 @@
 # Core dependencies
-flask==3.0.3
+flask[async]==3.0.3
 flask-cors==4.0.2
 flask-jwt-extended==4.6.0
 werkzeug==3.0.3
+Flask-SocketIO==5.3.6
 gunicorn==22.0.0
 python-dotenv==1.0.0
 pydantic>=2.7.3,<3
@@ -15,6 +16,10 @@ pydantic-ai==0.1.2
 google-genai==0.7.0
 langchain==0.2.5
 
+openai # Used by MarketResearchAgent for analysis
+exa-py # Used by MarketResearchAgent for Exa search
+firecrawl-py # Used by MarketResearchAgent for data extraction
+google-adk
 # Data processing
 numpy==1.26.4
 pandas==2.2.2
@@ -30,6 +35,7 @@ email-validator
 loguru==0.7.2
 tenacity==8.2.3
 
+logfire==0.25.0 # For observability, used in WebSearchAgent
 # Google Cloud Datastore
 google-cloud-datastore==2.19.0
 

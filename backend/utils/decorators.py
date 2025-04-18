@@ -5,6 +5,7 @@ from flask import request, jsonify, current_app
 
 from config import Config
 from models.user import UserProfile # Assuming UserProfile model is accessible
+from routes import auth # Import the auth module
 
 # Import necessary components for user fetching and subscription check
 if Config.BILLING_REQUIRED:
@@ -12,27 +13,15 @@ if Config.BILLING_REQUIRED:
         from google.cloud import datastore
         datastore_client = datastore.Client()
     except ImportError:
-        current_app.logger.error("google-cloud-datastore not installed, but BILLING_REQUIRED is True.")
-        datastore_client = None # Handle gracefully if import fails
-    # In-memory stores are not needed when billing is required
-    USERS = {}
-    USER_IDS = {}
+        # This will likely crash the app if datastore is needed, which is intended.
+        # Log the error during app initialization instead.
+        print("ERROR: google-cloud-datastore not installed, but BILLING_REQUIRED is True.")
+        datastore_client = None
+    datastore = None # Define datastore for consistency, even if client fails
 else:
-    # Import in-memory stores if not using Datastore
-    # This assumes auth.py defines these globally or they are accessible.
-    # If they are instance variables, this approach needs rethinking.
-    # A better approach might be to pass a user lookup function to the decorator.
-    try:
-        # Corrected import path (relative to /app inside container)
-        from routes.auth import USERS, USER_IDS
-    except ImportError:
-         # Commented out: This runs at import time, before app context exists
-         # current_app.logger.warning("Could not import USERS/USER_IDS from auth.py for local mode.")
-         # Fallback if import fails (e.g., circular import)
-         USERS = {}
-         USER_IDS = {}
-    datastore_client = None # Ensure datastore_client is None in local mode
-    datastore = None # Ensure datastore is None in local mode
+    # In local mode, we will access USERS and USER_IDS via the imported auth module
+    datastore_client = None
+    datastore = None
 
 
 # --- Subscription Check Helper ---
@@ -118,10 +107,10 @@ def require_subscription_or_local(f):
                  logger.error(f"Error fetching user profile from Datastore for user_id {user_id}: {e}", exc_info=True)
                  return jsonify({'error': 'Error fetching user profile', 'status': 500}), 500
         else:
-            # Local mode: Fetch from in-memory store
-            local_email = USER_IDS.get(user_id)
-            if local_email and local_email in USERS:
-                 profile_dict = USERS[local_email]
+            # Local mode: Fetch from in-memory store via the imported auth module
+            local_email = auth.USER_IDS.get(user_id) # Use auth.USER_IDS
+            if local_email and local_email in auth.USERS: # Use auth.USERS
+                 profile_dict = auth.USERS[local_email] # Use auth.USERS
                  # Create a simple object that behaves like UserProfile for has_active_subscription
                  user_data = type('UserProfileMock', (), profile_dict)()
                  # Ensure necessary attributes exist, even if None
@@ -145,5 +134,6 @@ def require_subscription_or_local(f):
         kwargs['user_id'] = user_id
         # Optionally pass user_data if needed: kwargs['user_data'] = user_data
 
+        logger.info(f"Decorator successfully processed request for user_id: {user_id}. Calling wrapped function.") # Add logging
         return await f(*args, **kwargs)
     return decorated_function
