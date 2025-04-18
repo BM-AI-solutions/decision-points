@@ -30,10 +30,7 @@ ENV/
 .pytest_cache/
 .coverage
 htmlcov/
-prototypes/
-.prototypes/
-docs/
-.docs/
+.prototype_agent_workshop/*
 # Logs
 *.log
 logs/

@@ -30,7 +30,4 @@ yarn-error.log*
 .DS_Store
 Thumbs.db
 
-docs/
-prototypes/
-.docs/
-.prototypes/
+.prototype_agent_workshop/*
