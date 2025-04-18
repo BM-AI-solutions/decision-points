@@ -43,3 +43,4 @@ google-cloud-firestore==2.20.2 # For workflow state persistence
 # Stripe
 stripe==9.10.0
 functions_framework==3.6.0
+google-cloud-firestore
