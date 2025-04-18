@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate, NavLink } from 'react-router-dom';
+import { useNavigate, NavLink, Outlet } from 'react-router-dom';
 import apiService from '../services/api';
 
 const DashboardLayout = ({ children }) => {
@@ -308,7 +308,9 @@ const DashboardLayout = ({ children }) => {
             zIndex: 0,
             pointerEvents: 'none'
           }}></div>
-          {children}
+          <div style={{ position: 'relative', zIndex: 1, padding: '30px' }}> {/* Added padding and relative positioning */}
+            <Outlet />
+          </div>
         </div>
       </div>
     </div>

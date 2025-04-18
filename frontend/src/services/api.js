@@ -360,6 +360,18 @@ const apiService = {
     console.log("API Call: getConfig"); // Added logging
     return apiClientInstance.get('/config');
   },
+
+  // Workflows
+  getWorkflows: () => {
+    console.log("API Call: getWorkflows");
+    return apiClientInstance.get('/api/workflows');
+  },
+
+  createWorkflow: (workflowData) => {
+    console.log("API Call: createWorkflow", workflowData);
+    return apiClientInstance.post('/api/workflows', workflowData);
+  },
+
   // Cashflow
   getCashflowForecast: (businessId) => {
     console.log("API Call: getCashflowForecast", { businessId });
