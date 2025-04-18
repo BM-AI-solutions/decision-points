@@ -62,6 +62,11 @@ This is the primary and recommended method for local development and testing.
     *   `SECRET_KEY`: Generate a unique secret key (see `.env.example` for command).
     *   `GEMINI_API_KEY`: Your API key from Google AI Studio.
 *   **Run:**
+*   * Working command:*
+    ```bash
+    docker compose -f docker-compose.dev.yml down && docker compose -f docker-compose.dev.yml up -d
+    ```
+*   **these next ones have been giving me issues:**
     ```bash
     docker compose -f docker-compose.dev.yml up --build -d
     ```
@@ -79,7 +84,7 @@ This is the primary and recommended method for local development and testing.
     ```bash
     docker compose -f docker-compose.dev.yml down
     ```
-*   * restarting:*
+*   * Working command:*
     ```bash
     docker compose -f docker-compose.dev.yml down && docker compose -f docker-compose.dev.yml up -d
     ```
