@@ -77,12 +77,45 @@ freelance_task_agent = FreelanceTaskAgent(config=freelance_task_agent_config)
 
 lead_generation_agent = LeadGenerationAgent()
 web_search_agent = WebSearchAgent() # Instantiate WebSearchAgent
+
+# Instantiate Autonomous Income Workflow Agents
+# Note: These agents might require specific configurations (API keys, etc.) passed during init
+# depending on their implementation, which are assumed to be handled within their constructors
+# using environment variables or other config mechanisms.
+market_research_agent = MarketResearchAgent() # Assuming basic init for now
+improvement_agent = ImprovementAgent()       # Assuming basic init for now
+branding_agent = BrandingAgent()           # Assuming basic init for now
+deployment_agent = DeploymentAgent()         # Assuming basic init for now
+
+# Instantiate Workflow Manager Agent, configuring it with other agent URLs
+# Ensure the corresponding environment variables are set in Config or .env
+workflow_manager_agent = WorkflowManagerAgent(
+    market_research_agent_url=getattr(Config, 'MARKET_RESEARCH_AGENT_URL', None),
+    improvement_agent_url=getattr(Config, 'IMPROVEMENT_AGENT_URL', None),
+    branding_agent_url=getattr(Config, 'BRANDING_AGENT_URL', None),
+    deployment_agent_url=getattr(Config, 'DEPLOYMENT_AGENT_URL', None),
+    timeout_seconds=getattr(Config, 'AGENT_TIMEOUT_SECONDS', 300) # Use getattr for optional timeout
+)
+# Check if essential URLs are missing and log warnings
+if not workflow_manager_agent.market_research_agent_url:
+    logger.warning("MARKET_RESEARCH_AGENT_URL not configured. Workflow Manager may fail.")
+if not workflow_manager_agent.improvement_agent_url:
+    logger.warning("IMPROVEMENT_AGENT_URL not configured. Workflow Manager may fail.")
+if not workflow_manager_agent.branding_agent_url:
+    logger.warning("BRANDING_AGENT_URL not configured. Workflow Manager may fail.")
+if not workflow_manager_agent.deployment_agent_url:
+    logger.warning("DEPLOYMENT_AGENT_URL not configured. Workflow Manager may fail.")
+
+
 agents = {
     "market_analyzer": market_analysis_agent,
-    "content_generator": content_generation_agent, # Add the content generator
-    "lead_generator": lead_generation_agent, # Add the lead generator
-    "freelance_tasker": freelance_task_agent, # Add the freelance tasker
-    "web_searcher": web_search_agent, # Add the web searcher
+    "content_generator": content_generation_agent,
+    "lead_generator": lead_generation_agent,
+    "freelance_tasker": freelance_task_agent,
+    "web_searcher": web_search_agent,
+    "workflow_manager": workflow_manager_agent, # Add the workflow manager
+    # Note: Direct references to market_research, improvement, branding, deployment agents
+    # are removed here as they are managed by the workflow_manager.
 }
 
 # Initialize the Orchestrator Agent with SocketIO instance and other agents

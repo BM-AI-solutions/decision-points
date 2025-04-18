@@ -14,6 +14,7 @@ Decision Points is an AI-powered system designed to assist with various business
 *   **Workflow Management:** Backend support for defining and managing automated workflows.
 *   **API Endpoints:** Provides backend APIs for dashboard data and orchestrator tasks.
 *   **Dockerized Local Setup:** Easy-to-use local development environment using Docker Compose.
+*   **Autonomous Income Workflow:** An integrated workflow utilizing specialized agents (Market Research, Improvement, Branding, Deployment) orchestrated by a `WorkflowManagerAgent` to identify, refine, brand, and deploy simple digital products or services.
 
 ## Technology Stack
 
@@ -31,6 +32,17 @@ Decision Points is an AI-powered system designed to assist with various business
 ## Architecture Overview
 
 The system uses a Client-Server architecture. A React frontend communicates with a Flask backend API via REST calls for standard data retrieval and WebSockets for real-time interaction with the Orchestrator agent. The backend leverages Google Gemini for its AI capabilities. Docker Compose is used to manage the local development environment, running the frontend and backend services in separate containers.
+
+## Autonomous Income Generation Workflow
+
+This system includes an autonomous workflow designed to generate income by identifying a market need, creating/improving a simple digital product or service, branding it, and deploying it. This workflow is orchestrated by the `WorkflowManagerAgent` and involves the following specialized agents:
+
+1.  **Market Research Agent:** Scans the web, analyzes trends, and identifies potential niches or product ideas with low competition and high demand.
+2.  **Improvement Agent:** Takes the initial idea or existing simple product and refines it, potentially adding features, improving code quality, or enhancing its value proposition based on research.
+3.  **Branding Agent:** Develops a simple brand identity, including name suggestions, logos (potentially placeholder/simple generation), and marketing copy for the product.
+4.  **Deployment Agent:** Takes the finalized product and branding assets and deploys them to a suitable platform (e.g., Vercel, Netlify, Cloudflare Pages, simple web hosting).
+
+The `WorkflowManagerAgent` coordinates the execution of these agents, passing context and results between steps. The user can trigger this workflow via specific prompts to the Orchestrator Panel (e.g., "start income workflow").
 
 ## Local Setup (Docker - Recommended Method)
 
@@ -74,7 +86,24 @@ The following environment variables need to be configured in your `.env` file (c
 *   `ORCHESTRATOR_MODEL`: **(Required)** The specific Gemini model name to be used by the main Orchestrator agent (e.g., `gemini-1.5-flash`). Check Google's documentation for available models.
 *   `VITE_API_BASE_URL`: **(Required)** The URL the frontend uses to reach the backend API. For the default Docker setup, this **must** be `http://localhost:5000`.
 
-*(Optional agent-specific models like `ACTION_AGENT_MODEL` can also be set if needed, see `.env.example`)*
+*   **(Optional)** `GCP_PROJECT_ID`: Google Cloud Project ID, potentially used by agents like `FreelanceTaskAgent`.
+*   **(Optional)** `BRAVE_API_KEY`: API key for Brave Search, used by `WebSearchAgent`.
+
+### Autonomous Income Workflow Variables:
+
+*   **(Optional)** `OPENAI_API_KEY`: Potentially used by `MarketResearchAgent`.
+*   `FIRECRAWL_API_KEY`: **(Required)** Used by `MarketResearchAgent` for web scraping. Get from [Firecrawl](https://www.firecrawl.dev/).
+*   **(Optional)** `COMPETITOR_SEARCH_PROVIDER`: Search engine for competitor analysis (e.g., 'google').
+*   **(Conditional)** `EXA_API_KEY`: Required if using Exa Search in `MarketResearchAgent`. Get from [Exa AI](https://exa.ai/).
+*   **(Conditional)** `PERPLEXITY_API_KEY`: Required if using Perplexity AI in `MarketResearchAgent`. Get from [Perplexity AI](https://docs.perplexity.ai/docs/getting-started).
+*   `MARKET_RESEARCH_AGENT_URL`: **(Required)** Endpoint for the `WorkflowManagerAgent` to reach the `MarketResearchAgent`. (Example: `http://localhost:5001`)
+*   `IMPROVEMENT_AGENT_URL`: **(Required)** Endpoint for the `WorkflowManagerAgent` to reach the `ImprovementAgent`. (Example: `http://localhost:5002`)
+*   `BRANDING_AGENT_URL`: **(Required)** Endpoint for the `WorkflowManagerAgent` to reach the `BrandingAgent`. (Example: `http://localhost:5003`)
+*   `DEPLOYMENT_AGENT_URL`: **(Required)** Endpoint for the `WorkflowManagerAgent` to reach the `DeploymentAgent`. (Example: `http://localhost:5004`)
+*   **(Optional)** `AGENT_TIMEOUT_SECONDS`: Max wait time for sub-agent responses (Default: 300).
+*   **(Conditional)** Deployment Provider Keys (e.g., `VERCEL_API_TOKEN`, `CLOUDFLARE_API_TOKEN`, etc.): Required by the `DeploymentAgent` based on the chosen deployment platform(s). Add the specific keys needed for your setup.
+
+*(Other optional agent-specific models like `ACTION_AGENT_MODEL` can also be set if needed, see `.env.example`)*
 
 ## API Endpoints
 

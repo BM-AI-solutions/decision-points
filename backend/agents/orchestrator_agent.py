@@ -96,6 +96,7 @@ class OrchestratorAgent(LlmAgent):
         lead_agent = self.agents.get("lead_generator") # Get lead agent
         freelance_agent = self.agents.get("freelance_tasker") # Get freelance agent
         web_search_agent = self.agents.get("web_searcher") # Get web search agent
+        workflow_manager_agent = self.agents.get("workflow_manager") # Get workflow manager agent
 
         # --- Market Analysis Delegation ---
         if should_delegate_to_market_analyzer and market_agent:
@@ -428,6 +429,73 @@ class OrchestratorAgent(LlmAgent):
                     'result': None
                 })
                 logger.info(f"Emitted 'task_update' (web_searcher delegation failed) for task {task_id}")
+                # Return an error event
+                error_action = Action(content=Content(parts=[Part(text=f"Error: {error_message}")]))
+                invocation_id = getattr(context.input_event, 'invocation_id', None)
+                return Event(author=self.name, actions=[error_action], invocation_id=invocation_id)
+
+        # --- Autonomous Income Workflow Delegation ---
+        elif workflow_manager_agent and any(keyword in prompt.lower() for keyword in ["start income workflow", "run autonomous business", "find and deploy product", "autonomous income", "generate business"]):
+            logger.info(f"Task {task_id} identified for delegation to WorkflowManagerAgent.")
+            self.socketio.emit('task_update', {
+                'task_id': task_id,
+                'status': 'delegating',
+                'agent': 'workflow_manager',
+                'message': f"Delegating task to Autonomous Income Workflow Manager..."
+            })
+            logger.info(f"Emitted 'task_update' (delegating to workflow_manager) for task {task_id}")
+
+            try:
+                # Create context for the Workflow Manager Agent
+                # Pass necessary starting parameters if needed via metadata
+                # For now, just passing the original prompt within the standard context
+                delegated_context = InvocationContext(
+                    session=context.session,
+                    input_event=context.input_event # Pass the original event, agent should extract needed info
+                    # Example of adding specific metadata if needed:
+                    # input_event=Event(
+                    #     author=context.input_event.author,
+                    #     actions=context.input_event.actions,
+                    #     invocation_id=context.input_event.invocation_id,
+                    #     metadata={
+                    #         "initial_prompt": prompt,
+                    #         **(context.input_event.metadata or {})
+                    #     }
+                    # )
+                )
+
+                # Invoke the WorkflowManagerAgent
+                delegated_output_event = await workflow_manager_agent.run_async(delegated_context)
+
+                # Extract result from the workflow manager's response
+                delegated_result_text = "Workflow completed. Check logs or specific outputs for details." # Default message
+                if delegated_output_event.actions and delegated_output_event.actions[0].parts:
+                    text_parts = [p.text for p in delegated_output_event.actions[0].parts if p.type == 'text']
+                    if text_parts:
+                        delegated_result_text = text_parts[0]
+                    # TODO: Handle potential structured data (e.g., final product URL, summary)
+
+                # Emit final completion update
+                completion_message = "Autonomous Income Workflow completed."
+                self.socketio.emit('task_update', {
+                    'task_id': task_id,
+                    'status': 'completed',
+                    'message': completion_message,
+                    'result': delegated_result_text
+                })
+                logger.info(f"Emitted 'task_update' (completed by workflow_manager) for task {task_id}.")
+                return delegated_output_event # Return the final event from the workflow manager
+
+            except Exception as e:
+                error_message = f"Delegation to WorkflowManagerAgent failed: {str(e)}"
+                logger.error(f"Task {task_id} delegation to workflow_manager failed: {error_message}", exc_info=True)
+                self.socketio.emit('task_update', {
+                    'task_id': task_id,
+                    'status': 'failed',
+                    'message': error_message,
+                    'result': None
+                })
+                logger.info(f"Emitted 'task_update' (workflow_manager delegation failed) for task {task_id}")
                 # Return an error event
                 error_action = Action(content=Content(parts=[Part(text=f"Error: {error_message}")]))
                 invocation_id = getattr(context.input_event, 'invocation_id', None)
