@@ -16,6 +16,7 @@ import CustomersPage from './components/CustomersPage';
 import RevenuePage from './components/RevenuePage';
 import MarketingLayout from './components/MarketingLayout';
 import DashboardLayout from './components/DashboardLayout';
+import OrchestratorPanel from './components/OrchestratorPanel'; // Import the new panel
 
 function LandingPage() {
   return (
@@ -54,6 +55,7 @@ function App() {
           <Route path="customers" element={<CustomersPage />} />
           <Route path="revenue" element={<RevenuePage />} />
         </Route>
+          <Route path="orchestrator" element={<OrchestratorPanel />} />
       </Routes>
       {/* Modals */}
       <div id="login-modal" className="modal">

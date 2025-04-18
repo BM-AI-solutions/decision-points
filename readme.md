@@ -43,39 +43,51 @@ The system employs a Client-Server architecture, featuring a static frontend com
 
 Two primary methods are supported for local development and testing:
 
-1.  **Docker Desktop (Recommended):**
-    *   Ensure Docker Desktop is installed.
-    *   Configure required environment variables: copy the root `.env.example` file to `.env` (i.e., `cp .env.example .env`) and fill in the necessary values (like your `GOOGLE_API_KEY` for Gemini and any agent model overrides).
-    *   Run: `docker compose -f docker-compose.dev.yml up -d --build`
-    *   The backend and frontend are fully Dockerized for local development and production builds.
-    *   The backend uses a multi-stage Dockerfile supporting both development (hot-reload, volume mount) and production (Gunicorn) modes. Compose uses the dev stage by default for local development.
-    *   The frontend uses a Dockerfile to build static assets with npm, then serves them via nginx in production. For local development, the dist/ directory is mounted for live updates.
-    *   Both services are orchestrated via `docker-compose.yml`, which sets up a shared network so the frontend can reach the backend at `http://backend:5000`.
-    *   Environment variables for the services are managed via the root `.env` file created in the previous step. Docker Compose (`docker-compose.dev.yml`) automatically loads this file for the services.
-    *   **No Google Cloud SDK or credentials are required for local Docker development.** The backend uses a local in-memory database for user/session data in this mode.
-
-### Using Development vs. Production Configurations
-
-This project now uses separate Docker Compose files for development and production:
-
-*   **Development:** Uses hot-reloading for the backend and the Vite dev server for the frontend. Access the frontend at `http://localhost:8000` and the backend API at `http://localhost:5000`. Run with:
-    ```bash
-    docker compose -f docker-compose.dev.yml down && docker compose -f docker-compose.dev.yml up --build -d
-    ```
-*   **Production:** Builds optimized production images for both backend (using Gunicorn) and frontend (serving static files with Nginx). Access the frontend at `http://localhost:8000`. Run with:
-    ```bash
-    docker compose -f docker-compose.prod.yml up --build
-    ```
-
----
-    *   To forward Stripe webhooks to your backend during local development, use the Stripe CLI:
+1.  **Docker Desktop (Recommended Method):**
+    *   **Prerequisites:** Ensure Docker Desktop is installed and running.
+    *   **Environment Setup:**
+        *   Copy the root `.env.example` file to `.env`: `cp .env.example .env`
+        *   Edit the new `.env` file and fill in the necessary values, especially `SECRET_KEY` and `GEMINI_API_KEY`. For local development, `BILLING_REQUIRED=false` is usually appropriate. Ensure `VITE_API_BASE_URL` is set to `http://localhost:5000` (the default in `.env.example`).
+    *   **Run:**
+        ```bash
+        docker compose -f docker-compose.dev.yml up --build -d
+        ```
+        *   Use `-d` to run in detached mode (background). Omit it to see logs directly.
+        *   The `--build` flag ensures images are rebuilt if Dockerfiles or contexts change.
+    *   **Access:**
+        *   Frontend: `http://localhost:8000` (served by Vite dev server with hot-reloading)
+        *   Backend API: `http://localhost:5000` (Flask dev server with hot-reloading)
+    *   **How it Works:**
+        *   `docker-compose.dev.yml` defines `frontend` and `backend` services.
+        *   It uses multi-stage Dockerfiles optimized for development (volume mounts for code, dev servers).
+        *   Services are connected on a Docker network (`appnet`). The frontend container *can* reach the backend container at `http://backend:5000`, but the frontend JavaScript code running in your **browser** accesses the API via the host machine's mapped port: `http://localhost:5000` (as configured by `VITE_API_BASE_URL` in your `.env` file).
+        *   The root `.env` file provides environment variables to the services.
+        *   No Google Cloud SDK/credentials needed locally; an in-memory database is used.
+    *   **Stopping:**
+        ```bash
+        docker compose -f docker-compose.dev.yml down
+        ```
+    *   **Stripe Webhooks (Optional):** To forward Stripe webhooks during development:
         ```bash
         stripe listen --forward-to localhost:5000/api/stripe/webhook
         ```
         (Requires [Stripe CLI](https://stripe.com/docs/stripe-cli))
 
-2.  **Python Virtual Environment (venv):**
+### Using Development vs. Production Docker Configurations
+
+*   **Development (`docker-compose.dev.yml`):** Use this for local development (hot-reloading, dev servers). Commands above apply.
+*   **Production (`docker-compose.prod.yml`):** Builds optimized production images (Gunicorn backend, Nginx frontend). Access frontend at `http://localhost:8000`. Run with:
+    ```bash
+    docker compose -f docker-compose.prod.yml up --build -d
+    ```
+    *(Note: Production setup might require additional configuration, e.g., database, secrets management. See `DEPLOYMENT.md`)*
+
+---
+
+2.  **Alternative: Manual Python Setup (venv):**
+    *   This method runs the backend directly on your host machine using a Python virtual environment. It requires manual setup of Python and dependencies.
     *   Ensure Python 3.8+ or 3.9+ is installed.
+    *   Navigate to the `backend` directory: `cd backend`
     *   Create and activate a virtual environment:
         ```bash
         python -m venv venv
@@ -83,10 +95,15 @@ This project now uses separate Docker Compose files for development and producti
         ```
     *   Install dependencies:
         ```bash
-        pip install -r backend/requirements.txt
+        pip install -r requirements.txt
         ```
-    *   Configure required environment variables (e.g., set them in your shell or create a `.env` file, ensuring you set `GOOGLE_API_KEY` for Gemini and any agent model overrides).
-    *   Run the Flask development server (refer to Flask documentation or project specifics).
+    *   Configure environment variables: You'll need to set variables like `SECRET_KEY`, `GEMINI_API_KEY`, etc., directly in your shell or using a tool like `python-dotenv` (requires adding a `.env` file *inside* the `backend` directory for this method).
+    *   Run the Flask development server (from the `backend` directory):
+        ```bash
+        flask run --host=0.0.0.0 --port=5000
+        ```
+    *   You would also need to manually build and serve the frontend separately (e.g., `cd ../frontend && npm install && npm run dev`).
+    *   Return to the root directory when done: `cd ..`
 
 ---
 
@@ -134,12 +151,18 @@ The system supports two deployment modes, each with different environment variab
 ### Example .env for Local Development
 
 ```
+# --- Backend ---
 BILLING_REQUIRED=false
-SECRET_KEY=your_local_dev_secret_key
-GOOGLE_API_KEY=your_google_api_key
-ACTION_AGENT_MODEL=gemini-2.5-pro-exp-03-25
-GUIDE_AGENT_MODEL=gemini-2.5-pro-exp-03-25
-ARCHON_AGENT_MODEL=gemini-2.5-pro-exp-03-25
+SECRET_KEY=your_local_dev_secret_key # Replace with output from: python -c "import secrets; print(secrets.token_hex(32))"
+GEMINI_API_KEY=your_google_api_key
+# Optional: Override default agent models
+# ACTION_AGENT_MODEL=gemini-pro
+# GUIDE_AGENT_MODEL=gemini-pro
+# ARCHON_AGENT_MODEL=gemini-pro
+
+# --- Frontend ---
+VITE_API_BASE_URL=http://localhost:5000 # URL for browser to reach backend API
+VITE_DEPLOYMENT_MODE= # Leave blank for local/self-hosted features
 ```
 
 ### Example .env for Hosted/SaaS Deployment
@@ -183,10 +206,11 @@ You may override these in a separate `.env.production` file if needed for produc
 ---
 ### Frontend Configuration
 
-- **`VITE_DEPLOYMENT_MODE`**: Controls frontend behavior based on the deployment type.
-    - Set to `'cloud'` for the cloud-hosted version, which enables specific features like free-tier signup.
-    - Leave blank or set to any other value for the self-hosted version, which uses standard open signup.
-    - This variable is configured in the root `.env` file.
+- **`VITE_API_BASE_URL`**: The URL the frontend (running in the browser) uses to make API calls to the backend. For the standard Docker development setup, this should be `http://localhost:5000` (pointing to the port mapped from the backend container to your host machine).
+- **`VITE_DEPLOYMENT_MODE`**: Controls frontend behavior (e.g., signup flow).
+    - Set to `'cloud'` for cloud-hosted features (like free tier signup).
+    - Leave blank (default in `.env.example`) for standard self-hosted/local features.
+- Both variables are configured in the root `.env` file and automatically picked up by the frontend build process within Docker.
 
 ---
 

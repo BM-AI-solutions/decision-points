@@ -408,6 +408,13 @@ const apiService = {
     // Assuming an endpoint like /api/revenue will exist
     return apiClientInstance.get('/api/revenue');
   }
+,
+
+  // Orchestrator Tasks
+  submitOrchestratorTask: (goal, parameters = {}) => {
+    console.log("API Call: submitOrchestratorTask", { goal, parameters });
+    return apiClientInstance.post('/api/orchestrator/tasks', { goal, parameters });
+  }
 }; // Closing brace for apiService object
 // Export the service object for use in components
 export default apiService;

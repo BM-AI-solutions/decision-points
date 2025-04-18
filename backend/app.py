@@ -9,12 +9,16 @@ from dotenv import load_dotenv
 from flask import Flask, request, jsonify, Response
 from middleware.security_headers import security_headers
 from flask_cors import CORS
+from flask_socketio import SocketIO
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from config import Config
 from utils.logger import setup_logger
 from routes import auth, market, business, features, deployment, cashflow, workflows, analytics, insights, customers
 from routes import auth, market, business, features, deployment, cashflow, workflows, analytics, insights, customers, revenue
+from routes import orchestrator # Import the new orchestrator blueprint
+from agents.orchestrator_agent import OrchestratorAgent # Import the agent
+
 
 # Load environment variables
 load_dotenv()
@@ -24,7 +28,31 @@ app = Flask(__name__)
 app.after_request(security_headers)
 app.config.from_object(Config)
 
-# Enable CORS
+
+# Determine allowed origins for CORS
+allowed_origins = ["https://decisionpoints.intellisol.cc"]
+if (
+    os.environ.get('FLASK_ENV') == 'development'
+    or app.config.get('ENV') == 'development'
+    or not app.config.get('BILLING_REQUIRED', True)
+):
+    allowed_origins.append("http://localhost:8000")
+    allowed_origins.append("http://localhost:5173")
+
+# Enable standard Flask CORS
+CORS(app, resources={r"/api/*": {"origins": allowed_origins}}, supports_credentials=True)
+
+# Initialize SocketIO with CORS settings
+# Use '*' if allowing all origins in dev, otherwise use the specific list
+socketio_cors_origins = allowed_origins if allowed_origins else "*"
+socketio = SocketIO(app, cors_allowed_origins=socketio_cors_origins, async_mode='threading') # Using threading for simplicity, consider eventlet/gevent for production
+
+
+# Initialize the Orchestrator Agent with SocketIO instance
+orchestrator_agent = OrchestratorAgent(socketio=socketio)
+app.orchestrator_agent = orchestrator_agent # Attach agent to app context
+
+# Enable CORS (Original block moved up and logic reused)
 # Allow specific origin for production, add localhost for development
 allowed_origins = ["https://decisionpoints.intellisol.cc"]
 # Allow development origin if FLASK_ENV is development OR if billing is not required (local dev setup)
@@ -38,8 +66,6 @@ if (
     allowed_origins.append("http://localhost:8000") # Keep existing dev origin
     allowed_origins.append("http://localhost:5173") # Add Vite dev origin
     # You might need to add 'http://localhost:5173' if your Vite dev server uses that port
-CORS(app, resources={r"/api/*": {"origins": allowed_origins}}, supports_credentials=True)
-
 # Fix for proxies
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
@@ -60,6 +86,7 @@ app.register_blueprint(customers.customers_bp) # Register the customers blueprin
 
 app.register_blueprint(revenue.revenue_bp) # Register the revenue blueprint
 
+app.register_blueprint(orchestrator.orchestrator_bp) # Register the orchestrator blueprint
 @app.route('/api/health', methods=['GET'])
 def health_check() -> Dict[str, str]:
     """Health check endpoint."""
@@ -99,7 +126,25 @@ def get_public_config() -> Dict[str, Any]:
         "contactEmail": "support@intellisol.cc"
     })
 
+# Add a simple SocketIO event handler example (can be moved later)
+@socketio.on('connect')
+def handle_connect():
+    logger.info(f"Client connected: {request.sid}")
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    logger.info(f"Client disconnected: {request.sid}")
+
+@socketio.on('message')
+def handle_message(data):
+    logger.info(f"Received message from {request.sid}: {data}")
+    # Example echo back
+    socketio.emit('response', {'data': f'Server received: {data}'}, room=request.sid)
+
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     debug = os.environ.get('FLASK_ENV') == 'development'
-    app.run(host='0.0.0.0', port=port, debug=debug)
+    logger.info(f"Starting SocketIO server on port {port} with debug={debug}")
+    # Use socketio.run to start the server
+    socketio.run(app, host='0.0.0.0', port=port, debug=debug, use_reloader=debug)

@@ -68,6 +68,7 @@ const DashboardLayout = ({ children }) => {
     { label: 'Insights', icon: 'fas fa-lightbulb', route: '/dashboard/insights' },
     { label: 'Customers', icon: 'fas fa-users', route: '/dashboard/customers' },
     { label: 'Revenue', icon: 'fas fa-dollar-sign', route: '/dashboard/revenue' },
+    { label: 'Orchestrator', icon: 'fas fa-robot', route: '/dashboard/orchestrator' }, // Added Orchestrator link
   ];
 
   if (loading) {
