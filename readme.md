@@ -79,7 +79,10 @@ This is the primary and recommended method for local development and testing.
     ```bash
     docker compose -f docker-compose.dev.yml down
     ```
-
+*   * restarting:*
+    ```bash
+    docker compose -f docker-compose.dev.yml down && docker compose -f docker-compose.dev.yml up -d
+    ```
 ## Environment Variables
 
 The following environment variables need to be configured in your `.env` file (copied from `.env.example`):
