@@ -2,7 +2,7 @@ import json
 import logging
 from typing import Dict, Any
 
-import google.generativeai as genai
+from google import genai
 from google.adk.agents import LlmAgent
 from google.adk.runtime import InvocationContext, Event
 

@@ -5,7 +5,7 @@ import json
 import logging
 from typing import Dict, Any, Optional, List, Union
 
-import google.generativeai as genai
+from google import genai
 from google.cloud import firestore # Add Firestore import
 from dotenv import load_dotenv
 from flask import Flask, request, jsonify, Response
