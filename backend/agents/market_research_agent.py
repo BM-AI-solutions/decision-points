@@ -17,7 +17,7 @@ from google.adk.runtime.event import Event, EventSeverity
 from exa_py import Exa
 from firecrawl import FirecrawlApp, AsyncFirecrawlApp
 # import openai # Removed OpenAI import
-import google.generativeai as genai # Added Gemini import
+from google import genai # Added Gemini import
 from google.api_core import exceptions as google_exceptions # Added Google API exceptions
 
 # Setup basic logging

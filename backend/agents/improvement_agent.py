@@ -4,7 +4,7 @@ import asyncio
 import logging
 import httpx  # For async HTTP requests (A2A calls)
 from typing import List, Optional, Dict, Any
-import google.generativeai as genai
+from google import genai
 import json
 
 from pydantic import BaseModel, Field, ValidationError
