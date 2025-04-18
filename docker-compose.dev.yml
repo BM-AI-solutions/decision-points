@@ -18,13 +18,12 @@ services:
   frontend:
     build:
       context: ./frontend
-      target: build
+      target: dev
     working_dir: /app
     ports:
       - "8000:5173"
     volumes:
       - ./frontend:/app
-      - /app/node_modules
     restart: unless-stopped
     command: npm run dev -- --host
     depends_on:

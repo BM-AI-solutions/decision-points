@@ -6,7 +6,7 @@ services:
       context: ./backend
       target: prod
     env_file:
-      - ./.env
+      - ./.env.prod
     working_dir: /app
     ports:
       - "5000:5000"
