@@ -78,16 +78,26 @@ if Config.GEMINI_API_KEY:
 else:
     logger.warning("GEMINI_API_KEY not found in environment variables. LLM functionality will be disabled.")
 
-# Determine allowed origins for CORS
-allowed_origins = ["https://decisionpoints.intellisol.cc"]
-if (
-    os.environ.get('FLASK_ENV') == 'development'
-    or app.config.get('ENV') == 'development'
-    or not app.config.get('BILLING_REQUIRED', True)
-):
-    allowed_origins.append("http://localhost:8000")
-    allowed_origins.append("http://localhost:5173")
+# Determine allowed origins for CORS from environment variable
+# Example: ALLOWED_ORIGINS="http://localhost:5173,http://localhost:8000,https://your-prod-domain.com"
+allowed_origins_str = os.getenv('ALLOWED_ORIGINS', '')
+# Split the comma-separated string into a list, removing empty strings and stripping whitespace
+allowed_origins = [origin.strip() for origin in allowed_origins_str.split(',') if origin.strip()]
 
+# Automatically add localhost origins during development for convenience, avoiding duplicates
+if os.environ.get('FLASK_ENV') == 'development':
+    dev_origins = {"http://localhost:8000", "http://localhost:5173"}
+    current_origins_set = set(allowed_origins)
+    allowed_origins = list(current_origins_set.union(dev_origins))
+
+# Log a warning if no origins are configured after processing
+# Note: Ensure logger is configured before this line or handle NameError
+if not allowed_origins:
+    try:
+        # Assuming logger is configured before this point based on file structure.
+        logger.warning("No allowed origins configured (ALLOWED_ORIGINS env var is empty/missing and not in development mode). CORS may block frontend requests.")
+    except NameError: # Fallback if logger isn't ready
+        print("WARNING: No allowed origins configured. CORS may block frontend requests.")
 # Enable standard Flask CORS
 CORS(app, resources={r"/api/*": {"origins": allowed_origins}}, supports_credentials=True)
 
@@ -181,18 +191,7 @@ app.market_analysis_agent = market_analysis_agent # Attach market analysis agent
 
 # Enable CORS (Original block moved up and logic reused)
 # Allow specific origin for production, add localhost for development
-allowed_origins = ["https://decisionpoints.intellisol.cc"]
-# Allow development origin if FLASK_ENV is development OR if billing is not required (local dev setup)
-if (
-    os.environ.get('FLASK_ENV') == 'development'
-    or app.config.get('ENV') == 'development'
-    or not app.config.get('BILLING_REQUIRED', True)
-):
-    # Assuming frontend runs on port 8000 for local dev based on previous setup
-    # Vite default is often 5173, adjust if needed.
-    allowed_origins.append("http://localhost:8000") # Keep existing dev origin
-    allowed_origins.append("http://localhost:5173") # Add Vite dev origin
-    # You might need to add 'http://localhost:5173' if your Vite dev server uses that port
+# This block is now redundant and removed. The logic is handled earlier.
 # Fix for proxies
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
