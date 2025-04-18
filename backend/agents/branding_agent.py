@@ -75,9 +75,34 @@ class BrandingAgent(LlmAgent): # Inherit from LlmAgent
     ADK Agent responsible for Stage 3: Rebranding.
     Generates a brand identity based on the improved product specification.
     """
-    def __init__(self, agent_id: str = "branding_agent", web_search_agent_url: Optional[str] = None):
-        """Initialize the Branding Agent."""
-        super().__init__(agent_id=agent_id)
+    def __init__(self,
+                 agent_id: str = "branding_agent",
+                 model_name: Optional[str] = None, # Added model_name parameter
+                 web_search_agent_url: Optional[str] = None):
+        """
+        Initialize the Branding Agent.
+
+        Args:
+            agent_id: The unique identifier for this agent instance.
+            model_name: The name of the Gemini model to use (e.g., 'gemini-1.5-flash-latest').
+                        Defaults to a suitable model if None.
+            web_search_agent_url: The URL for the WebSearchAgent A2A endpoint.
+        """
+        # Determine the model name to use
+        effective_model_name = model_name if model_name else 'gemini-1.5-flash-latest' # Default for specialized agent
+        self.model_name = effective_model_name # Store the actual model name used
+
+        # Initialize the ADK Gemini model
+        # Note: Assumes GEMINI_API_KEY is configured globally for ADK or handled by LlmAgent
+        adk_model = Gemini(model=self.model_name)
+
+        # Call super().__init__ from LlmAgent, passing the model
+        super().__init__(
+            agent_id=agent_id,
+            model=adk_model # Pass the initialized ADK model object
+            # instruction can be set here if needed, or rely on default/prompt
+        )
+
         self.web_search_agent_url = web_search_agent_url or os.getenv("WEB_SEARCH_AGENT_URL")
         self.brave_api_key = os.getenv("BRAVE_API_KEY")
 
@@ -87,6 +112,7 @@ class BrandingAgent(LlmAgent): # Inherit from LlmAgent
             # Log warning, but allow continuation if only URL is missing (maybe search works without API key for some basic checks?)
             # Or raise an error if API key is absolutely essential for the WebSearchAgent. Let's warn for now.
             self.logger.warning("BRAVE_API_KEY is not configured. Web search functionality might be limited or fail.")
+        self.logger.info(f"BrandingAgent initialized with model: {self.model_name}") # Added logging for model
 
     async def _check_name_availability(self, name: str, client: httpx.AsyncClient) -> tuple[str, str]:
         """

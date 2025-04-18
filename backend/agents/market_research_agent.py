@@ -92,9 +92,15 @@ class MarketResearchAgent(Agent):
     Finds competitors, extracts data, performs web search, and generates a MarketOpportunityReport using Gemini.
     Inherits from google.adk.agents.Agent.
     """
-    def __init__(self):
-        """Initialize the agent and required clients."""
-        # Load API Keys
+    def __init__(self, model_name: Optional[str] = None):
+        """
+        Initialize the agent and required clients.
+
+        Args:
+            model_name: The name of the Gemini model to use for analysis (e.g., 'gemini-1.5-flash-latest').
+                        Defaults to a suitable model if None.
+        """
+        # Load API Keys (excluding Gemini model name)
         # self.openai_api_key = os.getenv("OPENAI_API_KEY") # Removed
         self.google_api_key = os.getenv("GOOGLE_API_KEY")
         self.firecrawl_api_key = os.getenv("FIRECRAWL_API_KEY")
@@ -103,8 +109,12 @@ class MarketResearchAgent(Agent):
         self.search_provider = os.getenv("COMPETITOR_SEARCH_PROVIDER", "exa").lower()
         self.web_search_agent_url = os.getenv("WEB_SEARCH_AGENT_URL")
         self.brave_api_key = os.getenv("BRAVE_API_KEY")
-        self.gemini_model_name = os.getenv("GEMINI_MODEL_NAME", "gemini-1.5-flash-latest")
+        # self.gemini_model_name = os.getenv("GEMINI_MODEL_NAME", "gemini-1.5-flash-latest") # Removed direct env var read
         self.content_generation_agent_url = os.getenv("CONTENT_GENERATION_AGENT_URL")
+
+        # Determine the model name to use
+        effective_model_name = model_name if model_name else 'gemini-1.5-flash-latest' # Default for specialized agent
+        self.model_name = effective_model_name # Store the actual model name used
 
         # Initialize shared httpx client
         self.http_client = httpx.AsyncClient(timeout=30.0)
@@ -129,14 +139,14 @@ class MarketResearchAgent(Agent):
         # --- Gemini Initialization ---
         if not self.google_api_key:
             # Log warning, analysis step will fail if key is missing
-            logger.warning("GOOGLE_API_KEY not set. Analysis step will fail.")
+            logger.warning("GOOGLE_API_KEY not set. Gemini model initialization skipped.")
             self.gemini_model = None # Explicitly set to None
         else:
             try:
                 genai.configure(api_key=self.google_api_key)
-                # Initialize the Gemini model
+                # Initialize the Gemini model using the determined model name
                 self.gemini_model = genai.GenerativeModel(
-                    self.gemini_model_name,
+                    self.model_name, # Use the stored model name
                     # Define generation config for JSON output
                     generation_config=genai.types.GenerationConfig(
                         # candidate_count=1, # Default is 1
@@ -147,9 +157,9 @@ class MarketResearchAgent(Agent):
                     ),
                     # safety_settings=... # Optional safety settings
                 )
-                logger.info(f"Gemini client configured successfully using model: {self.gemini_model_name}")
+                logger.info(f"Gemini client configured successfully using model: {self.model_name}")
             except Exception as e:
-                logger.error(f"Failed to configure or initialize Gemini client: {e}", exc_info=True)
+                logger.error(f"Failed to configure or initialize Gemini client with model {self.model_name}: {e}", exc_info=True)
                 self.gemini_model = None # Ensure model is None on error
         # --- End Gemini Initialization ---
 
