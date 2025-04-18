@@ -12,11 +12,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Install pip dependencies
+# Install pip-tools first
 RUN pip install pip-tools
+
+# Copy only requirements.in to leverage caching
 COPY requirements.in .
-COPY requirements.txt .
-RUN pip-compile requirements.in -o requirements.txt --no-header --no-annotate && pip install --no-cache-dir -r requirements.txt
+
+# Generate requirements.txt. This layer is invalidated only if requirements.in changes.
+RUN pip-compile requirements.in -o requirements.txt --no-header --no-annotate
+
+# Install dependencies using the generated requirements.txt.
+# This layer is invalidated only if requirements.txt changes.
+# Removed --no-cache-dir to utilize pip cache.
+RUN pip install -r requirements.txt
 
 ############################
 # Development image
@@ -27,9 +35,11 @@ ENV FLASK_ENV=development
 ENV PYTHONUNBUFFERED=1
 
 # Install dev dependencies (if any)
-RUN pip install --no-cache-dir flask python-dotenv
+# Removed --no-cache-dir
+RUN pip install flask python-dotenv
 
 # Copy all code (for dev image, but will be mounted in compose)
+# This happens after base dependencies are installed.
 COPY . .
 
 # Expose port for Flask dev server
@@ -44,6 +54,8 @@ FROM base AS prod
 
 ENV FLASK_ENV=production
 
+# Copy all code
+# This happens after base dependencies are installed.
 COPY . .
 
 EXPOSE 5000
