@@ -19,7 +19,8 @@ RUN pip install pip-tools
 COPY requirements.in .
 
 # Generate requirements.txt. This layer is invalidated only if requirements.in changes.
-RUN pip-compile requirements.in -o requirements.txt --no-header --no-annotate
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Install dependencies using the generated requirements.txt.
 # This layer is invalidated only if requirements.txt changes.
