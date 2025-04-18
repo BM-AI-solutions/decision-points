@@ -32,6 +32,7 @@ email-validator
 loguru==0.7.2
 tenacity==8.2.3
 
+logfire==0.25.0 # For observability, used in WebSearchAgent
 # Google Cloud Datastore
 google-cloud-datastore==2.19.0
 

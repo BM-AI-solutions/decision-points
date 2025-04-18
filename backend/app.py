@@ -19,6 +19,11 @@ from routes import auth, market, business, features, deployment, cashflow, workf
 from routes import auth, market, business, features, deployment, cashflow, workflows, analytics, insights, customers, revenue
 from routes import orchestrator # Import the new orchestrator blueprint
 from agents.orchestrator_agent import OrchestratorAgent # Import the agent
+from agents.market_analysis_agent import MarketAnalysisAgent # Import the MarketAnalysisAgent
+from agents.content_generation_agent import ContentGenerationAgent # Import the ContentGenerationAgent
+from agents.lead_generation_agent import LeadGenerationAgent # Import the LeadGenerationAgent
+from agents.freelance_task_agent import FreelanceTaskAgent # Import the FreelanceTaskAgent
+from agents.web_search_agent import WebSearchAgent # Import the WebSearchAgent
 
 
 # Load environment variables
@@ -57,9 +62,34 @@ socketio_cors_origins = allowed_origins if allowed_origins else "*"
 socketio = SocketIO(app, cors_allowed_origins=socketio_cors_origins, async_mode='threading') # Using threading for simplicity, consider eventlet/gevent for production
 
 
-# Initialize the Orchestrator Agent with SocketIO instance
-orchestrator_agent = OrchestratorAgent(socketio=socketio, model_name=Config.ORCHESTRATOR_MODEL)
-app.orchestrator_agent = orchestrator_agent # Attach agent to app context
+# Initialize Agents
+market_analysis_agent = MarketAnalysisAgent(model_name=Config.MARKET_ANALYSIS_MODEL if hasattr(Config, 'MARKET_ANALYSIS_MODEL') else Config.ORCHESTRATOR_MODEL) # Use specific model or fallback
+content_generation_agent = ContentGenerationAgent(model_name=Config.CONTENT_GENERATION_MODEL if hasattr(Config, 'CONTENT_GENERATION_MODEL') else Config.ORCHESTRATOR_MODEL) # Use specific model or fallback
+# Instantiate LeadGenerationAgent (assuming default model or no specific model needed at init)
+# Get GCP Project ID for FreelanceTaskAgent
+gcp_project_id = os.getenv('GCP_PROJECT_ID')
+if not gcp_project_id:
+    logger.warning("GCP_PROJECT_ID not found in environment variables. FreelanceTaskAgent may not function correctly.")
+    freelance_task_agent_config = {}
+else:
+    freelance_task_agent_config = {'gcp_project_id': gcp_project_id}
+freelance_task_agent = FreelanceTaskAgent(config=freelance_task_agent_config)
+
+lead_generation_agent = LeadGenerationAgent()
+web_search_agent = WebSearchAgent() # Instantiate WebSearchAgent
+agents = {
+    "market_analyzer": market_analysis_agent,
+    "content_generator": content_generation_agent, # Add the content generator
+    "lead_generator": lead_generation_agent, # Add the lead generator
+    "freelance_tasker": freelance_task_agent, # Add the freelance tasker
+    "web_searcher": web_search_agent, # Add the web searcher
+}
+
+# Initialize the Orchestrator Agent with SocketIO instance and other agents
+orchestrator_agent = OrchestratorAgent(socketio=socketio, model_name=Config.ORCHESTRATOR_MODEL, agents=agents)
+app.orchestrator_agent = orchestrator_agent # Attach orchestrator agent to app context
+# Optionally attach other agents if needed globally
+# app.market_analysis_agent = market_analysis_agent
 
 # Enable CORS (Original block moved up and logic reused)
 # Allow specific origin for production, add localhost for development

@@ -5,6 +5,7 @@ import uuid
 from datetime import datetime
 
 from utils.logger import setup_logger
+from google.adk.runtime import InvocationContext # Import ADK InvocationContext
 # Import necessary components from the main app
 # We will instantiate the agent in app.py and import it here
 # from backend.app import socketio, orchestrator_agent # Adjusted import path
@@ -71,14 +72,23 @@ def create_orchestrator_task():
 
     # 3. Forward Task to Orchestrator Agent (Run in Background)
     try:
-        logger.info(f"Orchestrator Task: Forwarding task for prompt '{prompt}' to Orchestrator Agent...")
-        # Use socketio.start_background_task to run the agent's processing
+        logger.info(f"Orchestrator Task: Forwarding task for prompt '{prompt}' to Orchestrator Agent using run_async...")
+
+        # Create InvocationContext for ADK agent
+        invocation_id = str(uuid.uuid4())
+        context = InvocationContext(
+            invocation_id=invocation_id,
+            invocation_data=task_data # Pass prompt and user_id
+        )
+        logger.debug(f"Orchestrator Task: Created InvocationContext with ID {invocation_id} and data: {task_data}")
+
+        # Use socketio.start_background_task to run the agent's run_async
         # without blocking the HTTP response.
-        socketio.start_background_task(orchestrator_agent.process_task, task_data)
-        logger.info(f"Orchestrator Task: Background task started for prompt '{prompt}'.")
+        socketio.start_background_task(orchestrator_agent.run_async, context)
+        logger.info(f"Orchestrator Task: Background task started for invocation_id {invocation_id} (prompt: '{prompt}').")
 
     except Exception as e:
-        logger.error(f"Orchestrator Task: Failed to start background task for agent: {str(e)}", exc_info=True)
+        logger.error(f"Orchestrator Task: Failed to create context or start background task for agent: {str(e)}", exc_info=True)
         return jsonify({"error": "Failed to submit task to orchestrator"}), 500
 
     # 4. Return Immediate Acknowledgment
