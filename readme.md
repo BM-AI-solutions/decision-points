@@ -59,9 +59,8 @@ This is the primary and recommended method for local development and testing.
         cp .env.example .env
         ```
     *   **Crucially, edit the new `.env` file and fill in *all* required values.** This includes:
-        *   `SECRET_KEY`: Generate a unique secret key (see `.env.example` for command).
-        *   `GEMINI_API_KEY`: Your API key from Google AI Studio.
-        *   `ORCHESTRATOR_MODEL`: The specific Gemini model you want the orchestrator to use (e.g., 'gemini-1.5-flash').
+    *   `SECRET_KEY`: Generate a unique secret key (see `.env.example` for command).
+    *   `GEMINI_API_KEY`: Your API key from Google AI Studio.
 *   **Run:**
     ```bash
     docker compose -f docker-compose.dev.yml up --build -d
@@ -94,6 +93,24 @@ The following environment variables need to be configured in your `.env` file (c
 *   **(Optional)** `GCP_PROJECT_ID`: Google Cloud Project ID, potentially used by agents like `FreelanceTaskAgent`.
 *   **(Optional)** `BRAVE_API_KEY`: API key for Brave Search, used by `WebSearchAgent`.
 
+### Optional Agent-Specific LLM Models:
+
+You can optionally override the `SPECIALIZED_AGENT_LLM_MODEL` for individual agents by setting specific environment variables. If an agent-specific variable is not set, the agent will use the model defined by `SPECIALIZED_AGENT_LLM_MODEL`. Examples include:
+
+*   `MARKET_RESEARCH_LLM_MODEL`: Model for the Market Research Agent.
+*   `IMPROVEMENT_LLM_MODEL`: Model for the Improvement Agent.
+*   `BRANDING_LLM_MODEL`: Model for the Branding Agent.
+*   `DEPLOYMENT_LLM_MODEL`: Model for the Deployment Agent.
+*   `CODE_GENERATION_LLM_MODEL`: Model for the Code Generation Agent.
+*   `CONTENT_GENERATION_LLM_MODEL`: Model for the Content Generation Agent.
+*   `FREELANCE_TASK_LLM_MODEL`: Model for the Freelance Task Agent.
+*   `LEAD_GENERATION_LLM_MODEL`: Model for the Lead Generation Agent.
+*   `MARKET_ANALYSIS_LLM_MODEL`: Model for the Market Analysis Agent.
+*   `MARKETING_LLM_MODEL`: Model for the Marketing Agent.
+*   `WEB_SEARCH_LLM_MODEL`: Model for the Web Search Agent.
+*   `WORKFLOW_MANAGER_LLM_MODEL`: Model for the Workflow Manager Agent.
+*   *(Add others as needed based on implemented agents)*
+
 ### Autonomous Income Workflow Variables:
 
 *   **(Optional)** `OPENAI_API_KEY`: Potentially used by `MarketResearchAgent`.
@@ -107,8 +124,6 @@ The following environment variables need to be configured in your `.env` file (c
 *   `DEPLOYMENT_AGENT_URL`: **(Required)** Endpoint for the `WorkflowManagerAgent` to reach the `DeploymentAgent`. (Example: `http://localhost:5004`)
 *   **(Optional)** `AGENT_TIMEOUT_SECONDS`: Max wait time for sub-agent responses (Default: 300).
 *   **(Conditional)** Deployment Provider Keys (e.g., `VERCEL_API_TOKEN`, `CLOUDFLARE_API_TOKEN`, etc.): Required by the `DeploymentAgent` based on the chosen deployment platform(s). Add the specific keys needed for your setup.
-
-*(Other optional agent-specific models like `ACTION_AGENT_MODEL` can also be set if needed, see `.env.example`)*
 
 ## API Endpoints
 

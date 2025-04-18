@@ -298,7 +298,7 @@ Based on the user prompt, output ONLY the key of the most appropriate agent from
 
         if target_agent_key == "lead_generator":
             firecrawl_api_key = os.getenv("FIRECRAWL_API_KEY")
-            openai_api_key = os.getenv("OPENAI_API_KEY")
+            # openai_api_key = os.getenv("OPENAI_API_KEY") # Removed OpenAI Key
             composio_api_key = os.getenv("COMPOSIO_API_KEY")
             if not all([firecrawl_api_key, openai_api_key, composio_api_key]):
                  logger.warning(f"Missing API keys for {target_agent_key}. Delegation might fail.")

@@ -41,10 +41,20 @@ app.config.from_object(Config)
 
 # Get LLM Model configurations from environment variables
 orchestrator_model = os.getenv('ORCHESTRATOR_LLM_MODEL', 'gemini-1.5-pro-latest')
-specialized_model = os.getenv('SPECIALIZED_AGENT_LLM_MODEL', 'gemini-1.5-flash-latest')
+specialized_model = os.getenv('SPECIALIZED_AGENT_LLM_MODEL', 'gemini-1.5-flash-latest') # General fallback
+
+# Specific agent models with fallbacks: Specific Env Var -> General Env Var -> Hardcoded Default
+market_research_model = os.getenv('MARKET_RESEARCH_LLM_MODEL') or specialized_model or 'gemini-1.5-flash-latest'
+improvement_model = os.getenv('IMPROVEMENT_LLM_MODEL') or specialized_model or 'gemini-1.5-flash-latest'
+branding_model = os.getenv('BRANDING_LLM_MODEL') or specialized_model or 'gemini-1.5-flash-latest'
+code_gen_model = os.getenv('CODE_GENERATION_LLM_MODEL') or specialized_model or 'gemini-1.5-flash-latest'
+content_gen_model = os.getenv('CONTENT_GENERATION_LLM_MODEL') or specialized_model or 'gemini-1.5-flash-latest'
+# Add other specific agent models here following the same pattern if needed
+
 # Log the models being used (ensure logger is defined first, or move this log later)
 # logger.info(f"Using Orchestrator Model: {orchestrator_model}")
-# logger.info(f"Using Specialized Agent Model: {specialized_model}")
+# logger.info(f"Using Specialized Agent Model (Fallback): {specialized_model}")
+# logger.info(f"Using Market Research Model: {market_research_model}") # Example logging
 
 # Initialize Firestore client
 # Assumes Application Default Credentials (ADC) are configured.
@@ -90,7 +100,7 @@ app.socketio = socketio # Attach SocketIO instance to app context
 # Initialize Agents
 # market_analysis_agent = MarketAnalysisAgent(model_name=Config.MARKET_ANALYSIS_MODEL if hasattr(Config, 'MARKET_ANALYSIS_MODEL') else Config.ORCHESTRATOR_MODEL) # Use specific model or fallback # Keep MarketAnalysisAgent as is for now, wasn't in scope
 market_analysis_agent = MarketAnalysisAgent() # Assuming MarketAnalysisAgent doesn't need model_name yet or handles it internally
-content_generation_agent = ContentGenerationAgent(model_name=specialized_model) # Use specialized model
+content_generation_agent = ContentGenerationAgent(model_name=content_gen_model) # Use specific or fallback model
 # Instantiate LeadGenerationAgent (assuming default model or no specific model needed at init)
 # Get GCP Project ID for FreelanceTaskAgent
 gcp_project_id = os.getenv('GCP_PROJECT_ID')
@@ -108,11 +118,11 @@ web_search_agent = WebSearchAgent() # Instantiate WebSearchAgent
 # Note: These agents might require specific configurations (API keys, etc.) passed during init
 # depending on their implementation, which are assumed to be handled within their constructors
 # using environment variables or other config mechanisms.
-market_research_agent = MarketResearchAgent(model_name=specialized_model) # Use specialized model
-improvement_agent = ImprovementAgent(model_name=specialized_model)       # Use specialized model
-branding_agent = BrandingAgent(model_name=specialized_model)           # Use specialized model
+market_research_agent = MarketResearchAgent(model_name=market_research_model) # Use specific or fallback model
+improvement_agent = ImprovementAgent(model_name=improvement_model)       # Use specific or fallback model
+branding_agent = BrandingAgent(model_name=branding_model)           # Use specific or fallback model
 deployment_agent = DeploymentAgent()         # Assuming basic init for now
-code_generation_agent = CodeGenerationAgent(model_name=specialized_model)     # Use specialized model
+code_generation_agent = CodeGenerationAgent(model_name=code_gen_model)     # Use specific or fallback model
 
 marketing_agent = MarketingAgent(content_generation_agent_url=getattr(Config, 'CONTENT_GENERATION_AGENT_URL', None)) # Instantiate MarketingAgent
 # Attach specialized workflow agents to the app context

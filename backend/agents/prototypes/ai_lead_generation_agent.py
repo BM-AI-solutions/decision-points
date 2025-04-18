@@ -153,8 +153,8 @@ def main():
         st.header("API Keys")
         firecrawl_api_key = st.text_input("Firecrawl API Key", type="password")
         st.caption(" Get your Firecrawl API key from [Firecrawl's website](https://www.firecrawl.dev/app/api-keys)")
-        openai_api_key = st.text_input("OpenAI API Key", type="password")
-        st.caption(" Get your OpenAI API key from [OpenAI's website](https://platform.openai.com/api-keys)")
+        # openai_api_key = st.text_input("OpenAI API Key", type="password") # Removed OpenAI Key Input
+        # st.caption(" Get your OpenAI API key from [OpenAI's website](https://platform.openai.com/api-keys)") # Removed OpenAI Caption
         composio_api_key = st.text_input("Composio API Key", type="password")
         st.caption(" Get your Composio API key from [Composio's website](https://composio.ai)")
         

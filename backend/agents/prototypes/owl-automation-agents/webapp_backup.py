@@ -275,8 +275,8 @@ MODULE_DESCRIPTIONS = {
 DEFAULT_ENV_TEMPLATE = """# MODEL & API (See https://docs.camel-ai.org/key_modules/models.html#)
 
 # OPENAI API
-# OPENAI_API_KEY= ""
-# OPENAI_API_BASE_URL=""
+# OPENAI_API_KEY= "" # Removed
+# OPENAI_API_BASE_URL="" # Removed
 
 # Qwen API (https://help.aliyun.com/zh/model-studio/developer-reference/get-api-key)
 # QWEN_API_KEY=""
@@ -712,7 +712,7 @@ def create_ui():
                 with gr.Row():
                     with gr.Column(scale=1):
                         new_env_key = gr.Textbox(
-                            label="变量名", placeholder="例如: OPENAI_API_KEY"
+                            label="变量名", placeholder="例如: YOUR_API_KEY" # Changed placeholder
                         )
                     with gr.Column(scale=2):
                         new_env_value = gr.Textbox(
