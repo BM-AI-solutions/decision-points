@@ -1,5 +1,5 @@
-import time
 import uuid
+import google.generativeai as genai # Add import
 from flask_socketio import SocketIO
 from utils.logger import setup_logger
 
@@ -11,21 +11,23 @@ class OrchestratorAgent:
     Manages tasks and emits updates via SocketIO.
     """
 
-    def __init__(self, socketio: SocketIO):
+    def __init__(self, socketio: SocketIO, model_name: str = 'gemini-pro'): # Add model_name parameter
         """
         Initializes the Orchestrator Agent.
 
         Args:
             socketio: The Flask-SocketIO instance.
+            model_name: The name of the Gemini model to use.
         """
         self.socketio = socketio
-        logger.info("OrchestratorAgent initialized with SocketIO.")
+        self.model_name = model_name # Store model name
+        logger.info(f"OrchestratorAgent initialized with SocketIO and model: {self.model_name}.")
         # In-memory store for task statuses (replace with persistent storage if needed)
         self.tasks = {}
 
     def process_task(self, task_data: dict):
         """
-        Processes a task request received, logs it, and emits updates via SocketIO.
+        Processes a task request received, calls the LLM, and emits updates via SocketIO.
 
         Args:
             task_data: A dictionary containing task details (e.g., 'prompt').
@@ -45,40 +47,86 @@ class OrchestratorAgent:
         })
         logger.info(f"Emitted 'task_update' (received) for task {task_id}")
 
-        # Simulate some processing time
-        time.sleep(2) # Simulate work being done
-
-        # TODO: Replace with actual task processing logic (e.g., calling other agents/services)
-        processed_message = f"Processing complete for prompt: '{prompt}'"
-        self.tasks[task_id]['status'] = 'processing'
-        self.tasks[task_id]['message'] = processed_message
-
         # Emit processing update
+        processing_message = f"Processing prompt with {self.model_name}..."
+        self.tasks[task_id]['status'] = 'processing'
+        self.tasks[task_id]['message'] = processing_message
         self.socketio.emit('task_update', {
             'task_id': task_id,
             'status': 'processing',
-            'message': processed_message
+            'message': processing_message
         })
         logger.info(f"Emitted 'task_update' (processing) for task {task_id}")
 
-        # Simulate more processing time
-        time.sleep(3)
+        # --- Call Gemini LLM ---
+        try:
+            # Ensure API key is configured (check if genai was configured in app.py)
+            # Note: A more robust check might involve trying a small API call or checking genai internal state if available
+            if not genai.api_key:
+                 raise ValueError("GEMINI_API_KEY not configured or google.generativeai not initialized.")
 
-        # Final result (placeholder)
-        final_result = {"details": "Placeholder result after processing."}
-        self.tasks[task_id]['status'] = 'completed'
-        self.tasks[task_id]['result'] = final_result
-        self.tasks[task_id]['message'] = "Task completed successfully (Placeholder)."
+            model = genai.GenerativeModel(self.model_name)
+            # Configure safety settings to be less restrictive if needed, e.g.,
+            # safety_settings = {
+            #     HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+            #     HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+            #     HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+            #     HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+            # }
+            # response = model.generate_content(prompt, safety_settings=safety_settings)
+            response = model.generate_content(prompt)
 
 
-        # Emit final completion update
-        self.socketio.emit('task_update', {
-            'task_id': task_id,
-            'status': 'completed',
-            'message': self.tasks[task_id]['message'],
-            'result': final_result
-        })
-        logger.info(f"Emitted 'task_update' (completed) for task {task_id}")
+            # Check for potential issues in the response (e.g., blocked content)
+            # Accessing response.text directly might raise if parts are missing/blocked
+            try:
+                llm_response_text = response.text
+            except ValueError as ve:
+                 # Handle cases where the response might be empty or blocked by safety filters
+                 block_reason = getattr(response.prompt_feedback, 'block_reason', None)
+                 if block_reason:
+                     error_message = f"LLM response blocked due to: {block_reason.name}"
+                     logger.error(f"Task {task_id} failed: {error_message}")
+                     raise ValueError(error_message) from ve
+                 else:
+                     # General empty/invalid response case
+                     error_message = f"LLM returned an unusable response: {ve}"
+                     logger.error(f"Task {task_id} failed: {error_message}")
+                     raise ValueError(error_message) from ve
+
+
+            # Update task state with LLM response
+            self.tasks[task_id]['status'] = 'completed'
+            # Store the raw text response in the result field for internal tracking if needed
+            # self.tasks[task_id]['result'] = {"llm_response": llm_response_text}
+            self.tasks[task_id]['message'] = "Task completed successfully."
+
+            # Emit final completion update with LLM response text
+            self.socketio.emit('task_update', {
+                'task_id': task_id,
+                'status': 'completed',
+                'message': self.tasks[task_id]['message'],
+                 # Send the actual LLM text response directly in the 'result' field as requested
+                'result': llm_response_text
+            })
+            logger.info(f"Emitted 'task_update' (completed) for task {task_id} with LLM response.")
+
+        except Exception as e:
+            error_message = f"LLM processing failed: {str(e)}"
+            logger.error(f"Task {task_id} failed: {error_message}", exc_info=True)
+            self.tasks[task_id]['status'] = 'error'
+            self.tasks[task_id]['message'] = error_message
+            self.tasks[task_id]['result'] = None # Indicate no result on error
+
+            # Emit error update
+            self.socketio.emit('task_update', {
+                'task_id': task_id,
+                'status': 'error',
+                'message': error_message,
+                'result': None # Send None for result on error
+            })
+            logger.info(f"Emitted 'task_update' (error) for task {task_id}")
+
 
         # Optionally clean up old tasks after some time
         # del self.tasks[task_id]

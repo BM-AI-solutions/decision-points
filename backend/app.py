@@ -5,6 +5,7 @@ import json
 import logging
 from typing import Dict, Any, Optional, List, Union
 
+import google.generativeai as genai
 from dotenv import load_dotenv
 from flask import Flask, request, jsonify, Response
 from middleware.security_headers import security_headers
@@ -29,6 +30,14 @@ app.after_request(security_headers)
 app.config.from_object(Config)
 
 
+
+# Configure Google Generative AI
+if Config.GEMINI_API_KEY:
+    genai.configure(api_key=Config.GEMINI_API_KEY)
+    logger.info("Google Generative AI configured successfully.")
+else:
+    logger.warning("GEMINI_API_KEY not found in environment variables. LLM functionality will be disabled.")
+
 # Determine allowed origins for CORS
 allowed_origins = ["https://decisionpoints.intellisol.cc"]
 if (
@@ -49,7 +58,7 @@ socketio = SocketIO(app, cors_allowed_origins=socketio_cors_origins, async_mode=
 
 
 # Initialize the Orchestrator Agent with SocketIO instance
-orchestrator_agent = OrchestratorAgent(socketio=socketio)
+orchestrator_agent = OrchestratorAgent(socketio=socketio, model_name=Config.ORCHESTRATOR_MODEL)
 app.orchestrator_agent = orchestrator_agent # Attach agent to app context
 
 # Enable CORS (Original block moved up and logic reused)

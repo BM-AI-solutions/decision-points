@@ -10,6 +10,7 @@ class Config:
     # API Keys
     GOOGLE_API_KEY = os.environ.get('GOOGLE_API_KEY')
 
+    GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY') # Added for Gemini client
     # Database settings (if using a database)
     DATABASE_URL = os.environ.get('DATABASE_URL')
 
@@ -41,6 +42,7 @@ class Config:
     ACTION_AGENT_MODEL = os.environ.get('ACTION_AGENT_MODEL', 'gemini-pro')  # e.g., "gemini-pro", "gpt-4o"
     ARCHON_AGENT_MODEL = os.environ.get('ARCHON_AGENT_MODEL', 'gemini-pro')  # e.g., "gemini-pro", "gpt-4o"
 
+    ORCHESTRATOR_MODEL = os.environ.get('ORCHESTRATOR_MODEL', 'gemini-pro') # Model for the orchestrator agent
     # Payment settings (if implementing subscriptions)
     STRIPE_API_KEY = os.environ.get('STRIPE_API_KEY')
     STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET')
