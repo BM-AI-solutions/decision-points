@@ -9,7 +9,7 @@ python-dotenv==1.0.0
 pydantic>=2.7.3,<3
 
 # API clients
-httpx==0.27.0
+httpx>=0.28.1
 
 # AI and NLP
 pydantic-ai==0.1.2
