@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, NavLink } from 'react-router-dom';
 import apiService from '../services/api';
 
 const DashboardLayout = ({ children }) => {
@@ -63,11 +63,11 @@ const DashboardLayout = ({ children }) => {
   // Sidebar links data
   const sidebarLinks = [
     { label: 'Dashboard', icon: 'fas fa-home', route: '/dashboard' },
-    { label: 'Analytics', icon: 'fas fa-chart-pie', route: '/analytics' },
-    { label: 'Automation', icon: 'fas fa-cogs', route: '/automation' },
-    { label: 'Insights', icon: 'fas fa-lightbulb', route: '/insights' },
-    { label: 'Customers', icon: 'fas fa-users', route: '/customers' },
-    { label: 'Revenue', icon: 'fas fa-dollar-sign', route: '/revenue' },
+    { label: 'Analytics', icon: 'fas fa-chart-pie', route: '/dashboard/analytics' },
+    { label: 'Automation', icon: 'fas fa-cogs', route: '/dashboard/automation' },
+    { label: 'Insights', icon: 'fas fa-lightbulb', route: '/dashboard/insights' },
+    { label: 'Customers', icon: 'fas fa-users', route: '/dashboard/customers' },
+    { label: 'Revenue', icon: 'fas fa-dollar-sign', route: '/dashboard/revenue' },
   ];
 
   if (loading) {
@@ -215,58 +215,63 @@ const DashboardLayout = ({ children }) => {
             opacity: 0.7
           }}></div>
           {sidebarLinks.map((link, idx) => (
-            <Link
+            <NavLink
               key={link.label}
               to={link.route}
-              style={{
+              end={link.route === '/dashboard'} // Ensure exact match for the main dashboard link
+              style={({ isActive }) => ({
                 display: 'flex',
                 alignItems: 'center',
                 gap: '12px',
                 padding: '14px 25px',
-                color: window.location.pathname === link.route ? '#ff4713' : 'rgba(255, 255, 255, 0.7)',
-                background: window.location.pathname === link.route ? 'rgba(255, 71, 19, 0.1)' : 'transparent',
-                borderLeft: window.location.pathname === link.route ? '3px solid #ff4713' : '3px solid transparent',
+                color: isActive ? '#ff4713' : 'rgba(255, 255, 255, 0.7)',
+                background: isActive ? 'rgba(255, 71, 19, 0.1)' : 'transparent',
+                borderLeft: isActive ? '3px solid #ff4713' : '3px solid transparent',
                 textDecoration: 'none',
                 transition: 'all 0.2s ease',
                 position: 'relative',
                 marginBottom: '5px',
                 fontSize: '15px',
-                fontWeight: window.location.pathname === link.route ? '600' : '400'
-              }}
+                fontWeight: isActive ? '600' : '400'
+              })}
             >
-              <div style={{
-                width: '32px',
-                height: '32px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                borderRadius: '8px',
-                background: window.location.pathname === link.route ?
-                  'linear-gradient(135deg, rgba(255, 71, 19, 0.2), rgba(217, 4, 41, 0.2))' :
-                  'transparent',
-                boxShadow: window.location.pathname === link.route ?
-                  '0 2px 8px rgba(255, 71, 19, 0.2)' :
-                  'none'
-              }}>
-                <i className={link.icon} style={{
-                  fontSize: '16px',
-                  color: window.location.pathname === link.route ? '#ff4713' : 'rgba(255, 255, 255, 0.7)'
-                }}></i>
-              </div>
-              {link.label}
-              
-              {/* Active indicator dot */}
-              {window.location.pathname === link.route && (
-                <div style={{
-                  position: 'absolute',
-                  right: '20px',
-                  width: '8px',
-                  height: '8px',
-                  borderRadius: '50%',
-                  background: '#ff4713'
-                }}></div>
+              {({ isActive }) => (
+                <>
+                  <div style={{
+                    width: '32px',
+                    height: '32px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderRadius: '8px',
+                    background: isActive ?
+                      'linear-gradient(135deg, rgba(255, 71, 19, 0.2), rgba(217, 4, 41, 0.2))' :
+                      'transparent',
+                    boxShadow: isActive ?
+                      '0 2px 8px rgba(255, 71, 19, 0.2)' :
+                      'none'
+                  }}>
+                    <i className={link.icon} style={{
+                      fontSize: '16px',
+                      color: isActive ? '#ff4713' : 'rgba(255, 255, 255, 0.7)'
+                    }}></i>
+                  </div>
+                  {link.label}
+                  
+                  {/* Active indicator dot */}
+                  {isActive && (
+                    <div style={{
+                      position: 'absolute',
+                      right: '20px',
+                      width: '8px',
+                      height: '8px',
+                      borderRadius: '50%',
+                      background: '#ff4713'
+                    }}></div>
+                  )}
+                </>
               )}
-            </Link>
+            </NavLink>
           ))}
         </div>
 

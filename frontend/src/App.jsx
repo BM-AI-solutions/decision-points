@@ -9,6 +9,11 @@ import Pricing from './components/Pricing';
 import AppSection from './components/AppSection';
 import Testimonials from './components/Testimonials';
 import ArchonDashboard from './components/ArchonDashboard';
+import AnalyticsPage from './components/AnalyticsPage';
+import AutomationPage from './components/AutomationPage';
+import InsightsPage from './components/InsightsPage';
+import CustomersPage from './components/CustomersPage';
+import RevenuePage from './components/RevenuePage';
 import MarketingLayout from './components/MarketingLayout';
 import DashboardLayout from './components/DashboardLayout';
 
@@ -38,14 +43,17 @@ function App() {
             </MarketingLayout>
           }
         />
-        <Route
-          path="/dashboard"
-          element={
-            <DashboardLayout>
-              <Dashboard />
-            </DashboardLayout>
-          }
-        />
+        {/* Dashboard Routes with Layout */}
+        <Route path="/dashboard" element={<DashboardLayout />}>
+          {/* Index route for the main dashboard content */}
+          <Route index element={<Dashboard />} />
+          {/* Nested routes for dashboard sections */}
+          <Route path="analytics" element={<AnalyticsPage />} />
+          <Route path="automation" element={<AutomationPage />} />
+          <Route path="insights" element={<InsightsPage />} />
+          <Route path="customers" element={<CustomersPage />} />
+          <Route path="revenue" element={<RevenuePage />} />
+        </Route>
       </Routes>
       {/* Modals */}
       <div id="login-modal" className="modal">
