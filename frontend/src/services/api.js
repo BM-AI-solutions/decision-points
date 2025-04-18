@@ -415,6 +415,13 @@ const apiService = {
     console.log("API Call: submitOrchestratorTask", { goal, parameters });
     return apiClientInstance.post('/api/orchestrator/tasks', { goal, parameters });
   }
+,
+
+  // Workflow Resume
+  resumeWorkflow: (workflowRunId, decision) => {
+    console.log("API Call: resumeWorkflow", { workflowRunId, decision });
+    return apiClientInstance.post(`/a2a/workflow/${workflowRunId}/resume`, { decision });
+  }
 }; // Closing brace for apiService object
 // Export the service object for use in components
 export default apiService;
