@@ -377,7 +377,37 @@ const apiService = {
     console.log("API Call: getCashflowForecast", { businessId });
     return apiClientInstance.get(`/api/cashflow/forecast/${businessId}`);
   },
-};
 
+
+  // Analytics
+  getAnalyticsData: () => {
+    console.log("API Call: getAnalyticsData");
+    // Assuming an endpoint like /api/analytics will exist
+    return apiClientInstance.get('/api/analytics');
+  }, // Comma after getAnalyticsData
+
+  // Insights
+  getInsightsData: () => {
+    console.log("API Call: getInsightsData");
+    // Assuming an endpoint like /api/insights will exist
+    return apiClientInstance.get('/api/insights');
+  } // No comma after getInsightsData as it's the last item
+,
+
+  // Customers (Placeholder)
+  getCustomersData: () => {
+    console.log("API Call: getCustomersData (Placeholder)");
+    // Assuming an endpoint like /api/customers will exist
+    return apiClientInstance.get('/api/customers');
+  }
+,
+
+  // Revenue (Placeholder)
+  getRevenueData: () => {
+    console.log("API Call: getRevenueData (Placeholder)");
+    // Assuming an endpoint like /api/revenue will exist
+    return apiClientInstance.get('/api/revenue');
+  }
+}; // Closing brace for apiService object
 // Export the service object for use in components
 export default apiService;

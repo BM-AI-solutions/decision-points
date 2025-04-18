@@ -13,7 +13,8 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 
 from config import Config
 from utils.logger import setup_logger
-from routes import auth, market, business, features, deployment, cashflow, workflows
+from routes import auth, market, business, features, deployment, cashflow, workflows, analytics, insights, customers
+from routes import auth, market, business, features, deployment, cashflow, workflows, analytics, insights, customers, revenue
 
 # Load environment variables
 load_dotenv()
@@ -52,6 +53,11 @@ app.register_blueprint(features.bp, url_prefix='/api/features')
 app.register_blueprint(deployment.bp, url_prefix='/api/deployment')
 app.register_blueprint(cashflow.bp, url_prefix='/api/cashflow')
 app.register_blueprint(workflows.workflows_bp) # No url_prefix needed here as it's defined in the blueprint
+app.register_blueprint(analytics.bp) # Register the new analytics blueprint
+app.register_blueprint(insights.insights_bp) # Register the insights blueprint
+app.register_blueprint(customers.customers_bp) # Register the customers blueprint
+
+app.register_blueprint(revenue.revenue_bp) # Register the revenue blueprint
 
 @app.route('/api/health', methods=['GET'])
 def health_check() -> Dict[str, str]:

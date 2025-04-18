@@ -6,36 +6,54 @@ function CreateWorkflowModal({ isOpen, onClose, onWorkflowCreated }) { // Add on
   const [description, setDescription] = useState('');
   const [triggerType, setTriggerType] = useState('Manual'); // Default value
   const [actionType, setActionType] = useState('Send Email'); // Default value
+  const [isLoading, setIsLoading] = useState(false); // Loading state
+  const [error, setError] = useState(null); // Error state
 
   if (!isOpen) return null;
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    const formData = {
-      name: workflowName,
+    setError(null); // Clear previous errors
+    setIsLoading(true); // Start loading
+
+    // Basic validation (name is already required by input)
+    if (!workflowName.trim()) {
+        setError('Workflow name is required.');
+        setIsLoading(false);
+        return;
+    }
+
+    // Correct payload keys for the backend
+    const workflowData = {
+      workflowName: workflowName, // Correct key
       description: description,
       triggerType: triggerType,
       actionType: actionType,
     };
 
-    console.log('Submitting workflow data:', formData);
+    console.log('Submitting workflow data:', workflowData);
 
     try {
       // Use apiService to create workflow
-      const result = await apiService.createWorkflow(formData);
+      const result = await apiService.createWorkflow(workflowData);
 
       console.log('API Success:', result);
-      alert('Workflow created successfully!'); // Simple success feedback
+      // alert('Workflow created successfully!'); // Replaced with callback/close
 
-      // Call the callback function if it exists
+      // Call the callback function to refresh parent list
       if (onWorkflowCreated) {
         onWorkflowCreated();
       }
 
       onClose(); // Close modal on success
-    } catch (error) {
-      console.error('Network or other error:', error);
-      alert(`Failed to submit workflow: ${error.message}`);
+    } catch (apiError) {
+      console.error('API Error creating workflow:', apiError);
+      // Extract a user-friendly error message
+      const message = apiError?.data?.error || apiError?.data?.message || apiError?.message || 'Failed to create workflow. Please try again.';
+      setError(message); // Set error state to display in UI
+      // alert(`Failed to submit workflow: ${message}`); // Replaced with state
+    } finally {
+      setIsLoading(false); // Stop loading regardless of outcome
     }
   };
 
@@ -44,7 +62,7 @@ function CreateWorkflowModal({ isOpen, onClose, onWorkflowCreated }) { // Add on
       <div className="bg-slate-800 p-8 rounded-xl shadow-2xl w-full max-w-lg border border-slate-700"> {/* Dark bg, more padding, larger rounding/shadow, wider, border */}
         <div className="flex justify-between items-center mb-6 pb-3 border-b border-slate-700"> {/* More margin, added border bottom */}
           <h2 className="text-2xl font-bold text-gray-100">Create New Workflow</h2> {/* Larger, bolder, lighter text */}
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-100 text-3xl leading-none focus:outline-none">&times;</button> {/* Lighter text, larger, better alignment */}
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-100 text-3xl leading-none focus:outline-none disabled:opacity-50" disabled={isLoading}>&times;</button> {/* Lighter text, larger, better alignment, disable on load */}
         </div>
         <form onSubmit={handleSubmit}>
           {/* Workflow Name */}
@@ -116,20 +134,29 @@ function CreateWorkflowModal({ isOpen, onClose, onWorkflowCreated }) { // Add on
             </select>
           </div>
 
+          {/* Error Message Display */}
+          {error && (
+            <div className="my-4 p-3 bg-red-900 border border-red-700 text-red-100 rounded-md text-sm">
+              <strong>Error:</strong> {error}
+            </div>
+          )}
+
           {/* Buttons */}
           <div className="flex justify-end space-x-4 mt-8 pt-4 border-t border-slate-700">
             <button
               type="button"
               onClick={onClose}
-              className="px-5 py-2 bg-slate-600 text-gray-200 rounded-lg hover:bg-slate-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-800 focus:ring-slate-500 transition duration-150 ease-in-out"
+              disabled={isLoading} // Disable when loading
+              className="px-5 py-2 bg-slate-600 text-gray-200 rounded-lg hover:bg-slate-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-800 focus:ring-slate-500 transition duration-150 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="px-5 py-2 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-800 focus:ring-indigo-500 transition duration-150 ease-in-out shadow hover:shadow-md"
+              disabled={isLoading} // Disable when loading
+              className="px-5 py-2 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-800 focus:ring-indigo-500 transition duration-150 ease-in-out shadow hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Create Workflow
+              {isLoading ? 'Creating...' : 'Create Workflow'}
             </button>
           </div>
         </form>
