@@ -1,5 +1,5 @@
 .github/
-.prototype_agent_workshop/
+.prototype_agent_workshop/*
 # Environment variables
 .env
 .env.local
