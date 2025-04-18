@@ -26,7 +26,7 @@ app.config.from_object(Config)
 
 # Enable CORS
 # Allow specific origin for production, add localhost for development
-allowed_origins = ["https://decisionpoints.intellisol.cc"]
+allowed_origins = ["https://decisionpoints.intellisol.cc","localhost"]
 # Allow development origin if FLASK_ENV is development OR if billing is not required (local dev setup)
 if (
     os.environ.get('FLASK_ENV') == 'development'
