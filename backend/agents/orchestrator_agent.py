@@ -1,6 +1,6 @@
 import os
 import asyncio
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, Tuple
 
 from flask_socketio import SocketIO
 from google.ai import generativelanguage as glm
@@ -88,490 +88,277 @@ class OrchestratorAgent(LlmAgent):
 
         logger.info(f"{self.name} received task {task_id} with prompt: '{prompt}'")
 
-        # --- Delegation Logic ---
-        delegation_keywords = ["market analysis", "analyze trends", "find opportunities", "market research"]
-        should_delegate_to_market_analyzer = any(keyword in prompt.lower() for keyword in delegation_keywords)
-        market_agent = self.agents.get("market_analyzer")
-        content_agent = self.agents.get("content_generator") # Get content agent
-        lead_agent = self.agents.get("lead_generator") # Get lead agent
-        freelance_agent = self.agents.get("freelance_tasker") # Get freelance agent
-        web_search_agent = self.agents.get("web_searcher") # Get web search agent
-        workflow_manager_agent = self.agents.get("workflow_manager") # Get workflow manager agent
+        # --- LLM-based Delegation Logic ---
+        target_agent_key, classification_error = await self._classify_intent(prompt, task_id)
 
-        # --- Market Analysis Delegation ---
-        if should_delegate_to_market_analyzer and market_agent:
-            logger.info(f"Task {task_id} identified for delegation to MarketAnalysisAgent.")
+        if classification_error:
+            # Handle classification error (e.g., log it, maybe default to 'self' or return error)
+            logger.error(f"Task {task_id} classification failed: {classification_error}. Defaulting to 'self'.")
+            target_agent_key = "self"
+            # Optionally emit a specific error update here
+            # self.socketio.emit(...)
+
+        target_agent = self.agents.get(target_agent_key)
+
+        # --- Handle Delegation or Direct Processing ---
+        if target_agent_key != "self" and target_agent:
+            logger.info(f"Task {task_id} classified for delegation to {target_agent_key}.")
             self.socketio.emit('task_update', {
                 'task_id': task_id,
                 'status': 'delegating',
-                'agent': 'market_analyzer',
-                'message': f"Delegating task to Market Analysis Agent..."
+                'agent': target_agent_key,
+                'message': f"Delegating task to {target_agent.name}..."
             })
-            logger.info(f"Emitted 'task_update' (delegating to market_analyzer) for task {task_id}")
+            logger.info(f"Emitted 'task_update' (delegating to {target_agent_key}) for task {task_id}")
 
             try:
-                delegated_context = InvocationContext(session=context.session, input_event=context.input_event)
-                delegated_output_event = await market_agent.run_async(delegated_context)
-                delegated_result_text = "No text response from market analysis agent."
-                if delegated_output_event.actions and delegated_output_event.actions[0].parts:
-                    text_parts = [p.text for p in delegated_output_event.actions[0].parts if p.type == 'text']
-                    if text_parts:
-                        delegated_result_text = text_parts[0]
+                # Prepare context for the delegated agent
+                # TODO: Implement more sophisticated parameter extraction if needed later.
+                # For now, pass the original context. Specific agents might need tailored metadata.
+                delegated_context = self._prepare_delegation_context(context, target_agent_key, prompt)
 
-                completion_message = "Task completed by Market Analysis Agent."
-                self.socketio.emit('task_update', {
-                    'task_id': task_id,
-                    'status': 'completed',
-                    'message': completion_message,
-                    'result': delegated_result_text
-                })
-                logger.info(f"Emitted 'task_update' (completed by market_analyzer) for task {task_id}.")
-                return delegated_output_event
-
-            except Exception as e:
-                error_message = f"Delegation to MarketAnalysisAgent failed: {str(e)}"
-                logger.error(f"Task {task_id} delegation to market_analyzer failed: {error_message}", exc_info=True)
-                self.socketio.emit('task_update', {
-                    'task_id': task_id,
-                    'status': 'failed',
-                    'message': error_message,
-                    'result': None
-                })
-                logger.info(f"Emitted 'task_update' (market_analyzer delegation failed) for task {task_id}")
-                error_action = Action(content=Content(parts=[Part(text=f"Error: {error_message}")]))
-                invocation_id = getattr(context.input_event, 'invocation_id', None)
-                return Event(author=self.name, actions=[error_action], invocation_id=invocation_id)
-
-        # --- Content Generation Delegation ---
-        elif content_agent and any(keyword in prompt.lower() for keyword in ["write", "create content", "generate article", "marketing copy"]):
-            logger.info(f"Task {task_id} identified for delegation to ContentGenerationAgent.")
-            self.socketio.emit('task_update', {
-                'task_id': task_id,
-                'status': 'delegating',
-                'agent': 'content_generator',
-                'message': f"Delegating task to Content Generation Agent..."
-            })
-            logger.info(f"Emitted 'task_update' (delegating to content_generator) for task {task_id}")
-
-            try:
-                # Extract relevant parameters for ContentGenerationAgent if needed
-                # For now, pass the same context
-                # TODO: Enhance context creation based on ContentGenerationAgent's needs
-                delegated_context = InvocationContext(session=context.session, input_event=context.input_event)
-
-                # Invoke the ContentGenerationAgent
-                delegated_output_event = await content_agent.run_async(delegated_context)
+                # Invoke the target agent
+                delegated_output_event = await target_agent.run_async(delegated_context)
 
                 # Extract result from the delegated agent's response
-                delegated_result_text = "No text response from content generation agent."
-                if delegated_output_event.actions and delegated_output_event.actions[0].parts:
-                    text_parts = [p.text for p in delegated_output_event.actions[0].parts if p.type == 'text']
-                    if text_parts:
-                        delegated_result_text = text_parts[0]
+                delegated_result_text = self._extract_text_from_event(delegated_output_event, f"No text response from {target_agent_key}.")
 
                 # Emit final completion update
-                completion_message = "Task completed by Content Generation Agent."
+                completion_message = f"Task completed by {target_agent.name}."
                 self.socketio.emit('task_update', {
                     'task_id': task_id,
                     'status': 'completed',
                     'message': completion_message,
                     'result': delegated_result_text
                 })
-                logger.info(f"Emitted 'task_update' (completed by content_generator) for task {task_id}.")
+                logger.info(f"Emitted 'task_update' (completed by {target_agent_key}) for task {task_id}.")
                 return delegated_output_event # Return the event from the delegate
 
             except Exception as e:
-                error_message = f"Delegation to ContentGenerationAgent failed: {str(e)}"
-                logger.error(f"Task {task_id} delegation to content_generator failed: {error_message}", exc_info=True)
+                error_message = f"Delegation to {target_agent_key} failed: {str(e)}"
+                logger.error(f"Task {task_id} delegation to {target_agent_key} failed: {error_message}", exc_info=True)
                 self.socketio.emit('task_update', {
                     'task_id': task_id,
                     'status': 'failed',
                     'message': error_message,
                     'result': None
                 })
-                logger.info(f"Emitted 'task_update' (content_generator delegation failed) for task {task_id}")
-                # Return an error event
-                error_action = Action(content=Content(parts=[Part(text=f"Error: {error_message}")]))
-                invocation_id = getattr(context.input_event, 'invocation_id', None)
-                return Event(author=self.name, actions=[error_action], invocation_id=invocation_id)
+                logger.info(f"Emitted 'task_update' ({target_agent_key} delegation failed) for task {task_id}")
+                return self._create_error_event(error_message, context.input_event)
 
-        # --- Lead Generation Delegation ---
-        elif lead_agent and any(keyword in prompt.lower() for keyword in ["find leads", "generate leads", "search quora", "prospecting"]):
-            logger.info(f"Task {task_id} identified for delegation to LeadGenerationAgent.")
-            self.socketio.emit('task_update', {
-                'task_id': task_id,
-                'status': 'delegating',
-                'agent': 'lead_generator',
-                'message': f"Delegating task to Lead Generation Agent..."
-            })
-            logger.info(f"Emitted 'task_update' (delegating to lead_generator) for task {task_id}")
-
-            try:
-                # Fetch required API keys from environment variables
-                firecrawl_api_key = os.getenv("FIRECRAWL_API_KEY")
-                openai_api_key = os.getenv("OPENAI_API_KEY") # Assuming OPENAI_API_KEY is the correct env var name
-                composio_api_key = os.getenv("COMPOSIO_API_KEY") # Assuming COMPOSIO_API_KEY is the correct env var name
-
-                if not all([firecrawl_api_key, openai_api_key, composio_api_key]):
-                    missing_keys = [k for k, v in {
-                        "FIRECRAWL_API_KEY": firecrawl_api_key,
-                        "OPENAI_API_KEY": openai_api_key,
-                        "COMPOSIO_API_KEY": composio_api_key
-                    }.items() if not v]
-                    raise ValueError(f"Missing required API keys for LeadGenerationAgent: {', '.join(missing_keys)}")
-
-                # Create a new input event with API keys in metadata
-                delegated_input_event = Event(
-                    author=context.input_event.author, # Keep original author or set to orchestrator?
-                    actions=context.input_event.actions, # Pass original actions (containing prompt)
-                    invocation_id=context.input_event.invocation_id,
-                    metadata={
-                        "firecrawl_api_key": firecrawl_api_key,
-                        "openai_api_key": openai_api_key,
-                        "composio_api_key": composio_api_key,
-                        "user_query": prompt # Pass the original prompt explicitly if needed by agent
-                    }
-                )
-
-                # Create a new context with the modified input event
-                delegated_context = InvocationContext(
-                    session=context.session,
-                    input_event=delegated_input_event
-                )
-
-                # Invoke the LeadGenerationAgent
-                delegated_output_event = await lead_agent.run_async(delegated_context)
-
-                # Extract result from the delegated agent's response
-                delegated_result_text = "No text response from lead generation agent."
-                if delegated_output_event.actions and delegated_output_event.actions[0].parts:
-                    text_parts = [p.text for p in delegated_output_event.actions[0].parts if p.type == 'text']
-                    if text_parts:
-                        delegated_result_text = text_parts[0]
-                    # TODO: Handle potential structured data (e.g., JSON) if the agent returns it
-
-                # Emit final completion update
-                completion_message = "Task completed by Lead Generation Agent."
-                self.socketio.emit('task_update', {
-                    'task_id': task_id,
-                    'status': 'completed',
-                    'message': completion_message,
-                    'result': delegated_result_text # Or potentially structured result
-                })
-                logger.info(f"Emitted 'task_update' (completed by lead_generator) for task {task_id}.")
-                return delegated_output_event # Return the event from the delegate
-
-            except Exception as e:
-                error_message = f"Delegation to LeadGenerationAgent failed: {str(e)}"
-                logger.error(f"Task {task_id} delegation to lead_generator failed: {error_message}", exc_info=True)
-                self.socketio.emit('task_update', {
-                    'task_id': task_id,
-                    'status': 'failed',
-                    'message': error_message,
-                    'result': None
-                })
-                logger.info(f"Emitted 'task_update' (lead_generator delegation failed) for task {task_id}")
-                # Return an error event
-                error_action = Action(content=Content(parts=[Part(text=f"Error: {error_message}")]))
-                invocation_id = getattr(context.input_event, 'invocation_id', None)
-                return Event(author=self.name, actions=[error_action], invocation_id=invocation_id)
-
-
-        # --- Freelance Task Delegation ---
-        elif freelance_agent and any(keyword in prompt.lower() for keyword in ["find freelance jobs", "search upwork", "bid on task", "monitor tasks", "freelance task"]):
-            logger.info(f"Task {task_id} identified for delegation to FreelanceTaskAgent.")
-            self.socketio.emit('task_update', {
-                'task_id': task_id,
-                'status': 'delegating',
-                'agent': 'freelance_tasker',
-                'message': f"Delegating task to Freelance Task Agent..."
-            })
-            logger.info(f"Emitted 'task_update' (delegating to freelance_tasker) for task {task_id}")
-
-            try:
-                # Determine action based on prompt keywords
-                action = 'execute_task' # Default action
-                if any(k in prompt.lower() for k in ["bid", "monitor"]):
-                    action = 'monitor_and_bid'
-
-                # Determine user identifier (using placeholder for now)
-                user_identifier = context.session.metadata.get('user_id', 'placeholder_user_id') # Try to get from session, fallback
-
-                # Extract other potential parameters (e.g., keywords, platform) - basic example
-                # This part would need more sophisticated NLP or structured input in a real scenario
-                task_keywords = prompt # Simplistic: use the whole prompt as keywords for now
-
-                # Create a new input event with specific metadata for the FreelanceTaskAgent
-                delegated_input_event = Event(
-                    author=context.input_event.author,
-                    actions=context.input_event.actions, # Pass original actions (containing prompt)
-                    invocation_id=context.input_event.invocation_id,
-                    metadata={
-                        'action': action,
-                        'user_identifier': user_identifier,
-                        'keywords': task_keywords,
-                        # Add other necessary parameters here based on FreelanceTaskAgent needs
-                        **(context.input_event.metadata or {}) # Merge original metadata if any
-                    }
-                )
-
-                # Create a new context with the modified input event
-                delegated_context = InvocationContext(
-                    session=context.session,
-                    input_event=delegated_input_event
-                )
-
-                # Invoke the FreelanceTaskAgent
-                delegated_output_event = await freelance_agent.run_async(delegated_context)
-
-                # Extract result from the delegated agent's response
-                delegated_result_text = "No text response from freelance task agent."
-                if delegated_output_event.actions and delegated_output_event.actions[0].parts:
-                    text_parts = [p.text for p in delegated_output_event.actions[0].parts if p.type == 'text']
-                    if text_parts:
-                        delegated_result_text = text_parts[0]
-                    # TODO: Handle potential structured data if the agent returns it
-
-                # Emit final completion update
-                completion_message = "Task completed by Freelance Task Agent."
-                self.socketio.emit('task_update', {
-                    'task_id': task_id,
-                    'status': 'completed',
-                    'message': completion_message,
-                    'result': delegated_result_text
-                })
-                logger.info(f"Emitted 'task_update' (completed by freelance_tasker) for task {task_id}.")
-                return delegated_output_event # Return the event from the delegate
-
-            except Exception as e:
-                error_message = f"Delegation to FreelanceTaskAgent failed: {str(e)}"
-                logger.error(f"Task {task_id} delegation to freelance_tasker failed: {error_message}", exc_info=True)
-                self.socketio.emit('task_update', {
-                    'task_id': task_id,
-                    'status': 'failed',
-                    'message': error_message,
-                    'result': None
-                })
-                logger.info(f"Emitted 'task_update' (freelance_tasker delegation failed) for task {task_id}")
-                # Return an error event
-                error_action = Action(content=Content(parts=[Part(text=f"Error: {error_message}")]))
-                invocation_id = getattr(context.input_event, 'invocation_id', None)
-                return Event(author=self.name, actions=[error_action], invocation_id=invocation_id)
-
-        # --- Web Search Delegation ---
-        elif web_search_agent and any(keyword in prompt.lower() for keyword in ["search web for", "find information on", "google", "search", "look up"]):
-            logger.info(f"Task {task_id} identified for delegation to WebSearchAgent.")
-            self.socketio.emit('task_update', {
-                'task_id': task_id,
-                'status': 'delegating',
-                'agent': 'web_searcher',
-                'message': f"Delegating task to Web Search Agent..."
-            })
-            logger.info(f"Emitted 'task_update' (delegating to web_searcher) for task {task_id}")
-
-            try:
-                # Fetch required API key from environment variables
-                brave_api_key = os.getenv("BRAVE_API_KEY")
-                if not brave_api_key:
-                    raise ValueError("Missing required BRAVE_API_KEY for WebSearchAgent.")
-
-                # Extract query (simple approach: use the whole prompt for now)
-                # TODO: Implement more sophisticated query extraction if needed
-                search_query = prompt
-
-                # Create a new input event with API key and query in metadata
-                delegated_input_event = Event(
-                    author=context.input_event.author,
-                    actions=context.input_event.actions, # Pass original actions
-                    invocation_id=context.input_event.invocation_id,
-                    metadata={
-                        "brave_api_key": brave_api_key,
-                        "query": search_query,
-                        **(context.input_event.metadata or {}) # Merge original metadata
-                    }
-                )
-
-                # Create a new context with the modified input event
-                delegated_context = InvocationContext(
-                    session=context.session,
-                    input_event=delegated_input_event
-                )
-
-                # Invoke the WebSearchAgent
-                delegated_output_event = await web_search_agent.run_async(delegated_context)
-
-                # Extract result from the delegated agent's response
-                delegated_result_text = "No text response from web search agent."
-                if delegated_output_event.actions and delegated_output_event.actions[0].parts:
-                    text_parts = [p.text for p in delegated_output_event.actions[0].parts if p.type == 'text']
-                    if text_parts:
-                        delegated_result_text = text_parts[0]
-                    # TODO: Handle potential structured data if the agent returns it
-
-                # Emit final completion update
-                completion_message = "Task completed by Web Search Agent."
-                self.socketio.emit('task_update', {
-                    'task_id': task_id,
-                    'status': 'completed',
-                    'message': completion_message,
-                    'result': delegated_result_text
-                })
-                logger.info(f"Emitted 'task_update' (completed by web_searcher) for task {task_id}.")
-                return delegated_output_event # Return the event from the delegate
-
-            except Exception as e:
-                error_message = f"Delegation to WebSearchAgent failed: {str(e)}"
-                logger.error(f"Task {task_id} delegation to web_searcher failed: {error_message}", exc_info=True)
-                self.socketio.emit('task_update', {
-                    'task_id': task_id,
-                    'status': 'failed',
-                    'message': error_message,
-                    'result': None
-                })
-                logger.info(f"Emitted 'task_update' (web_searcher delegation failed) for task {task_id}")
-                # Return an error event
-                error_action = Action(content=Content(parts=[Part(text=f"Error: {error_message}")]))
-                invocation_id = getattr(context.input_event, 'invocation_id', None)
-                return Event(author=self.name, actions=[error_action], invocation_id=invocation_id)
-
-        # --- Autonomous Income Workflow Delegation ---
-        elif workflow_manager_agent and any(keyword in prompt.lower() for keyword in ["start income workflow", "run autonomous business", "find and deploy product", "autonomous income", "generate business"]):
-            logger.info(f"Task {task_id} identified for delegation to WorkflowManagerAgent.")
-            self.socketio.emit('task_update', {
-                'task_id': task_id,
-                'status': 'delegating',
-                'agent': 'workflow_manager',
-                'message': f"Delegating task to Autonomous Income Workflow Manager..."
-            })
-            logger.info(f"Emitted 'task_update' (delegating to workflow_manager) for task {task_id}")
-
-            try:
-                # Create context for the Workflow Manager Agent
-                # Pass necessary starting parameters if needed via metadata
-                # For now, just passing the original prompt within the standard context
-                delegated_context = InvocationContext(
-                    session=context.session,
-                    input_event=context.input_event # Pass the original event, agent should extract needed info
-                    # Example of adding specific metadata if needed:
-                    # input_event=Event(
-                    #     author=context.input_event.author,
-                    #     actions=context.input_event.actions,
-                    #     invocation_id=context.input_event.invocation_id,
-                    #     metadata={
-                    #         "initial_prompt": prompt,
-                    #         **(context.input_event.metadata or {})
-                    #     }
-                    # )
-                )
-
-                # Invoke the WorkflowManagerAgent
-                delegated_output_event = await workflow_manager_agent.run_async(delegated_context)
-
-                # Extract result from the workflow manager's response
-                delegated_result_text = "Workflow completed. Check logs or specific outputs for details." # Default message
-                if delegated_output_event.actions and delegated_output_event.actions[0].parts:
-                    text_parts = [p.text for p in delegated_output_event.actions[0].parts if p.type == 'text']
-                    if text_parts:
-                        delegated_result_text = text_parts[0]
-                    # TODO: Handle potential structured data (e.g., final product URL, summary)
-
-                # Emit final completion update
-                completion_message = "Autonomous Income Workflow completed."
-                self.socketio.emit('task_update', {
-                    'task_id': task_id,
-                    'status': 'completed',
-                    'message': completion_message,
-                    'result': delegated_result_text
-                })
-                logger.info(f"Emitted 'task_update' (completed by workflow_manager) for task {task_id}.")
-                return delegated_output_event # Return the final event from the workflow manager
-
-            except Exception as e:
-                error_message = f"Delegation to WorkflowManagerAgent failed: {str(e)}"
-                logger.error(f"Task {task_id} delegation to workflow_manager failed: {error_message}", exc_info=True)
-                self.socketio.emit('task_update', {
-                    'task_id': task_id,
-                    'status': 'failed',
-                    'message': error_message,
-                    'result': None
-                })
-                logger.info(f"Emitted 'task_update' (workflow_manager delegation failed) for task {task_id}")
-                # Return an error event
-                error_action = Action(content=Content(parts=[Part(text=f"Error: {error_message}")]))
-                invocation_id = getattr(context.input_event, 'invocation_id', None)
-                return Event(author=self.name, actions=[error_action], invocation_id=invocation_id)
-
-        # --- Fallback to Orchestrator Processing ---
         else:
-            logger.info(f"Task {task_id} will be handled directly by {self.name} (no suitable delegate found or web search agent not available).")
+            # Handle directly by Orchestrator ('self' or no valid agent found)
+            if target_agent_key != "self":
+                 logger.warning(f"Task {task_id} classified for '{target_agent_key}', but agent not found or invalid. Handling directly.")
+            else:
+                 logger.info(f"Task {task_id} classified for 'self'. Handling directly by {self.name}.")
+
             # Emit initial acknowledgment via SocketIO
             self.socketio.emit('task_update', {
-            'task_id': task_id,
-            'status': 'submitted', # ADK/A2A state
-            'message': f"Task received: {prompt}"
+                'task_id': task_id,
+                'status': 'submitted',
+                'message': f"Task received by Orchestrator: {prompt}"
             })
-            logger.info(f"Emitted 'task_update' (submitted) for task {task_id}")
+            logger.info(f"Emitted 'task_update' (submitted by orchestrator) for task {task_id}")
 
             # Emit processing update
             processing_message = f"Processing prompt with {self.model.model}..."
             self.socketio.emit('task_update', {
-            'task_id': task_id,
-            'status': 'working', # ADK/A2A state
-            'message': processing_message
-        })
-        logger.info(f"Emitted 'task_update' (working) for task {task_id}")
+                'task_id': task_id,
+                'status': 'working',
+                'message': processing_message
+            })
+            logger.info(f"Emitted 'task_update' (working by orchestrator) for task {task_id}")
+
+            try:
+                # Execute the core LLM logic using the parent LlmAgent's run_async
+                # Use the original context here
+                output_event = await super().run_async(context)
+
+                # Extract the result text
+                llm_response_text = self._extract_text_from_event(output_event, "No text response generated by orchestrator.")
+
+                # Check for errors indicated by the ADK event structure
+                if not output_event.actions:
+                    raise ValueError("Orchestrator LLM Agent did not produce any output actions.")
+
+                # Emit final completion update
+                completion_message = "Task completed successfully by Orchestrator."
+                self.socketio.emit('task_update', {
+                    'task_id': task_id,
+                    'status': 'completed',
+                    'message': completion_message,
+                    'result': llm_response_text
+                })
+                logger.info(f"Emitted 'task_update' (completed by orchestrator) for task {task_id} with LLM response.")
+                return output_event
+
+            except Exception as e:
+                error_message = f"Orchestrator processing failed: {str(e)}"
+                logger.error(f"Task {task_id} failed during orchestrator processing: {error_message}", exc_info=True)
+                self.socketio.emit('task_update', {
+                    'task_id': task_id,
+                    'status': 'failed',
+                    'message': error_message,
+                    'result': None
+                })
+                logger.info(f"Emitted 'task_update' (orchestrator failed) for task {task_id}")
+                return self._create_error_event(error_message, context.input_event)
+
+
+    async def _classify_intent(self, user_prompt: str, task_id: str) -> Tuple[str, Optional[str]]:
+        """
+        Uses the agent's LLM to classify the user prompt's intent.
+
+        Args:
+            user_prompt: The user's input prompt.
+            task_id: The ID of the current task for logging.
+
+        Returns:
+            A tuple containing the classified agent key (str) and an optional error message (str).
+            Defaults to "self" on error.
+        """
+        CLASSIFICATION_PROMPT_TEMPLATE = """
+Analyze the following user prompt and classify the primary intent. Your goal is to determine which specialized agent should handle this request, or if the orchestrator should handle it directly ('self').
+
+Available agents and their functions:
+- market_analyzer: Handles market analysis, trend identification, and finding business opportunities.
+- content_generator: Writes articles, marketing copy, or other forms of content.
+- lead_generator: Finds potential leads, often involving web scraping or searching specific platforms like Quora.
+- freelance_tasker: Finds and manages freelance jobs on platforms like Upwork.
+- web_searcher: Performs general web searches to find information.
+- workflow_manager: Manages the multi-step autonomous income generation workflow.
+- self: Use this if the request is general, doesn't fit other agents, or is a direct request to the orchestrator.
+
+User Prompt:
+"{user_prompt}"
+
+Based on the user prompt, output ONLY the key of the most appropriate agent from the list above (market_analyzer, content_generator, lead_generator, freelance_tasker, web_searcher, workflow_manager, self). Do not add any explanation or other text.
+"""
+        VALID_AGENT_KEYS = [
+            "market_analyzer", "content_generator", "lead_generator",
+            "freelance_tasker", "web_searcher", "workflow_manager", "self"
+        ]
+
+        classification_prompt = CLASSIFICATION_PROMPT_TEMPLATE.format(user_prompt=user_prompt)
+        logger.debug(f"Task {task_id}: Sending classification prompt to LLM: {classification_prompt}")
 
         try:
-            # Execute the core LLM logic using the parent LlmAgent's run_async
-            output_event = await super().run_async(context)
+            # Create a simple event for the classification call
+            classification_event = Event(
+                author="system", # Or self.name?
+                actions=[Action(content=Content(parts=[Part(text=classification_prompt)]))]
+                # No invocation_id needed here as it's an internal call
+            )
+            # Use a temporary context for the internal LLM call
+            # We don't want to pollute the main session or context history with this internal step
+            temp_context = InvocationContext(
+                 session=InvocationContext.create_session(), # Create a temporary session
+                 input_event=classification_event
+            )
 
-            # Extract the result text
-            llm_response_text = "No text response generated."
-            if output_event.actions and output_event.actions[0].parts:
-                 text_parts = [p.text for p in output_event.actions[0].parts if p.type == 'text']
-                 if text_parts:
-                    llm_response_text = text_parts[0]
+            # Call the LLM using the base class method but with the classification prompt
+            # Note: We are calling super().run_async which uses the agent's configured model (Gemini)
+            classification_output_event = await super().run_async(temp_context)
 
+            # Extract the classification result
+            llm_response_text = self._extract_text_from_event(classification_output_event, "").strip()
 
-            # Check for errors indicated by the ADK event structure (e.g., empty actions might imply an issue)
-            # Note: LlmAgent's run_async might raise exceptions for model errors, caught below.
-            # This check is more for logical errors or empty responses.
-            if not output_event.actions:
-                 raise ValueError("LLM Agent did not produce any output actions.")
+            logger.debug(f"Task {task_id}: Received classification response from LLM: '{llm_response_text}'")
 
-
-            # Emit final completion update
-            completion_message = "Task completed successfully."
-            self.socketio.emit('task_update', {
-                'task_id': task_id,
-                'status': 'completed', # ADK/A2A state
-                'message': completion_message,
-                'result': llm_response_text # Send the actual LLM text response
-            })
-            logger.info(f"Emitted 'task_update' (completed) for task {task_id} with LLM response.")
-            return output_event
+            # Validate the response
+            if llm_response_text in VALID_AGENT_KEYS:
+                return llm_response_text, None
+            else:
+                logger.warning(f"Task {task_id}: LLM classification returned invalid key: '{llm_response_text}'. Valid keys: {VALID_AGENT_KEYS}")
+                return "self", f"LLM returned invalid classification key: {llm_response_text}"
 
         except Exception as e:
-            error_message = f"Processing failed: {str(e)}"
-            logger.error(f"Task {task_id} failed: {error_message}", exc_info=True)
+            error_message = f"LLM classification call failed: {str(e)}"
+            logger.error(f"Task {task_id}: {error_message}", exc_info=True)
+            return "self", error_message
 
-            # Emit error update (Mapping 'error' -> 'failed')
-            self.socketio.emit('task_update', {
-                'task_id': task_id,
-                'status': 'failed', # ADK/A2A state
-                'message': error_message,
-                'result': None
+
+    def _prepare_delegation_context(self, original_context: InvocationContext, target_agent_key: str, prompt: str) -> InvocationContext:
+        """
+        Prepares the InvocationContext for the delegated agent.
+        Currently passes the original context but adds agent-specific metadata if needed.
+        """
+        # Start with the original event
+        input_event = original_context.input_event
+        metadata = (input_event.metadata or {}).copy() # Start with existing metadata
+
+        # --- Add agent-specific metadata ---
+        # This section can be expanded based on the specific needs of each agent
+        # For example, extracting API keys or specific parameters from the prompt.
+
+        if target_agent_key == "lead_generator":
+            firecrawl_api_key = os.getenv("FIRECRAWL_API_KEY")
+            openai_api_key = os.getenv("OPENAI_API_KEY")
+            composio_api_key = os.getenv("COMPOSIO_API_KEY")
+            if not all([firecrawl_api_key, openai_api_key, composio_api_key]):
+                 logger.warning(f"Missing API keys for {target_agent_key}. Delegation might fail.")
+            metadata.update({
+                "firecrawl_api_key": firecrawl_api_key,
+                "openai_api_key": openai_api_key,
+                "composio_api_key": composio_api_key,
+                "user_query": prompt # Pass original prompt explicitly
             })
-            logger.info(f"Emitted 'task_update' (failed) for task {task_id}")
 
-            # Return an error event
-            error_action = Action(
-                content=Content(parts=[Part(text=f"Error: {error_message}")])
+        elif target_agent_key == "freelance_tasker":
+             # Basic example: Determine action and user ID
+             action = 'execute_task' # Default
+             if any(k in prompt.lower() for k in ["bid", "monitor"]):
+                 action = 'monitor_and_bid'
+             user_identifier = original_context.session.metadata.get('user_id', 'placeholder_user_id')
+             metadata.update({
+                 'action': action,
+                 'user_identifier': user_identifier,
+                 'keywords': prompt # Simplistic keyword extraction
+             })
+
+        elif target_agent_key == "web_searcher":
+            brave_api_key = os.getenv("BRAVE_API_KEY")
+            if not brave_api_key:
+                 logger.warning(f"Missing BRAVE_API_KEY for {target_agent_key}. Delegation might fail.")
+            metadata.update({
+                "brave_api_key": brave_api_key,
+                "query": prompt # Use original prompt as query
+            })
+
+        # Add more elif blocks here for other agents requiring specific metadata
+
+        # Create a potentially modified input event if metadata changed
+        if metadata != (original_context.input_event.metadata or {}):
+            modified_input_event = Event(
+                author=input_event.author,
+                actions=input_event.actions,
+                invocation_id=input_event.invocation_id,
+                metadata=metadata
             )
-            # Create a minimal error event, copying invocation_id if possible
-            invocation_id = getattr(context.input_event, 'invocation_id', None)
-            return Event(
-                 author=self.name, actions=[error_action], invocation_id=invocation_id
-            )
+        else:
+             modified_input_event = input_event # No changes needed
+
+        # Return a new context with the potentially modified event
+        # Use the original session to maintain conversation history if needed by the delegate
+        return InvocationContext(
+            session=original_context.session,
+            input_event=modified_input_event
+        )
+
+
+    def _extract_text_from_event(self, event: Event, default_text: str = "") -> str:
+        """Extracts the first text part from an event's actions."""
+        if event and event.actions and event.actions[0].parts:
+            text_parts = [p.text for p in event.actions[0].parts if p.type == 'text']
+            if text_parts:
+                return text_parts[0]
+        return default_text
+
+    def _create_error_event(self, error_message: str, input_event: Optional[Event] = None) -> Event:
+         """Creates a standard error event."""
+         error_action = Action(content=Content(parts=[Part(text=f"Error: {error_message}")]))
+         invocation_id = getattr(input_event, 'invocation_id', None) if input_event else None
+         return Event(author=self.name, actions=[error_action], invocation_id=invocation_id)
 
     # Removed process_task and get_task_status as they are replaced by run_async and ADK session management.

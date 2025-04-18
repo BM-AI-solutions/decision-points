@@ -11,6 +11,7 @@ const OrchestratorPanel = () => {
   const [error, setError] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
+  const [pendingApproval, setPendingApproval] = useState(null); // State for pending approval
 
   // --- WebSocket Handlers ---
 
@@ -52,6 +53,21 @@ const OrchestratorPanel = () => {
      // }
   }, []);
 
+  // Handler for workflow approval requests
+  const handleWorkflowApprovalRequired = useCallback((data) => {
+    console.log("Received workflow approval request:", data);
+    if (data && data.workflow_run_id && data.data_to_approve) {
+        setPendingApproval({
+            workflow_run_id: data.workflow_run_id,
+            data_to_approve: data.data_to_approve,
+        });
+        // Optionally, add a status update to indicate approval is needed
+        setStatusUpdates(prev => [...prev, { message: `Approval required for workflow ${data.workflow_run_id}`, receivedAt: new Date(), status: 'APPROVAL_PENDING' }]);
+    } else {
+        console.error("Invalid workflow_approval_required event received:", data);
+    }
+  }, []); // No dependencies needed as it only sets state
+
   // --- Effects ---
 
   // Effect to manage WebSocket connection and listeners
@@ -68,6 +84,8 @@ const OrchestratorPanel = () => {
         // Add listeners for connect/disconnect for status display
         websocketService.addListener('connect', handleConnect);
         websocketService.addListener('disconnect', handleDisconnect);
+        // Listen for workflow approval requests
+        websocketService.addListener('workflow_approval_required', handleWorkflowApprovalRequired);
     } else {
         console.warn("OrchestratorPanel: No auth token found, WebSocket not connected.");
     }
@@ -79,11 +97,12 @@ const OrchestratorPanel = () => {
       websocketService.removeListener('task_update', handleTaskUpdate);
       websocketService.removeListener('connect', handleConnect);
       websocketService.removeListener('disconnect', handleDisconnect);
+      websocketService.removeListener('workflow_approval_required', handleWorkflowApprovalRequired); // Remove approval listener
       // Consider disconnecting if the panel is unmounted, or manage connection globally
       // websocketService.disconnect();
       console.log("OrchestratorPanel unmounted, listeners removed.");
     };
-  }, [handleConnect, handleDisconnect, handleTaskUpdate]); // Update dependencies
+  }, [handleConnect, handleDisconnect, handleTaskUpdate, handleWorkflowApprovalRequired]); // Update dependencies
 
   // Effect to subscribe/unsubscribe when taskId changes
   useEffect(() => {
@@ -149,6 +168,35 @@ const OrchestratorPanel = () => {
       setIsLoading(false);
     }
   };
+
+  // --- Approval Handlers ---
+  const handleApprovalDecision = async (decision) => {
+      if (!pendingApproval) return;
+
+      const { workflow_run_id } = pendingApproval;
+      console.log(`Submitting decision '${decision}' for workflow ${workflow_run_id}`);
+      // Optionally add loading state specific to approval
+      try {
+          await apiService.resumeWorkflow(workflow_run_id, decision);
+          console.log(`Workflow ${workflow_run_id} ${decision} signal sent successfully.`);
+          // Add a status update confirming the action
+          setStatusUpdates(prev => [...prev, { message: `Workflow ${workflow_run_id} ${decision}.`, receivedAt: new Date(), status: 'ACTION_TAKEN' }]);
+          setPendingApproval(null); // Clear the approval request
+      } catch (err) {
+          console.error(`Error sending ${decision} decision for workflow ${workflow_run_id}:`, err);
+          const errorMsg = err.data?.error || err.message || `Failed to send ${decision} decision.`;
+          // Display error near the approval section or reuse the main error state
+          setError(`Approval Error: ${errorMsg}`); // Or use a dedicated approval error state
+          // Optionally add a status update about the error
+           setStatusUpdates(prev => [...prev, { message: `Failed to send ${decision} decision for workflow ${workflow_run_id}. Error: ${errorMsg}`, receivedAt: new Date(), status: 'ERROR' }]);
+      } finally {
+          // Clear approval-specific loading state if used
+      }
+  };
+
+  const handleApprove = () => handleApprovalDecision('approved');
+  const handleReject = () => handleApprovalDecision('rejected');
+
 
   return (
     <div className="p-6 bg-slate-800 rounded-lg shadow-md border border-slate-700 text-gray-200">
@@ -247,6 +295,34 @@ const OrchestratorPanel = () => {
           </div>
         </div>
       )}
+
+      {/* Workflow Approval Section */}
+      {pendingApproval && (
+        <div className="mt-6 p-4 bg-yellow-900/30 border border-yellow-700 rounded-lg shadow-md">
+          <h3 className="text-lg font-semibold mb-3 text-yellow-200">Workflow Approval Required</h3>
+          <p className="text-sm text-yellow-300 mb-1">Workflow Run ID: <span className="font-mono">{pendingApproval.workflow_run_id}</span></p>
+          <p className="text-sm text-yellow-300 mb-2">Data to Approve/Reject:</p>
+          <pre className="text-xs bg-slate-800 p-3 rounded overflow-x-auto whitespace-pre-wrap break-words border border-slate-600 text-gray-200 mb-4">
+            {JSON.stringify(pendingApproval.data_to_approve, null, 2)}
+          </pre>
+          <div className="flex space-x-3">
+            <button
+              onClick={handleApprove}
+              className="bg-green-600 hover:bg-green-500 text-white font-semibold py-2 px-4 rounded-md transition duration-200 ease-in-out"
+            >
+              Approve
+            </button>
+            <button
+              onClick={handleReject}
+              className="bg-red-600 hover:bg-red-500 text-white font-semibold py-2 px-4 rounded-md transition duration-200 ease-in-out"
+            >
+              Reject
+            </button>
+          </div>
+           {/* Display approval-specific errors here if needed */}
+        </div>
+      )}
+
     </div>
   );
 };

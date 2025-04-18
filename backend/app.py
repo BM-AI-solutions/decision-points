@@ -6,6 +6,7 @@ import logging
 from typing import Dict, Any, Optional, List, Union
 
 import google.generativeai as genai
+from google.cloud import firestore # Add Firestore import
 from dotenv import load_dotenv
 from flask import Flask, request, jsonify, Response
 from middleware.security_headers import security_headers
@@ -26,6 +27,9 @@ from agents.lead_generation_agent import LeadGenerationAgent # Import the LeadGe
 from agents.freelance_task_agent import FreelanceTaskAgent # Import the FreelanceTaskAgent
 from agents.web_search_agent import WebSearchAgent # Import the WebSearchAgent
 
+from agents.code_generation_agent import CodeGenerationAgent # Import the CodeGenerationAgent
+
+from backend.agents.marketing_agent import MarketingAgent # Import the MarketingAgent
 
 # Load environment variables
 load_dotenv()
@@ -35,7 +39,20 @@ app = Flask(__name__)
 app.after_request(security_headers)
 app.config.from_object(Config)
 
+# Initialize Firestore client
+# Assumes Application Default Credentials (ADC) are configured.
+# See: https://cloud.google.com/docs/authentication/provide-credentials-adc
+try:
+    db = firestore.AsyncClient()
+    # You might want to add a check here to ensure the client is usable,
+    # e.g., by trying a simple read, but be mindful of startup time.
+    # logger.info("Firestore AsyncClient initialized successfully.") # Logger not defined yet
+except Exception as e:
+    # logger.error(f"Failed to initialize Firestore client: {e}", exc_info=True) # Logger not defined yet
+    print(f"ERROR: Failed to initialize Firestore client: {e}") # Use print before logger setup
+    db = None # Set db to None to indicate failure
 
+app.firestore_db = db # Attach Firestore client to app context
 
 # Configure Google Generative AI
 if Config.GEMINI_API_KEY:
@@ -62,7 +79,7 @@ CORS(app, resources={r"/api/*": {"origins": allowed_origins}}, supports_credenti
 socketio_cors_origins = allowed_origins if allowed_origins else "*"
 socketio = SocketIO(app, cors_allowed_origins=socketio_cors_origins, async_mode='threading') # Using threading for simplicity, consider eventlet/gevent for production
 
-
+app.socketio = socketio # Attach SocketIO instance to app context
 # Initialize Agents
 market_analysis_agent = MarketAnalysisAgent(model_name=Config.MARKET_ANALYSIS_MODEL if hasattr(Config, 'MARKET_ANALYSIS_MODEL') else Config.ORCHESTRATOR_MODEL) # Use specific model or fallback
 content_generation_agent = ContentGenerationAgent(model_name=Config.CONTENT_GENERATION_MODEL if hasattr(Config, 'CONTENT_GENERATION_MODEL') else Config.ORCHESTRATOR_MODEL) # Use specific model or fallback
@@ -87,16 +104,29 @@ market_research_agent = MarketResearchAgent() # Assuming basic init for now
 improvement_agent = ImprovementAgent()       # Assuming basic init for now
 branding_agent = BrandingAgent()           # Assuming basic init for now
 deployment_agent = DeploymentAgent()         # Assuming basic init for now
+code_generation_agent = CodeGenerationAgent()     # Assuming basic init for now
+
+marketing_agent = MarketingAgent(content_generation_agent_url=getattr(Config, 'CONTENT_GENERATION_AGENT_URL', None)) # Instantiate MarketingAgent
 # Attach specialized workflow agents to the app context
 app.market_research_agent = market_research_agent
 app.improvement_agent = improvement_agent
 app.branding_agent = branding_agent
 app.deployment_agent = deployment_agent
+app.code_generation_agent = code_generation_agent
+
+app.marketing_agent = marketing_agent
 
 
 # Instantiate Workflow Manager Agent, configuring it with other agent URLs
 # Ensure the corresponding environment variables are set in Config or .env
+# Define Firestore collection name (can also be in Config)
+WORKFLOWS_COLLECTION = 'incomeGenWorkflows'
+app.config['WORKFLOW_COLLECTION'] = WORKFLOWS_COLLECTION # Store collection name in app config
+
 workflow_manager_agent = WorkflowManagerAgent(
+    socketio=socketio, # Pass SocketIO instance
+    firestore_db=db, # Pass Firestore client instance
+    collection_name=WORKFLOWS_COLLECTION, # Pass collection name
     market_research_agent_url=getattr(Config, 'MARKET_RESEARCH_AGENT_URL', None),
     improvement_agent_url=getattr(Config, 'IMPROVEMENT_AGENT_URL', None),
     branding_agent_url=getattr(Config, 'BRANDING_AGENT_URL', None),
