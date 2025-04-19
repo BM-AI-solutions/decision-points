@@ -32,21 +32,21 @@ function Header() {
   const toggleMobileMenu = () => {
     setIsMobileMenuOpen((prev) => {
       const next = !prev;
-      console.log('Hamburger clicked, menu open:', next);
+
       return next;
     });
   };
 
   // Click Handlers for Login/Signup
   const handleLoginClick = () => {
-    console.log('Log in button clicked');
+
     setShowLogin(true);
     setShowSignup(false);
     // Future implementation: Open login modal/form (State now handles visibility)
   };
 
   const handleSignupClick = () => {
-    console.log('Sign up button clicked');
+
     setShowSignup(true);
     setShowLogin(false);
     // Future implementation: Open signup modal/form (State now handles visibility)
@@ -88,7 +88,7 @@ function Header() {
 
   // Handle the sign-in response
   const handleCredentialResponse = (response) => {
-    console.log("Credential response received:", response);
+
     if (response.credential) {
       try {
         // Basic decoding (for demonstration - use a library like jwt-decode in production)
@@ -99,7 +99,6 @@ function Header() {
         }).join(''));
 
         const decodedToken = JSON.parse(jsonPayload);
-        console.log("Decoded JWT payload:", decodedToken);
 
         // Update state and persist to localStorage
         setIsLoggedIn(true);
@@ -114,11 +113,9 @@ function Header() {
         localStorage.setItem('user', JSON.stringify(userObj));
 
         // TODO: Send token to backend for verification and session management
-        console.log("TODO: Send token to backend:", response.credential.substring(0, 15) + "...");
 
         // Simulate redirect or update UI further
         // alert(`Welcome, ${decodedToken.name}! (Sign-in successful, backend verification pending)`);
-        console.log(`Welcome, ${decodedToken.name}! (Sign-in successful, backend verification pending)`);
 
       } catch (error) {
         console.error("Error decoding credential or updating state:", error);
@@ -141,7 +138,6 @@ function Header() {
     setUserInfo(null);
     setShowLogin(false);
     setShowSignup(false);
-    console.log("User logged out (client-side).");
 
     // Ensure Google API is loaded before trying to re-render button
     if (window.google && window.google.accounts && googleButtonRef.current) {
@@ -157,12 +153,12 @@ function Header() {
                     shape: "rectangular",
                 }
             );
-            console.log("Google Sign-In button re-rendered after logout.");
+
         } catch (error) {
             console.error("Error rendering Google Sign-In button after logout:", error);
         }
     } else {
-        console.log("Google API not ready to re-render button after logout or ref not available.");
+
     }
     // Optionally redirect to home page
     window.location.href = '/';
@@ -173,13 +169,13 @@ function Header() {
     const loadGoogleScript = () => {
       // Check if script already exists
       if (document.querySelector('script[src="https://accounts.google.com/gsi/client"]')) {
-        console.log("Google GSI script tag already exists.");
+
         // Check if the google object is ready
         if (window.google && window.google.accounts) {
-            console.log("Google GSI client already initialized.");
+
             initializeGoogleSignIn(); // Initialize directly if script exists and client is ready
         } else {
-            console.log("Google GSI script exists but client not ready, waiting...");
+
             // If script exists but not ready, wait for it via onload (might already be loading)
             const existingScript = document.querySelector('script[src="https://accounts.google.com/gsi/client"]');
             if (existingScript && !existingScript.onload) { // Add onload if not already set
@@ -191,13 +187,12 @@ function Header() {
         return;
       }
 
-      console.log("Loading Google GSI script...");
       const script = document.createElement('script');
       script.src = 'https://accounts.google.com/gsi/client';
       script.async = true;
       script.defer = true;
       script.onload = () => {
-          console.log("Google GSI script loaded successfully.");
+
           initializeGoogleSignIn();
       };
       script.onerror = () => console.error("Failed to load Google Sign-In API script");
@@ -214,14 +209,14 @@ function Header() {
       }
 
       try {
-        console.log("Initializing Google Sign-In...");
+
         window.google.accounts.id.initialize({
           client_id: '706670564943-pmitiums8ciksifmpmio5v5dtcius8rd.apps.googleusercontent.com', // Use the same client ID
           callback: handleCredentialResponse,
           auto_select: false,
           cancel_on_tap_outside: true
         });
-        console.log("Google Sign-In initialized successfully.");
+
         // Render button only if user is not logged in
         if (!isLoggedIn) {
              renderGoogleButton();
@@ -236,18 +231,17 @@ function Header() {
         // Delay rendering slightly to ensure DOM element is ready
         setTimeout(() => {
             if (!window.google || !window.google.accounts || !window.google.accounts.id) {
-                console.log("Google GSI client not ready for rendering button.");
+
                 // Optionally retry or log error
                 return;
             }
             if (!googleButtonRef.current) {
-                console.log("Google Sign-In button container ref not available yet.");
+
                 // Retry rendering after a short delay
                 // setTimeout(renderGoogleButton, 100);
                 return;
             }
 
-            console.log("Rendering Google Sign-In button...");
             // Clear previous button if any
             googleButtonRef.current.innerHTML = '';
             try {
@@ -263,7 +257,7 @@ function Header() {
                         // width: "250" // Example fixed width
                     }
                 );
-                console.log("Google Sign-In button rendered successfully.");
+
             } catch (error) {
                 console.error("Error rendering Google Sign-In button:", error);
             }

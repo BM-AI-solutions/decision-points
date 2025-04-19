@@ -10,28 +10,26 @@ const DashboardLayout = ({ children }) => {
 
   useEffect(() => {
     let isMounted = true;
-    console.log("DashboardLayout: Mounting component and checking authentication");
 
     const token = localStorage.getItem('authToken');
-    console.log("DashboardLayout: Auth token exists in localStorage:", !!token);
+
     if (!token) {
-        console.log("DashboardLayout: No token found, redirecting to home");
+
         navigate('/', { replace: true });
         setLoading(false);
         return;
     }
-    console.log("DashboardLayout: Token from localStorage:", token.substring(0, 10) + "...");
 
     apiService.getCurrentUser()
       .then((response) => {
-        console.log("DashboardLayout: getCurrentUser successful response:", response);
+
         if (isMounted && response?.success && response?.user) {
-          console.log("DashboardLayout: Setting authenticated to true and storing user");
+
           setAuthenticated(true);
           setUser(response.user);
           setLoading(false);
         } else if (isMounted) {
-           console.log("DashboardLayout: API success but no user data, setting authenticated to false");
+
            setAuthenticated(false);
            setLoading(false);
            localStorage.removeItem('authToken');
@@ -41,16 +39,16 @@ const DashboardLayout = ({ children }) => {
       .catch((error) => {
         console.error("DashboardLayout: getCurrentUser error:", error);
         if (isMounted) {
-          console.log("DashboardLayout: Setting authenticated to false due to error");
+
           setAuthenticated(false);
           setLoading(false);
           localStorage.removeItem('authToken');
-          console.log("DashboardLayout: Redirecting to home page");
+
           navigate('/', { replace: true });
         }
       });
     return () => {
-      console.log("DashboardLayout: Unmounting component");
+
       isMounted = false;
     };
   }, [navigate]);

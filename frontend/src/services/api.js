@@ -31,7 +31,7 @@ class ApiClient {
       method = 'GET',
       data = null,
       params = {},
-      headers = {},
+      headers = {}
     } = options;
 
     // Build the URL with query parameters
@@ -62,9 +62,9 @@ class ApiClient {
         'Accept': 'application/json',
         // Add Authorization header if token exists
         ...(authToken ? { 'Authorization': `Bearer ${authToken}` } : {}),
-        ...headers,
+        ...headers
       },
-      credentials: this.withCredentials ? 'include' : 'same-origin',
+      credentials: this.withCredentials ? 'include' : 'same-origin'
     };
 
     // Add body for POST/PUT/PATCH requests
@@ -79,12 +79,10 @@ class ApiClient {
       requestOptions.signal = controller.signal;
 
       // Make the request
-      console.log(`Making ${method} request to ${url}`);
+
       const response = await fetch(url, requestOptions);
       clearTimeout(timeoutId);
-      
-      console.log(`Response status: ${response.status} ${response.statusText}`);
-      console.log(`Response headers:`, Object.fromEntries([...response.headers.entries()]));
+
 
       // Handle HTTP errors
       if (!response.ok) {
@@ -94,12 +92,11 @@ class ApiClient {
         try {
             // First get the raw text
             responseText = await response.text();
-            console.log(`Raw error response: ${responseText.substring(0, 200)}${responseText.length > 200 ? '...' : ''}`);
-            
+
             // Then try to parse as JSON
             try {
                 errorData = JSON.parse(responseText);
-                console.log(`Parsed error data:`, errorData);
+
             } catch (jsonError) {
                 console.error(`Error parsing JSON response: ${jsonError}`);
                 errorData = { message: responseText || 'Unknown error' };
@@ -120,7 +117,7 @@ class ApiClient {
 
       // Handle empty response body for certain statuses (e.g., 204 No Content)
       if (response.status === 204) {
-        console.log('Received 204 No Content response');
+
         return null; // Or return an empty object/success indicator as needed
       }
 
@@ -128,11 +125,10 @@ class ApiClient {
       try {
         // First get the raw text
         const responseText = await response.text();
-        console.log(`Raw success response: ${responseText.substring(0, 200)}${responseText.length > 200 ? '...' : ''}`);
-        
+
         // Then parse as JSON
         const responseData = JSON.parse(responseText);
-        console.log(`Parsed response data:`, responseData);
+
         return responseData;
       } catch (e) {
         console.error(`Error parsing successful response: ${e}`);
@@ -150,7 +146,7 @@ class ApiClient {
         throw {
           status: 408,
           statusText: 'Request Timeout',
-          data: { message: `The request to ${url} timed out after ${this.timeout}ms` },
+          data: { message: `The request to ${url} timed out after ${this.timeout}ms` }
         };
       }
 
@@ -186,7 +182,7 @@ const apiService = {
   // Market analysis
   analyzeMarket: (marketSegment, businessPreference) => {
     console.log("API Call: analyzeMarket", { marketSegment, businessPreference }); // Added logging
-    return apiClientInstance.post('/market/analyze', {
+    return apiClientInstance.post('/api/market/analyze', {
       market_segment: marketSegment,
       business_preference: businessPreference
     });
@@ -195,7 +191,7 @@ const apiService = {
   // Business models
   getBusinessModels: () => {
     console.log("API Call: getBusinessModels"); // Added logging
-    console.log("Calling correct endpoint: /api/business/list");
+
     return apiClientInstance.get('/api/business/list');
   },
 
@@ -222,12 +218,10 @@ const apiService = {
 
   // User authentication
   login: (email, password) => {
-    console.log("API Call: login with email:", email); // Added logging (don't log password)
-    
+
     // Check if the URL is correct
     const loginUrl = '/api/auth/login';
-    console.log("Login URL:", loginUrl);
-    
+
     // Make the request with detailed error handling
     return apiClientInstance.post(loginUrl, { email, password })
       .catch(error => {
@@ -247,12 +241,10 @@ const apiService = {
   },
 
   signup: (userData) => {
-    console.log("API Call: signup with email:", userData.email); // Added logging (don't log password)
-    
+
     // Check if the URL is correct
     const signupUrl = '/api/auth/signup';
-    console.log("Signup URL:", signupUrl);
-    
+
     // Make the request with detailed error handling
     return apiClientInstance.post(signupUrl, userData)
       .catch(error => {
@@ -269,7 +261,7 @@ const apiService = {
         
         // Check for specific error conditions
         if (error.status === 409 || (error.data && error.data.message && error.data.message.includes('already registered'))) {
-          console.log("Email already registered error detected");
+
           // Enhance the error object with a more specific status if the backend didn't provide it
           if (error.status !== 409) {
             error.status = 409;
@@ -287,15 +279,13 @@ const apiService = {
 
   getCurrentUser: () => {
     console.log("API Call: getCurrentUser"); // Added logging
-    console.log("Token in localStorage:", localStorage.getItem('authToken') ? "Present" : "Missing");
-    
+
     // Log the full URL being requested
     const fullUrl = `${apiClientInstance.baseUrl}/api/auth/profile`;
-    console.log("Full URL for getCurrentUser:", fullUrl);
-    
+
     return apiClientInstance.get('/api/auth/profile')
       .then(response => {
-        console.log("getCurrentUser successful response:", response);
+
         return response;
       })
       .catch(error => {
@@ -322,104 +312,104 @@ const apiService = {
   // Subscription management
   getSubscriptionPlans: () => {
     console.log("API Call: getSubscriptionPlans"); // Added logging
-    return apiClientInstance.get('/subscriptions/plans');
+    return apiClientInstance.get('/api/subscriptions/plans');
   },
 
   getCurrentSubscription: () => {
     console.log("API Call: getCurrentSubscription"); // Added logging
-    return apiClientInstance.get('/subscriptions/current');
+    return apiClientInstance.get('/api/subscriptions/current');
   },
 
   createCheckoutSession: (data) => {
     console.log("API Call: createCheckoutSession", data); // Added logging
-    return apiClientInstance.post('/subscriptions/create-checkout-session', data);
+    return apiClientInstance.post('/api/subscriptions/create-checkout-session', data);
   },
 
   updateSubscription: (subscriptionId, data) => {
     console.log("API Call: updateSubscription", { subscriptionId, data }); // Added logging
-    return apiClientInstance.put(`/subscriptions/${subscriptionId}`, data);
+    return apiClientInstance.put(`/api/subscriptions/${subscriptionId}`, data);
   },
 
   cancelSubscription: (subscriptionId) => {
     console.log("API Call: cancelSubscription", { subscriptionId }); // Added logging
-    return apiClientInstance.post(`/subscriptions/${subscriptionId}/cancel`);
+    return apiClientInstance.post(`/api/subscriptions/${subscriptionId}/cancel`);
   },
 
   reactivateSubscription: (subscriptionId) => {
     console.log("API Call: reactivateSubscription", { subscriptionId }); // Added logging
-    return apiClientInstance.post(`/subscriptions/${subscriptionId}/reactivate`);
+    return apiClientInstance.post(`/api/subscriptions/${subscriptionId}/reactivate`);
   },
 
   // System health and configuration
   getHealthStatus: () => {
     console.log("API Call: getHealthStatus"); // Added logging
-    return apiClientInstance.get('/health');
+    return apiClientInstance.get('/api/health');
   },
 
   getConfig: () => {
     console.log("API Call: getConfig"); // Added logging
-    return apiClientInstance.get('/config');
+    return apiClientInstance.get('/api/config');
   },
 
   // Workflows
   getWorkflows: () => {
-    console.log("API Call: getWorkflows");
+
     return apiClientInstance.get('/api/workflows');
   },
 
   createWorkflow: (workflowData) => {
-    console.log("API Call: createWorkflow", workflowData);
+
     return apiClientInstance.post('/api/workflows', workflowData);
   },
 
   // Cashflow
   getCashflowForecast: (businessId) => {
-    console.log("API Call: getCashflowForecast", { businessId });
+
     return apiClientInstance.get(`/api/cashflow/forecast/${businessId}`);
   },
 
 
   // Analytics
   getAnalyticsData: () => {
-    console.log("API Call: getAnalyticsData");
+
     // Assuming an endpoint like /api/analytics will exist
     return apiClientInstance.get('/api/analytics');
-  }, // Comma after getAnalyticsData
+  },
 
   // Insights
   getInsightsData: () => {
-    console.log("API Call: getInsightsData");
+
     // Assuming an endpoint like /api/insights will exist
     return apiClientInstance.get('/api/insights');
-  } // No comma after getInsightsData as it's the last item
-,
+  },
+
 
   // Customers (Placeholder)
   getCustomersData: () => {
-    console.log("API Call: getCustomersData (Placeholder)");
+
     // Assuming an endpoint like /api/customers will exist
     return apiClientInstance.get('/api/customers');
-  }
-,
+  },
+
 
   // Revenue (Placeholder)
   getRevenueData: () => {
-    console.log("API Call: getRevenueData (Placeholder)");
+
     // Assuming an endpoint like /api/revenue will exist
     return apiClientInstance.get('/api/revenue');
-  }
-,
+  },
+
 
   // Orchestrator Tasks
   submitOrchestratorTask: (goal, parameters = {}) => {
-    console.log("API Call: submitOrchestratorTask", { goal, parameters });
+
     return apiClientInstance.post('/api/orchestrator/tasks', { goal, parameters });
-  }
-,
+  },
+
 
   // Workflow Resume
   resumeWorkflow: (workflowRunId, decision) => {
-    console.log("API Call: resumeWorkflow", { workflowRunId, decision });
+
     return apiClientInstance.post(`/a2a/workflow/${workflowRunId}/resume`, { decision });
   }
 }; // Closing brace for apiService object

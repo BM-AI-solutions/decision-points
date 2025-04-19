@@ -9,19 +9,18 @@ function LoginForm({ onAuthSuccess }) {
   const [error, setError] = useState('');
 
   const handleSubmit = async (event) => {
-    console.log('LoginForm handleSubmit triggered');
+
     event.preventDefault();
     setIsLoading(true);
     setError('');
     
     try {
-      console.log('Attempting login with email:', email);
+
       const response = await apiService.login(email, password);
-      console.log('Login successful:', response);
-      
+
       // Check if response has the expected structure
       if (response && response.success && response.token && response.user) {
-        console.log('Valid login response received');
+
         // Store token in localStorage
         localStorage.setItem('authToken', response.token);
         // Store user info

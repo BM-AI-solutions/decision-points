@@ -31,13 +31,10 @@ function CreateWorkflowModal({ isOpen, onClose, onWorkflowCreated }) { // Add on
       actionType: actionType,
     };
 
-    console.log('Submitting workflow data:', workflowData);
-
     try {
       // Use apiService to create workflow
       const result = await apiService.createWorkflow(workflowData);
 
-      console.log('API Success:', result);
       // alert('Workflow created successfully!'); // Replaced with callback/close
 
       // Call the callback function to refresh parent list

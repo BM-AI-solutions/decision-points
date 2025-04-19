@@ -9,7 +9,7 @@ function SignupForm({ onAuthSuccess }) {
   const [error, setError] = useState('');
 
   const handleSubmit = async (event) => {
-    console.log('SignupForm handleSubmit triggered');
+
     event.preventDefault();
     
     // Validate passwords match
@@ -26,15 +26,14 @@ function SignupForm({ onAuthSuccess }) {
     
     // Check deployment mode
     if (import.meta.env.VITE_DEPLOYMENT_MODE === 'cloud') {
-      console.log('Cloud deployment detected: Proceeding with free tier signup.');
+
     } else {
-      console.log('Self-hosted deployment detected: Proceeding with standard signup.');
+
     }
 
     try {
       const response = await apiService.signup(userData);
-      console.log('Signup successful:', response);
-      
+
       // Store token and user info
       if (response && response.success && response.token && response.user) {
         localStorage.setItem('authToken', response.token);

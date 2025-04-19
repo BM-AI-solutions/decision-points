@@ -190,7 +190,7 @@ function HowItWorks() {
   const handleSelectModel = (modelName) => {
     // TODO: Implement logic to handle model selection (e.g., navigate to implementation flow)
     alert(`You selected: ${modelName}. Starting implementation process.`);
-    console.log("Selected model:", modelName);
+
   };
 
 

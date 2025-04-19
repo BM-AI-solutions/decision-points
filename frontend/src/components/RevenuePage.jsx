@@ -14,7 +14,7 @@ const RevenuePage = () => {
         // Use the placeholder API function
         const data = await apiService.getRevenueData();
         setRevenueData(data);
-        console.log("Revenue data fetched (placeholder):", data);
+
       } catch (err) {
         console.error("Error fetching revenue data:", err);
         // Handle potential 404 if the placeholder endpoint doesn't exist

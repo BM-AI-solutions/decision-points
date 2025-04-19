@@ -8,30 +8,34 @@ class WebSocketService {
   socket = null;
   messageListeners = new Map(); // Store listeners keyed by event type
 
-  connect(authToken) {
+  connect() {
     if (this.socket && this.socket.connected) {
-      console.log('WebSocket already connected.');
+
       return;
     }
 
-    console.log(`Attempting to connect WebSocket to ${WS_URL}`);
+    const authToken = localStorage.getItem('authToken');
+    if (!authToken) {
+      console.warn('WebSocketService: Auth token not found in localStorage. Connecting without authentication.');
+    }
+
     // Pass auth token if needed for connection authentication on the backend
     this.socket = io(WS_URL, {
       // Use 'ws://' or 'wss://' based on your backend setup
       // Consider adding authentication if your backend requires it
-      // auth: { token: authToken },
+      auth: authToken ? { token: authToken } : undefined,
       reconnectionAttempts: 5,
       reconnectionDelay: 3000,
       transports: ['websocket'], // Force websocket transport
     });
 
     this.socket.on('connect', () => {
-      console.log('WebSocket connected successfully:', this.socket.id);
+
       // Potentially emit an event or call a callback for successful connection
     });
 
     this.socket.on('disconnect', (reason) => {
-      console.log('WebSocket disconnected:', reason);
+
       // Handle disconnection logic (e.g., notify user, attempt reconnect)
       if (reason === 'io server disconnect') {
         // The server intentionally disconnected the socket, probably needs re-authentication
@@ -55,14 +59,14 @@ class WebSocketService {
           }
         });
       } else {
-         console.log(`Received unhandled WebSocket event: ${eventName}`, args);
+
       }
     });
   }
 
   disconnect() {
     if (this.socket) {
-      console.log('Disconnecting WebSocket...');
+
       this.socket.disconnect();
       this.socket = null;
       this.messageListeners.clear(); // Clear listeners on disconnect
@@ -83,7 +87,7 @@ class WebSocketService {
       this.messageListeners.set(eventName, new Set());
     }
     this.messageListeners.get(eventName).add(callback);
-    console.log(`Added listener for WebSocket event: ${eventName}`);
+
   }
 
   // Remove a specific listener
@@ -93,7 +97,7 @@ class WebSocketService {
       if (this.messageListeners.get(eventName).size === 0) {
         this.messageListeners.delete(eventName);
       }
-      console.log(`Removed listener for WebSocket event: ${eventName}`);
+
     }
   }
 
@@ -101,20 +105,20 @@ class WebSocketService {
   removeAllListeners(eventName) {
      if (this.messageListeners.has(eventName)) {
         this.messageListeners.delete(eventName);
-        console.log(`Removed all listeners for WebSocket event: ${eventName}`);
+
      }
   }
 
   // Example: Subscribe to updates for a specific task
   subscribeToTask(taskId) {
     this.emit('subscribe_task', { taskId });
-    console.log(`Emitted subscribe_task for taskId: ${taskId}`);
+
   }
 
   // Example: Unsubscribe from updates for a specific task
   unsubscribeFromTask(taskId) {
     this.emit('unsubscribe_task', { taskId });
-     console.log(`Emitted unsubscribe_task for taskId: ${taskId}`);
+
   }
 }
 

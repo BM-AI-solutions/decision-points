@@ -12,13 +12,12 @@ const OrchestratorPanel = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [pendingApproval, setPendingApproval] = useState(null); // State for pending approval
+  const [parametersError, setParametersError] = useState(null); // State for parameter JSON error
 
   // --- WebSocket Handlers ---
 
   // Unified handler for 'task_update' events
   const handleTaskUpdate = useCallback((update) => {
-    console.log("Received task update:", update);
-
     // Add every update to the status list for visibility
     setStatusUpdates(prev => [...prev, { ...update, receivedAt: new Date() }]);
 
@@ -28,10 +27,8 @@ const OrchestratorPanel = () => {
             setTaskResult(update.result || update.details || { message: `Task ended with status: ${update.status}` });
             setError(update.error || (update.status === 'failed' ? (update.details || 'Task failed with unknown error') : null));
             setIsLoading(false); // Task finished
-            console.log(`Task ${taskId} finished with status: ${update.status}`);
         } else {
             // Optionally update a general 'current status' state here if needed
-            console.log(`Task ${taskId} status updated: ${update.status}`);
         }
     } else {
         console.warn(`Received update for unexpected taskId: ${update.taskId} (current: ${taskId})`);
@@ -39,23 +36,20 @@ const OrchestratorPanel = () => {
   }, [taskId]); // Depend on taskId to ensure we're processing updates for the current task
 
   const handleConnect = useCallback(() => {
-     console.log("WebSocket connected in component.");
      setIsConnected(true);
   }, []);
 
   const handleDisconnect = useCallback(() => {
-     console.log("WebSocket disconnected in component.");
      setIsConnected(false);
      // Optionally reset task state if connection is lost during processing
-     // if (isLoading) {
-     //   setError("WebSocket disconnected during task processing.");
-     //   setIsLoading(false);
-     // }
-  }, []);
+     if (isLoading) {
+       setError("WebSocket disconnected during task execution. Please check your connection and try submitting again.");
+       setIsLoading(false);
+     }
+  }, [isLoading]); // Added isLoading dependency
 
   // Handler for workflow approval requests
   const handleWorkflowApprovalRequired = useCallback((data) => {
-    console.log("Received workflow approval request:", data);
     if (data && data.workflow_run_id && data.data_to_approve) {
         setPendingApproval({
             workflow_run_id: data.workflow_run_id,
@@ -68,6 +62,25 @@ const OrchestratorPanel = () => {
     }
   }, []); // No dependencies needed as it only sets state
 
+  // --- Input Handlers ---
+
+  const handleParametersChange = (e) => {
+    const newValue = e.target.value;
+    setParameters(newValue);
+
+    if (newValue.trim() === '') {
+      setParametersError(null); // Clear error if empty
+      return;
+    }
+
+    try {
+      JSON.parse(newValue);
+      setParametersError(null); // Clear error if valid JSON
+    } catch (parseError) {
+      setParametersError('Invalid JSON format.'); // Set error if invalid
+    }
+  };
+
   // --- Effects ---
 
   // Effect to manage WebSocket connection and listeners
@@ -76,14 +89,12 @@ const OrchestratorPanel = () => {
     // For now, connect on mount. In a real app, trigger this after login.
     const token = localStorage.getItem('authToken'); // Or get from auth context
     if (token) { // Only connect if authenticated
-        websocketService.connect(token);
+        // Use connect without token argument as per Task 2 changes
+        websocketService.connect();
         websocketService.addListener('connect', handleConnect);
         websocketService.addListener('disconnect', handleDisconnect);
         // Listen for the unified task update event
         websocketService.addListener('task_update', handleTaskUpdate);
-        // Add listeners for connect/disconnect for status display
-        websocketService.addListener('connect', handleConnect);
-        websocketService.addListener('disconnect', handleDisconnect);
         // Listen for workflow approval requests
         websocketService.addListener('workflow_approval_required', handleWorkflowApprovalRequired);
     } else {
@@ -100,19 +111,16 @@ const OrchestratorPanel = () => {
       websocketService.removeListener('workflow_approval_required', handleWorkflowApprovalRequired); // Remove approval listener
       // Consider disconnecting if the panel is unmounted, or manage connection globally
       // websocketService.disconnect();
-      console.log("OrchestratorPanel unmounted, listeners removed.");
     };
   }, [handleConnect, handleDisconnect, handleTaskUpdate, handleWorkflowApprovalRequired]); // Update dependencies
 
   // Effect to subscribe/unsubscribe when taskId changes
   useEffect(() => {
     if (taskId && isConnected) {
-      console.log(`Subscribing to task ${taskId}`);
       websocketService.subscribeToTask(taskId);
 
       // Cleanup function to unsubscribe when taskId changes or component unmounts
       return () => {
-        console.log(`Unsubscribing from task ${taskId}`);
         websocketService.unsubscribeFromTask(taskId);
       };
     }
@@ -122,6 +130,9 @@ const OrchestratorPanel = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setError(null); // Clear previous general errors
+    setParametersError(null); // Clear parameter error on new submit attempt (re-validated below)
+
     if (!goal.trim()) {
       setError('Please enter a goal for the orchestrator.');
       return;
@@ -131,40 +142,43 @@ const OrchestratorPanel = () => {
        return;
     }
 
+    // Re-validate parameters JSON just before submit
+    let paramsObj = {};
+    if (parameters.trim()) {
+        try {
+          paramsObj = JSON.parse(parameters);
+          setParametersError(null); // Ensure error is clear if parsing succeeds here
+        } catch (parseError) {
+          setParametersError('Invalid JSON format.'); // Set error
+          // setError('Please fix the invalid JSON format in parameters before submitting.'); // Optional: set general error too
+          return; // Prevent submission
+        }
+    } else {
+        setParametersError(null); // Clear error if parameters are empty
+    }
 
+    // If validation passed above, proceed
     setIsLoading(true);
-    setError(null);
     setTaskId(null);
     setStatusUpdates([]);
     setTaskResult(null);
 
     try {
-      // Basic JSON parsing for parameters for now
-      let paramsObj = {};
-      if (parameters.trim()) {
-        try {
-          paramsObj = JSON.parse(parameters);
-        } catch (parseError) {
-          setError('Invalid JSON format for parameters.');
-          setIsLoading(false);
-          return;
-        }
-      }
-
+      // paramsObj is already parsed and validated above
       const response = await apiService.submitOrchestratorTask(goal, paramsObj);
-      console.log("Task submission response:", response);
+
       if (response && response.taskId) {
         setTaskId(response.taskId);
         // Add initial submission status to updates
         setStatusUpdates([{ message: `Task ${response.taskId} submitted. Status: ${response.status || 'pending'}. Waiting for updates...`, receivedAt: new Date() }]);
         // setIsLoading will remain true until a final result/error is received via WebSocket
       } else {
-        throw new Error(response.message || "Invalid response from task submission, missing taskId.");
+        throw new Error(response?.message || "Invalid response from task submission, missing taskId.");
       }
     } catch (err) {
       console.error("Error submitting task:", err);
       const errorMsg = err.data?.error || err.message || 'Failed to submit task.';
-      setError(errorMsg);
+      setError(errorMsg); // Set general error state
       setIsLoading(false);
     }
   };
@@ -174,11 +188,9 @@ const OrchestratorPanel = () => {
       if (!pendingApproval) return;
 
       const { workflow_run_id } = pendingApproval;
-      console.log(`Submitting decision '${decision}' for workflow ${workflow_run_id}`);
       // Optionally add loading state specific to approval
       try {
           await apiService.resumeWorkflow(workflow_run_id, decision);
-          console.log(`Workflow ${workflow_run_id} ${decision} signal sent successfully.`);
           // Add a status update confirming the action
           setStatusUpdates(prev => [...prev, { message: `Workflow ${workflow_run_id} ${decision}.`, receivedAt: new Date(), status: 'ACTION_TAKEN' }]);
           setPendingApproval(null); // Clear the approval request
@@ -234,24 +246,28 @@ const OrchestratorPanel = () => {
             id="parameters"
             rows="3"
             value={parameters}
-            onChange={(e) => setParameters(e.target.value)}
+            onChange={handleParametersChange} // Use the validation handler
             placeholder='e.g., {"name": "My AI Blog", "topic": "Artificial Intelligence"}'
-            className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono text-sm"
+            className={`w-full px-3 py-2 bg-slate-700 border rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono text-sm ${parametersError ? 'border-red-500' : 'border-slate-600'}`} // Add red border on error
             disabled={isLoading}
           />
            <p className="text-xs text-gray-400 mt-1">Enter parameters as a valid JSON object or leave blank.</p>
+           {parametersError && ( // Display JSON validation error
+             <p className="text-xs text-red-400 mt-1">{parametersError}</p>
+           )}
         </div>
 
         <button
           type="submit"
-          className={`bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-2 px-4 rounded-md transition duration-200 ease-in-out ${isLoading || !isConnected ? 'opacity-50 cursor-not-allowed' : ''}`}
-          disabled={isLoading || !isConnected}
+          className={`bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-2 px-4 rounded-md transition duration-200 ease-in-out ${isLoading || !isConnected || parametersError ? 'opacity-50 cursor-not-allowed' : ''}`} // Disable on param error too
+          disabled={isLoading || !isConnected || !!parametersError} // Disable button if params are invalid
         >
           {isLoading ? 'Processing...' : 'Submit Task'}
         </button>
       </form>
 
-      {error && (
+      {/* Display general errors (not parameter-specific ones shown above) */}
+      {error && !parametersError && (
         <div className="mt-4 p-3 bg-red-900/50 border border-red-700 text-red-300 rounded-md">
           Error: {error}
         </div>

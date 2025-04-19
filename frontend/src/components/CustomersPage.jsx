@@ -16,7 +16,7 @@ const CustomersPage = () => {
         // Assuming the API returns an array of customers under a 'customers' key
         // Adjust based on actual API response structure if available later
         setCustomers(data.customers || []);
-        console.log("Fetched customers data:", data);
+
       } catch (err) {
         console.error("Error fetching customers:", err);
         // Handle specific error messages if available

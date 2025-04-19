@@ -14,7 +14,7 @@ const InsightsPage = () => {
         // Use the placeholder API function
         const data = await apiService.getInsightsData();
         setInsightsData(data);
-        console.log("Insights data fetched:", data);
+
       } catch (err) {
         console.error("Error fetching insights:", err);
         // Handle potential error structure from ApiClient
