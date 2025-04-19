@@ -6,6 +6,7 @@ Flask-SocketIO==5.3.6
 gunicorn==23.0.0
 python-dotenv==1.0.0
 pydantic>=2.7.3,<3
+jinja2==3.1.4
 
 # API clients
 httpx>=0.28.1
@@ -14,6 +15,7 @@ httpx>=0.28.1
 pydantic-ai==0.1.2
 google-genai # Used by MarketResearchAgent for Gemini analysis
 langchain==0.2.5
+langchain-core==0.2.5
 exa-py==1.12.1 # Used by MarketResearchAgent for Exa search
 firecrawl-py==2.0.2 # Used by MarketResearchAgent for data extraction
 google-adk==0.1.0
