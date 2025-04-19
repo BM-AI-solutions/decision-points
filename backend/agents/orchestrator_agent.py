@@ -330,6 +330,23 @@ Based on the user prompt, output ONLY the key of the most appropriate agent from
                 "query": prompt # Use original prompt as query
             })
 
+        elif target_agent_key == "workflow_manager":
+            # Extract necessary data from the original invocation data
+            invocation_data = original_context.invocation_data or {}
+            task_id = invocation_data.get('task_id')
+            goal = invocation_data.get('goal')
+            user_id = invocation_data.get('user_id')
+
+            if not task_id or not goal:
+                logger.warning(f"Missing task_id or goal in invocation_data for {target_agent_key}. Delegation might fail.")
+
+            metadata.update({
+                "task_id": task_id,
+                "goal": goal,
+                "user_id": user_id
+            })
+            logger.debug(f"Prepared context for {target_agent_key} with taskId: {task_id}, goal: {goal}, userId: {user_id}")
+
         # Add more elif blocks here for other agents requiring specific metadata
 
         # Create a potentially modified input event if metadata changed

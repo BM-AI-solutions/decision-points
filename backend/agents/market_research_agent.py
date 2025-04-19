@@ -19,6 +19,8 @@ from firecrawl import FirecrawlApp, AsyncFirecrawlApp
 # import openai # Removed OpenAI import
 from google import genai # Added Gemini import
 from google.api_core import exceptions as google_exceptions # Added Google API exceptions
+from flask import Blueprint, request, jsonify, current_app # Added Flask imports
+
 
 # Setup basic logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -731,5 +733,111 @@ class MarketResearchAgent(Agent):
                 payload=payload
             )
 
+
+
+# --- Flask Blueprint for A2A REST Endpoint ---
+
+market_research_a2a_bp = Blueprint('market_research_a2a_bp', __name__, url_prefix='/a2a/market_research')
+
+# --- Helper to run async code in Flask ---
+def run_async_in_sync(async_func):
+    return asyncio.run(async_func)
+
+@market_research_a2a_bp.route('/run', methods=['POST'])
+def run_market_research_stage():
+    """REST endpoint for WorkflowManagerAgent to trigger Stage 1."""
+    data = request.get_json()
+    task_id = data.get('task_id')
+    stage = data.get('stage')
+    input_data = data.get('input_data')
+
+    logger.info(f"[A2A /run] Received market research request for task_id: {task_id}, stage: {stage}")
+    logger.debug(f"[A2A /run] Input data: {input_data}")
+
+    if not task_id or stage != 'stage_1_market_research' or not input_data:
+        logger.error(f"[A2A /run] Invalid request data for task_id: {task_id}")
+        return jsonify({
+            "task_id": task_id,
+            "status": "failure",
+            "error_message": "Invalid request data. Required: task_id, stage='stage_1_market_research', input_data."
+        }), 400
+
+    # --- Actual Implementation ---
+    try:
+        # 1. Instantiate MarketResearchAgent
+        # Consider pre-loading or using dependency injection in a larger app
+        agent = MarketResearchAgent()
+        logger.info("[A2A /run] MarketResearchAgent instantiated.")
+
+        # 2. Prepare Input and InvocationContext
+        try:
+            # Extract initial_topic specifically, assuming it's the primary input
+            # Adapt if MarketResearchInput needs more fields from input_data
+            if not isinstance(input_data, dict) or 'initial_topic' not in input_data:
+                 raise ValueError("Missing 'initial_topic' in input_data")
+
+            # Create the Pydantic model for validation and structure
+            # Pass other relevant fields from input_data if needed by MarketResearchInput
+            market_research_input = MarketResearchInput(
+                initial_topic=input_data['initial_topic'],
+                # Example: pass num_competitors if provided, else use default
+                num_competitors=input_data.get('num_competitors', 3)
+            )
+
+        except (ValidationError, ValueError, TypeError) as e:
+            error_msg = f"Invalid input_data format or content: {e}"
+            logger.error(f"[A2A /run] {error_msg} for task_id: {task_id}. Received: {input_data}", exc_info=True)
+            return jsonify({
+                "task_id": task_id,
+                "status": "failure",
+                "error_message": error_msg,
+                "result": {"received_input": input_data}
+            }), 400
+
+        context = InvocationContext(
+            agent_id="market_research_agent", # Or derive dynamically
+            invocation_id=f"a2a-run-{task_id}-{os.urandom(4).hex()}",
+            input=market_research_input.model_dump(), # Use validated input
+            credentials={}, # A2A calls might not need credentials passed this way
+            state={}
+        )
+        logger.info(f"[A2A /run] InvocationContext created for task_id: {task_id}, invocation_id: {context.invocation_id}")
+
+        # 3. Call agent.run_async (using helper to run async in sync context)
+        logger.info(f"[A2A /run] Calling agent.run_async for task_id: {task_id}...")
+        event = run_async_in_sync(agent.run_async(context))
+        logger.info(f"[A2A /run] agent.run_async completed for task_id: {task_id}. Event Severity: {event.severity}")
+
+        # 4. Process Result Event
+        if event.severity <= EventSeverity.INFO: # Treat INFO and lower as success
+            logger.info(f"[A2A /run] Market research successful for task_id: {task_id}. Message: {event.message}")
+            return jsonify({
+                "task_id": task_id,
+                "status": "success",
+                "result": event.payload, # The MarketOpportunityReport
+                "error_message": None
+            })
+        else: # WARNING, ERROR, FATAL
+            logger.error(f"[A2A /run] Market research failed for task_id: {task_id}. Severity: {event.severity}. Message: {event.message}. Payload: {event.payload}")
+            # Determine appropriate status code based on severity? For now, use 500 for any failure.
+            status_code = 500 if event.severity >= EventSeverity.ERROR else 400 # Example: 400 for WARNING?
+            return jsonify({
+                "task_id": task_id,
+                "status": "failure",
+                "error_message": event.message,
+                "result": event.payload # Include error details if present in payload
+            }), status_code
+
+    except ValueError as e: # Catch agent instantiation errors (e.g., missing keys)
+        error_msg = f"Failed to initialize MarketResearchAgent: {e}"
+        logger.critical(f"[A2A /run] {error_msg}", exc_info=True)
+        return jsonify({"task_id": task_id, "status": "failure", "error_message": error_msg, "result": None}), 500
+    except Exception as e:
+        error_msg = f"Unexpected error during market research execution for task_id {task_id}: {str(e)}"
+        logger.critical(f"[A2A /run] {error_msg}", exc_info=True)
+        return jsonify({"task_id": task_id, "status": "failure", "error_message": error_msg, "result": {"traceback": traceback.format_exc()}}), 500
+
+# Note: This blueprint needs to be registered in the main Flask app (app.py)
+# Example registration: app.register_blueprint(market_research_a2a_bp)
 
 # Agent now uses run_async and delegates report generation to ContentGenerationAgent.

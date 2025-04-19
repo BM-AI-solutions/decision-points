@@ -31,6 +31,13 @@ from agents.code_generation_agent import CodeGenerationAgent # Import the CodeGe
 
 from backend.agents.marketing_agent import MarketingAgent # Import the MarketingAgent
 
+# Import A2A Blueprints from Stage Agents
+from agents.market_research_agent import market_research_a2a_bp
+from agents.improvement_agent import improvement_a2a_bp
+from agents.branding_agent import branding_a2a_bp
+from agents.deployment_agent import deployment_a2a_bp
+
+
 # Load environment variables
 load_dotenv()
 
@@ -214,6 +221,13 @@ app.register_blueprint(revenue.revenue_bp) # Register the revenue blueprint
 
 app.register_blueprint(orchestrator.orchestrator_bp) # Register the orchestrator blueprint
 app.register_blueprint(a2a_bp) # Register the A2A blueprint
+
+# Register A2A Blueprints for Stage Agents
+app.register_blueprint(market_research_a2a_bp)
+app.register_blueprint(improvement_a2a_bp)
+app.register_blueprint(branding_a2a_bp)
+app.register_blueprint(deployment_a2a_bp)
+
 @app.route('/api/health', methods=['GET'])
 def health_check() -> Dict[str, str]:
     """Health check endpoint."""

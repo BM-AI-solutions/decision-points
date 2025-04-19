@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import CreateWorkflowModal from './CreateWorkflowModal'; // Import the modal component
 import apiService from '../services/api'; // Import the API service
+import OrchestratorPanel from './OrchestratorPanel'; // Import the OrchestratorPanel
 
 const AutomationPage = () => {
   const [isModalOpen, setIsModalOpen] = useState(false); // State for modal visibility
@@ -36,6 +37,12 @@ const AutomationPage = () => {
     <div className="p-8 md:p-12 text-gray-200 min-h-screen"> {/* Increased padding, lighter base text */}
       <h1 className="text-4xl font-bold mb-10 text-white">Automation Hub</h1> {/* Larger heading, more margin */}
 
+      {/* Section for the Income Generation Workflow Panel */}
+      <div className="mb-12"> {/* Add margin below the panel */}
+        <OrchestratorPanel />
+      </div>
+
+      {/* Existing Grid for other automation cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8"> {/* Increased gap */}
         {/* Workflow Management Card */}
         <div className="bg-slate-800 p-6 rounded-xl shadow-lg border border-slate-700 transition-transform duration-200 hover:scale-[1.02]"> {/* Changed bg, increased rounding, added border, shadow, hover effect */}

@@ -5,6 +5,7 @@ import datetime
 import asyncio
 import json
 import time
+import uuid
 import tempfile
 import hashlib
 import zipfile # Added for Netlify deployment
@@ -19,6 +20,8 @@ from pydantic import BaseModel, Field, HttpUrl, ValidationError
 from google.adk.agents import Agent
 from google.adk.runtime import InvocationContext
 from google.adk.runtime.events import Event
+from flask import Blueprint, request, jsonify, current_app # Added Flask imports
+
 
 
 # --- Data Models (Input structure expected in context.input.data) ---
@@ -968,4 +971,103 @@ if __name__ == "__main__":
         asyncio.run(run_agent_locally())
     except ImportError as e:
         print(f"\nNote: Cannot run local async test. Required library not found: {e}")
-        print("Ensure 'google-adk', 'httpx', and 'python-dotenv' are installed.")
+
+# --- Flask Blueprint for A2A REST Endpoint ---
+
+deployment_a2a_bp = Blueprint('deployment_a2a_bp', __name__, url_prefix='/a2a/deployment')
+
+@deployment_a2a_bp.route('/run', methods=['POST'])
+def run_deployment_stage():
+    """REST endpoint for WorkflowManagerAgent to trigger Stage 4."""
+    data = request.get_json()
+    task_id = data.get('task_id')
+    stage = data.get('stage')
+    input_data = data.get('input_data') # Expected to contain improved_product_spec and brand_package
+
+    logger.info(f"[A2A /run] Received deployment request for task_id: {task_id}, stage: {stage}")
+    logger.debug(f"[A2A /run] Input data keys: {list(input_data.keys()) if isinstance(input_data, dict) else 'Invalid input'}")
+
+    if not task_id or stage != 'stage_4_deployment' or not isinstance(input_data, dict):
+        logger.error(f"[A2A /run] Invalid request data for task_id: {task_id}")
+        return jsonify({
+            "task_id": task_id,
+            "status": "failure",
+            "error_message": "Invalid request data. Required: task_id, stage='stage_4_deployment', input_data (dict)."
+        }), 400
+
+    # --- Implementation Logic ---
+    try:
+        improved_product_spec = input_data.get('improved_product_spec')
+        brand_package = input_data.get('brand_package')
+
+        if not isinstance(improved_product_spec, dict) or not isinstance(brand_package, dict):
+            raise ValueError("Missing or invalid 'improved_product_spec' or 'brand_package' in input_data.")
+
+        # Extract data for simulation
+        # Use 'brand_name' from BrandPackage as per docs/income_workflow_architecture.md
+        brand_name = brand_package.get('brand_name', 'DefaultBrand')
+        key_features = improved_product_spec.get('key_features', [])
+        if not isinstance(key_features, list):
+             key_features = [] # Ensure it's a list
+
+        # Extract feature names safely
+        features_deployed = [
+            f.get('feature_name', f'Unnamed Feature {i+1}')
+            for i, f in enumerate(key_features)
+            if isinstance(f, dict) # Ensure feature item is a dictionary
+        ]
+
+        # Simulate deployment (adapting from DeploymentManager)
+        sanitized_name = ''.join(c for c in brand_name.lower() if c.isalnum() or c == ' ')
+        sanitized_name = sanitized_name.replace(' ', '-')
+        # Generate a more unique simulated URL
+        deployment_url = f"https://sim-{sanitized_name}-{uuid.uuid4().hex[:6]}.example-deployment.com"
+
+        # Construct DeploymentResult based on docs/income_workflow_architecture.md
+        deployment_result = {
+            "deployment_url": deployment_url,
+            "status": "ACTIVE", # Simulate success
+            "brand_name": brand_name,
+            "features_deployed": features_deployed,
+            "deployment_details": {
+                "simulated_platform": random.choice(["SimAWS", "SimGCP", "SimAzure", "SimVercel"]),
+                "deployment_id": f"sim-deploy-{uuid.uuid4()}",
+                "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                "region": random.choice(["us-east-1", "eu-west-2", "ap-southeast-1"]),
+                "resources": {
+                    "cpu": f"{random.randint(1, 4)} vCPU",
+                    "memory": f"{random.choice([2, 4, 8])} GB",
+                    "storage": f"{random.choice([20, 50, 100])} GB SSD"
+                }
+            }
+        }
+
+        current_app.logger.info(f"[A2A /run] Simulated deployment successful for task_id: {task_id}. URL: {deployment_url}")
+        return jsonify({
+            "task_id": task_id,
+            "status": "success",
+            "result": deployment_result,
+            "error_message": None
+        })
+
+    except (ValueError, TypeError, KeyError) as e:
+        current_app.logger.error(f"[A2A /run] Error processing deployment request for task_id: {task_id}. Error: {e}", exc_info=True)
+        return jsonify({
+            "task_id": task_id,
+            "status": "failure",
+            "result": None,
+            "error_message": f"Error processing deployment request: {e}"
+        }), 400
+    except Exception as e:
+        current_app.logger.error(f"[A2A /run] Unexpected error during deployment simulation for task_id: {task_id}. Error: {e}", exc_info=True)
+        return jsonify({
+            "task_id": task_id,
+            "status": "failure",
+            "result": None,
+            "error_message": f"An unexpected error occurred: {e}"
+        }), 500
+
+# Note: This blueprint needs to be registered in the main Flask app (app.py)
+# Example registration: app.register_blueprint(deployment_a2a_bp)
+
+        

@@ -61,29 +61,31 @@ def create_orchestrator_task():
     # 2. Get and Validate Data
     data = request.get_json()
     # Expect 'prompt' instead of 'goal'
-    if not data or 'prompt' not in data:
-        logger.warning(f"Orchestrator Task: Missing 'prompt' in request data from user {user_id}")
-        return jsonify({"error": "Missing 'prompt' in request data"}), 400
+    if not data or 'goal' not in data:
+        logger.warning(f"Orchestrator Task: Missing 'goal' in request data from user {user_id}")
+        return jsonify({"error": "Missing 'goal' in request data"}), 400
 
-    prompt = data.get('prompt')
+    prompt = data.get('goal')
     # Add user_id to task_data if needed by the agent later
-    task_data = {"prompt": prompt, "user_id": user_id}
-    logger.info(f"Orchestrator Task: Received prompt '{prompt}' from user {user_id}")
+    task_data = {"goal": goal, "user_id": user_id, "task_id": task_id}
+    logger.info(f"Orchestrator Task: Received goal '{goal}' (taskId: {task_id}) from user {user_id}")
 
     # 3. Forward Task to Orchestrator Agent (Run in Background)
     try:
-        logger.info(f"Orchestrator Task: Forwarding task for prompt '{prompt}' to Orchestrator Agent using run_async...")
+        logger.info(f"Orchestrator Task: Forwarding task (taskId: {task_id}) for goal '{goal}' to Orchestrator Agent using run_async...")
 
         # Create InvocationContext for ADK agent
         invocation_id = str(uuid.uuid4())
         context = InvocationContext(
             invocation_id=invocation_id,
-            invocation_data=task_data # Pass prompt and user_id
+            invocation_data=task_data # Pass goal, user_id, and task_id
         )
-        logger.debug(f"Orchestrator Task: Created InvocationContext with ID {invocation_id} and data: {task_data}")
+        logger.debug(f"Orchestrator Task: Created InvocationContext with ID {invocation_id} for taskId {task_id} and data: {task_data}")
 
         # Use socketio.start_background_task to run the agent's run_async
         # without blocking the HTTP response.
+        # TODO: Persist initial Task state (e.g., in Firestore) before starting background task
+        # For now, assuming agent handles state persistence upon receiving the task.
         socketio.start_background_task(orchestrator_agent.run_async, context)
         logger.info(f"Orchestrator Task: Background task started for invocation_id {invocation_id} (prompt: '{prompt}').")
 

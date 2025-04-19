@@ -3,22 +3,43 @@ import random
 import string
 import httpx
 import asyncio
-import json # Added for potential context data parsing
+import json
+import uuid # For generating invocation IDs
 from typing import Dict, List, Any, Optional
 from pydantic import BaseModel, Field
+
+from flask import Blueprint, request, jsonify, current_app # Added Flask imports
 
 # Import ADK components
 from google.adk.agents import LlmAgent
 from google.adk.runtime import InvocationContext
 from google.adk.runtime.events import Event
+from google.adk.models import Gemini # Import Gemini model
 
-# Assuming ImprovedProductSpec structure is available or defined elsewhere
-# Define input based on what BrandingAgent needs from ImprovedProductSpec
+# Import logger utility
+from backend.utils.logger import setup_logger # Assuming logger setup utility exists
+
+logger = setup_logger("agent.branding") # Setup logger for this agent
+
+# --- Input/Output Models ---
+
+# Assuming ImprovedProductSpec structure (based on docs/income_workflow_architecture.md)
+# This is the expected structure within the 'input_data' of the A2A request
+class ImprovedProductSpec(BaseModel):
+    product_concept: str
+    target_audience: List[str]
+    key_features: List[str]
+    identified_improvements: List[str]
+    # Optional fields from spec
+    implementation_difficulty: Optional[float] = None
+    revenue_impact: Optional[float] = None
+
+# Input model for the BrandingAgent's run_async method
 class BrandingAgentInput(BaseModel):
-    """Input for the Branding Agent."""
+    """Input for the Branding Agent's core logic."""
     product_concept: str = Field(description="Description of the core product/model.")
     target_audience: List[str] = Field(description="Defined target demographics.")
-    keywords: Optional[List[str]] = Field(None, description="Optional keywords related to the product/concept.")
+    keywords: Optional[List[str]] = Field(None, description="Keywords derived from features/improvements.")
     business_model_type: Optional[str] = Field(None, description="Optional: Type of business model (e.g., 'saas', 'e-commerce') to guide branding.")
 
 # Define output based on the architecture plan and LLM generation
@@ -139,7 +160,7 @@ class BrandingAgent(LlmAgent): # Inherit from LlmAgent
         raw_search_details = {} # Store snippets for summary
 
         async def perform_search(query_type: str, query: str):
-            search_url = f"{self.web_search_agent_url}/a2a/web_search/invoke"
+            search_url = f"{self.web_search_agent_url}/a2a/web_search/invoke" # Assuming WebSearchAgent has this endpoint
             payload = {
                 "input": {
                     "event_type": "adk.agent.invoke",
@@ -351,6 +372,7 @@ class BrandingAgent(LlmAgent): # Inherit from LlmAgent
 
             # 3. Call LLM
             self.logger.info("Sending request to LLM for branding generation.")
+            # Use the llm_client provided by LlmAgent superclass
             llm_response_text = await self.llm_client.generate_text_async(prompt=prompt)
             self.logger.debug(f"Raw LLM response: {llm_response_text}") # Log raw response for debugging
 
@@ -475,7 +497,7 @@ class BrandingAgent(LlmAgent): # Inherit from LlmAgent
                 # Consider logging the specific validation errors if Pydantic provides them easily
                 raise ValueError(f"LLM response data failed validation: {e}") from e
 
-            # 7. Return Success Event
+            # 8. Return Success Event
             self.logger.info("Branding generation finished successfully.")
             return Event(
                 event_type="adk.agent.result",
@@ -498,5 +520,134 @@ class BrandingAgent(LlmAgent): # Inherit from LlmAgent
                 metadata={"status": "error"}
             )
 
-# Removed the old _load_branding_elements, _generate_brand_name, _generate_color_scheme, _generate_positioning methods
-# Removed the if __name__ == "__main__": block
+# --- Flask Blueprint for A2A REST Endpoint ---
+
+branding_a2a_bp = Blueprint('branding_a2a_bp', __name__, url_prefix='/a2a/branding')
+
+@branding_a2a_bp.route('/run', methods=['POST'])
+async def run_branding_stage(): # Make the route async
+    """REST endpoint for WorkflowManagerAgent to trigger Stage 3."""
+    request_data = request.get_json()
+    task_id = request_data.get('task_id')
+    stage = request_data.get('stage')
+    input_data = request_data.get('input_data') # Expected to be ImprovedProductSpec dict
+
+    logger.info(f"[A2A /run] Received branding request for task_id: {task_id}, stage: {stage}")
+
+    # Basic Request Validation
+    if not task_id or stage != 'stage_3_branding' or not isinstance(input_data, dict):
+        logger.error(f"[A2A /run] Invalid request data for task_id: {task_id}. Input: {request_data}")
+        return jsonify({
+            "task_id": task_id,
+            "status": "failure",
+            "result": None,
+            "error_message": "Invalid request data. Required: task_id, stage='stage_3_branding', input_data (dict)."
+        }), 400
+
+    try:
+        # Parse the incoming ImprovedProductSpec
+        try:
+            improved_spec = ImprovedProductSpec(**input_data)
+            logger.debug(f"[A2A /run] Parsed ImprovedProductSpec for task_id: {task_id}")
+        except Exception as e:
+            logger.error(f"[A2A /run] Failed to parse ImprovedProductSpec for task_id: {task_id}. Error: {e}. Data: {input_data}")
+            return jsonify({
+                "task_id": task_id,
+                "status": "failure",
+                "result": None,
+                "error_message": f"Invalid input_data structure (ImprovedProductSpec): {e}"
+            }), 400
+
+        # Map to BrandingAgentInput
+        # Combine key_features and identified_improvements into keywords
+        keywords = improved_spec.key_features + [f"improvement: {imp}" for imp in improved_spec.identified_improvements]
+        agent_input_data = {
+            "product_concept": improved_spec.product_concept,
+            "target_audience": improved_spec.target_audience,
+            "keywords": keywords if keywords else None,
+            # business_model_type is not directly in ImprovedProductSpec, pass None
+            "business_model_type": None
+        }
+
+        # Validate agent input data (optional but good practice)
+        try:
+            BrandingAgentInput(**agent_input_data)
+        except Exception as e:
+             logger.warning(f"[A2A /run] Potential issue mapping to BrandingAgentInput for task_id: {task_id}. Error: {e}. Mapped Data: {agent_input_data}")
+             # Proceed anyway, run_async will perform final validation
+
+        # Instantiate the agent
+        # TODO: In a production setup, the agent instance should ideally be managed
+        # by the Flask app context or a dependency injection framework, not created per request.
+        # Example: agent = current_app.agents['branding']
+        try:
+            # Pass necessary config (e.g., model name, search URL) if needed/available
+            # Using defaults from __init__ for now
+            agent = BrandingAgent()
+            logger.info(f"[A2A /run] BrandingAgent instantiated for task_id: {task_id}")
+        except Exception as e:
+            logger.error(f"[A2A /run] Failed to instantiate BrandingAgent for task_id: {task_id}. Error: {e}", exc_info=True)
+            return jsonify({
+                "task_id": task_id,
+                "status": "failure",
+                "result": None,
+                "error_message": f"Failed to initialize BrandingAgent: {e}"
+            }), 500
+
+        # Create InvocationContext
+        invocation_id = f"a2a-branding-{task_id}-{uuid.uuid4()}"
+        input_event = Event(event_type="adk.agent.invoke", data=agent_input_data)
+        context = InvocationContext(
+            invocation_id=invocation_id,
+            agent_id=agent.agent_id,
+            input=input_event
+        )
+        logger.debug(f"[A2A /run] Created InvocationContext: {invocation_id}")
+
+        # Call the agent's run_async method
+        logger.info(f"[A2A /run] Calling agent.run_async for task_id: {task_id}, invocation_id: {invocation_id}")
+        result_event = await agent.run_async(context)
+        logger.info(f"[A2A /run] Agent execution completed for task_id: {task_id}. Event type: {result_event.event_type}")
+
+        # Process the result event
+        if result_event.event_type == "adk.agent.result":
+            brand_package_data = result_event.data # This should be the BrandPackage dict
+            logger.info(f"[A2A /run] Branding successful for task_id: {task_id}")
+            return jsonify({
+                "task_id": task_id,
+                "status": "success",
+                "result": brand_package_data, # Return the generated BrandPackage
+                "error_message": None
+            }), 200
+        elif result_event.event_type == "adk.agent.error":
+            error_details = result_event.data.get("details", "Unknown agent error")
+            logger.error(f"[A2A /run] Branding agent failed for task_id: {task_id}. Error: {error_details}")
+            return jsonify({
+                "task_id": task_id,
+                "status": "failure",
+                "result": None,
+                "error_message": f"BrandingAgent execution failed: {error_details}"
+            }), 500
+        else:
+            # Handle unexpected event types
+            logger.error(f"[A2A /run] Unexpected event type from BrandingAgent for task_id: {task_id}. Event: {result_event}")
+            return jsonify({
+                "task_id": task_id,
+                "status": "failure",
+                "result": None,
+                "error_message": f"Unexpected response from BrandingAgent: {result_event.event_type}"
+            }), 500
+
+    except Exception as e:
+        logger.error(f"[A2A /run] Unhandled exception in branding endpoint for task_id: {task_id}. Error: {e}", exc_info=True)
+        return jsonify({
+            "task_id": task_id,
+            "status": "failure",
+            "result": None,
+            "error_message": f"An internal server error occurred: {e}"
+        }), 500
+
+# Note: This blueprint needs to be registered in the main Flask app (app.py or main.py)
+# Example registration in backend/app.py:
+# from backend.agents.branding_agent import branding_a2a_bp
+# app.register_blueprint(branding_a2a_bp)

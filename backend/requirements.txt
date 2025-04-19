@@ -1,0 +1,10 @@
+Flask
+Flask-SocketIO
+python-dotenv
+requests
+google-genai
+google-cloud-aiplatform
+google-api-python-client
+beautifulsoup4
+lxml
+gunicorn
