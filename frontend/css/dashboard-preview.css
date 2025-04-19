@@ -1,0 +1,220 @@
+/* Dashboard Preview Section */
+.dashboard-preview {
+    padding: var(--spacing-xl) 0;
+      background: var(--gradient-background);
+      position: relative;
+      overflow: hidden;
+  }
+
+.dashboard-preview::before {
+    content: '';
+      position: absolute;
+      top: -50%;
+      right: -20%;
+      width: 70%;
+      height: 200%;
+      background: radial-gradient(circle, #ff5400 0%, rgba(217,4,41,0.0) 70%);
+      opacity: 0.10;
+      filter: blur(100px);
+      z-index: 1;
+  }
+
+.dashboard-preview .container {
+    display: flex;
+      align-items: center;
+      gap: var(--spacing-xl);
+      position: relative;
+      z-index: 2;
+      flex-wrap: wrap; /* Allow wrapping on smaller screens */
+}
+
+.dashboard-content {
+    flex: 1;
+  }
+
+.dashboard-content h2 {
+    margin-bottom: var(--spacing-md);
+  }
+
+.dashboard-features {
+    margin: var(--spacing-lg) 0;
+  }
+
+.dashboard-features li {
+    margin-bottom: var(--spacing-sm);
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-sm);
+  }
+
+.dashboard-features i {
+    color: var(--primary);
+  }
+
+.dashboard-image {
+    flex: 1.5; /* Increased flex value to make image wider */
+    position: relative;
+      border-radius: var(--radius-xl);
+      overflow: hidden;
+      box-shadow: 0 32px 64px rgba(0, 0, 0, 0.3),
+                0 0 0 1px rgba(255, 71, 19, 0.1);
+      transform: perspective(1000px) rotateY(-2deg) rotateX(2deg); /* Further reduced 3D effect */
+    transition: all 0.5s ease;
+      max-width: 100%; /* Ensure it doesn't overflow */
+}
+
+.dashboard-image:hover {
+    transform: perspective(1000px) rotateY(-1deg) rotateX(1deg);
+  }
+
+/* Dashboard Mockup Styles */
+.dashboard-mockup {
+    width: 100%;
+      /* height: 500px; Let content determine height */
+    background: rgba(13, 13, 13, 0.9);
+      border-radius: var(--radius-xl);
+      /* overflow: hidden; Allow content to be visible */
+    display: flex;
+      flex-direction: column;
+      border: 1px solid rgba(255, 71, 19, 0.2);
+      max-width: 100%; /* Ensure it doesn't overflow its container */
+}
+
+.dashboard-header {
+    height: 60px;
+      background: rgba(8, 8, 8, 0.9);
+      border-bottom: 1px solid rgba(255, 71, 19, 0.2);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 20px;
+  }
+
+.dashboard-logo {
+    color: var(--accent-orange);
+      font-weight: 700;
+      font-size: 1.2rem;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+  }
+
+.dashboard-controls {
+    display: flex;
+      gap: 16px;
+      color: var(--text-muted);
+  }
+
+.dashboard-controls i {
+    font-size: 1.2rem;
+      cursor: pointer;
+      transition: color 0.2s ease;
+  }
+
+.dashboard-controls i:hover {
+    color: var(--text-primary);
+  }
+
+.dashboard-content-area {
+    display: flex;
+      flex: 1;
+      height: calc(100% - 60px);
+  }
+
+.dashboard-sidebar {
+    width: 180px;
+      background: rgba(10, 10, 10, 0.8);
+      border-right: 1px solid rgba(255, 71, 19, 0.1);
+      padding: 20px 0;
+  }
+
+.sidebar-item {
+    padding: 10px 16px;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      font-size: 0.9rem;
+  }
+
+.sidebar-item:hover {
+    background: rgba(255, 71, 19, 0.1);
+      color: var(--text-primary);
+  }
+
+.sidebar-item.active {
+    background: rgba(255, 71, 19, 0.2);
+      color: var(--accent-orange);
+      border-left: 3px solid var(--accent-orange);
+  }
+
+.dashboard-main {
+    flex: 1;
+      padding: 20px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      grid-template-rows: auto auto;
+      gap: 20px;
+      overflow: auto;
+  }
+
+.dashboard-widget {
+    background: rgba(26, 26, 26, 0.7);
+      border-radius: var(--radius-lg);
+      padding: 16px;
+      border: 1px solid rgba(255, 71, 19, 0.1);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+      display: flex;
+      flex-direction: column;
+  }
+
+.dashboard-widget h4 {
+    margin-bottom: 10px;
+      font-size: 0.95rem;
+      color: var(--text-primary);
+  }
+
+.dashboard-widget.revenue {
+    grid-column: 1 / 3;
+  }
+
+.chart-placeholder {
+    height: 120px;
+      background: rgba(59, 130, 246, 0.1);
+      border-radius: var(--radius-md);
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid rgba(59, 130, 246, 0.2);
+  }
+
+.chart-placeholder::before {
+    content: 'Chart will appear here';
+      color: rgba(59, 130, 246, 0.7);
+      font-size: 14px;
+      font-weight: 500;
+  }
+
+.insights-list {
+    display: flex;
+      flex-direction: column;
+      gap: 8px;
+  }
+
+.insight-item {
+    display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      background: rgba(255, 71, 19, 0.1);
+      border-radius: var(--radius-md);
+      font-size: 0.85rem;
+  }
+
+.insight-item i {
+    color: var(--accent-orange);
+  }

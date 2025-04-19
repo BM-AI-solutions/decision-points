@@ -1,0 +1,193 @@
+/* Pricing Section */
+.pricing {
+    padding: var(--spacing-xl) 0;
+      background-color: var(--dark);
+  }
+
+.pricing-toggle {
+    display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--spacing-md);
+      margin-bottom: var(--spacing-lg);
+  }
+
+.switch {
+    position: relative;
+      display: inline-block;
+      width: 50px;
+      height: 24px;
+  }
+
+.switch input {
+    opacity: 0;
+      width: 0;
+      height: 0;
+  }
+
+.slider {
+    position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: var(--secondary-light);
+      transition: var(--transition-fast);
+      border-radius: var(--radius-full);
+  }
+
+.slider:before {
+    position: absolute;
+      content: '';
+      height: 18px;
+      width: 18px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: var(--transition-fast);
+      border-radius: 50%;
+  }
+
+input:checked + .slider {
+    background-color: var(--primary);
+  }
+
+input:checked + .slider:before {
+    transform: translateX(26px);
+  }
+
+.save-badge {
+    background-color: var(--primary);
+      color: white;
+      padding: 2px 8px;
+      border-radius: var(--radius-full);
+      font-size: 0.75rem;
+      margin-left: 5px;
+  }
+
+.pricing-cards {
+    display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: var(--spacing-lg);
+      margin-top: var(--spacing-xl);
+  }
+
+.pricing-card {
+    background: var(--gradient-card);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-radius: var(--radius-xl);
+      padding: 40px 32px;
+      flex: 1;
+      max-width: 350px;
+      transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+      border: 1px solid rgba(255, 71, 19, 0.1);
+      position: relative;
+      box-shadow: var(--shadow-md);
+  }
+
+.pricing-card:hover {
+    transform: translateY(-8px);
+      box-shadow: 0 16px 40px rgba(191, 4, 38, 0.2);
+  }
+
+.pricing-card.featured {
+    border: 2px solid var(--accent-orange);
+      box-shadow: 0 24px 48px rgba(191, 4, 38, 0.25),
+                0 0 0 1px rgba(255, 71, 19, 0.3);
+      transform: translateY(-16px);
+  }
+
+.pricing-card.featured:hover {
+    transform: translateY(-24px);
+      box-shadow: 0 32px 64px rgba(191, 4, 38, 0.3);
+  }
+
+.popular-badge {
+    position: absolute;
+      top: -12px;
+      right: 20px;
+      background: linear-gradient(90deg, #ff5400 0%, #d90429 100%);
+      color: #fff0e6;
+      padding: 4px 12px;
+      font-size: 0.85rem;
+      border-radius: var(--radius-full);
+      font-weight: 600;
+      box-shadow: 0 2px 8px rgba(255,30,0,0.18);
+  }
+
+.pricing-header {
+    text-align: center;
+      padding-bottom: var(--spacing-md);
+      margin-bottom: var(--spacing-md);
+      border-bottom: 1px solid var(--border-color);
+  }
+
+.price {
+    display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+  }
+
+.currency {
+    font-size: 1.5rem;
+      font-weight: 600;
+      vertical-align: top;
+      color: var(--text-secondary);
+  }
+
+.amount {
+    font-size: 4rem;
+      font-weight: 700;
+      line-height: 1;
+  }
+
+.period {
+    font-size: 1rem;
+      color: var(--text-muted);
+  }
+
+.pricing-features {
+    margin: var(--spacing-lg) 0;
+  }
+
+.pricing-features li {
+    margin-bottom: var(--spacing-sm);
+      padding-bottom: var(--spacing-sm);
+      border-bottom: 1px dashed var(--border-color);
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-sm);
+  }
+
+.pricing-features li:last-child {
+    margin-bottom: 0;
+      padding-bottom: 0;
+      border-bottom: none;
+  }
+
+.pricing-features i {
+    width: 20px;
+      text-align: center;
+  }
+
+.pricing-features .fa-check {
+    color: var(--success);
+  }
+
+.pricing-features .fa-times {
+    color: var(--danger);
+  }
+
+.pricing-features li.disabled {
+    color: var(--text-muted);
+      text-decoration: line-through;
+  }
+
+.pricing-card .btn {
+    width: 100%;
+      margin-top: var(--spacing-md);
+  }

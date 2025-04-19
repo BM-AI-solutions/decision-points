@@ -1,0 +1,151 @@
+/* Reset & Base Styles */
+* {
+    margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+  }
+
+html {
+    scroll-behavior: smooth;
+      font-size: 16px; /* Base font size */
+}
+
+body {
+    font-family: "SF Pro Text", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      line-height: 1.5;
+      color: var(--text-primary);
+      background: var(--gradient-background);
+      overflow-x: hidden;
+      min-height: 100vh;
+      letter-spacing: 0.01em;
+      padding-top: 80px; /* Account for fixed navbar height */
+}
+
+/* Premium glassmorphism for main sections */
+.features-section,
+.pricing-section,
+.testimonials-section {
+  position: relative;
+    background: linear-gradient(120deg, rgba(30,0,0,0.85) 0%, rgba(123,6,18,0.85) 100%);
+    box-shadow: 0 8px 48px 0 rgba(255,30,0,0.18), 0 1.5px 0 0 #ff5400;
+    border-radius: 32px;
+    margin: 2.5rem 0;
+    overflow: visible;
+    z-index: 1;
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    backdrop-filter: blur(24px) saturate(180%);
+    border: 2.5px solid rgba(255,84,0,0.18);
+  }
+.features-section .container,
+.pricing-section .container,
+.testimonials-section .container {
+  position: relative;
+    z-index: 2;
+  }
+.features-section::before,
+.pricing-section::before,
+.testimonials-section::before {
+  content: '';
+    position: absolute;
+    top: -60px; left: -60px; right: -60px; bottom: -60px;
+    background: radial-gradient(circle at 60% 20%, rgba(255,84,0,0.18) 0%, rgba(217,4,41,0.08) 60%, transparent 100%);
+    z-index: 0;
+    pointer-events: none;
+    filter: blur(32px);
+  }
+
+html, body {
+    /* Firefox */
+    scrollbar-width: thin;
+      scrollbar-color: var(--primary) var(--secondary-dark);
+  
+    /* Chrome/Edge/Safari */
+    &::-webkit-scrollbar {
+        width: 8px;
+      }
+
+    &::-webkit-scrollbar-track {
+        background: var(--secondary-dark);
+      }
+
+    &::-webkit-scrollbar-thumb {
+        background-color: var(--primary);
+          border-radius: 10px;
+      }
+}
+
+::-webkit-scrollbar {
+    width: 8px;
+  }
+
+::-webkit-scrollbar-track {
+    background: var(--secondary-dark);
+  }
+
+::-webkit-scrollbar-thumb {
+    background-color: var(--primary);
+      border-radius: 10px;
+  }
+
+.container {
+    width: 100%;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 var(--spacing-lg);
+  }
+
+h1, h2, h3, h4, h5, h6 {
+    font-family: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      font-weight: 900;
+      line-height: 1.2;
+      margin-bottom: var(--spacing-md);
+      color: var(--text-primary);
+      letter-spacing: -0.02em;
+  }
+
+h1 {
+    font-size: 3rem; /* 48px */
+}
+
+h2 {
+    font-size: 2.5rem; /* 40px */
+}
+
+h3 {
+    font-size: 2rem; /* 32px */
+}
+
+h4 {
+    font-size: 1.5rem; /* 24px */
+}
+
+p {
+    margin-bottom: var(--spacing-md);
+      color: var(--text-secondary);
+      font-weight: 400;
+      letter-spacing: 0.01em;
+      line-height: 1.5;
+  }
+
+a {
+    text-decoration: none;
+      color: var(--text-primary);
+      transition: color var(--transition-fast);
+  }
+
+a:hover {
+    color: var(--primary);
+  }
+
+ul {
+    list-style: none;
+  }
+
+img {
+    max-width: 100%;
+      height: auto;
+  }
+
+.accent-text {
+    color: var(--accent);
+  }

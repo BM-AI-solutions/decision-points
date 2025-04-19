@@ -1,0 +1,61 @@
+/* How It Works Section */
+.how-it-works {
+    position: relative;
+      padding: var(--spacing-xxl) 0;
+      background: var(--secondary);
+  }
+
+.steps {
+    position: relative;
+      max-width: 800px;
+      margin: 0 auto;
+  }
+
+.steps::before {
+    content: '';
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 20px;
+      width: 2px;
+      background: linear-gradient(to bottom,
+        rgba(191, 4, 38, 0.3) 0%,
+        rgba(255, 71, 19, 0.8) 50%,
+        rgba(191, 4, 38, 0.3) 100%);
+  }
+
+.step {
+    position: relative;
+      padding-left: 60px;
+      margin-bottom: 48px;
+      transition: transform 0.3s ease;
+  }
+
+.step:hover {
+    transform: translateX(5px);
+  }
+
+.step:last-child {
+    margin-bottom: 0;
+  }
+
+.step-number {
+    position: absolute;
+      left: 0;
+      top: 0;
+      width: 40px;
+      height: 40px;
+      background: var(--gradient-button);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      box-shadow: 0 0 0 4px var(--secondary),
+                0 8px 16px rgba(191, 4, 38, 0.3);
+      z-index: 2;
+  }
+
+.step-content h3 {
+    margin-bottom: var(--spacing-sm);
+  }

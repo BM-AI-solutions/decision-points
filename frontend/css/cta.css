@@ -1,0 +1,48 @@
+/* CTA Section */
+.cta {
+    padding: var(--spacing-xl) 0;
+      background: linear-gradient(90deg, #7b0612 0%, #1a0909 100%);
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 2px 16px rgba(217,4,41,0.10);
+  }
+
+.cta::before,
+.cta::after {
+    content: '';
+      position: absolute;
+      width: 300px;
+      height: 300px;
+      border-radius: var(--radius-full);
+      background: var(--primary);
+      opacity: 0.1;
+      filter: blur(100px);
+      z-index: 1;
+  }
+
+.cta::before {
+    top: -150px;
+      right: -50px;
+  }
+
+.cta::after {
+    bottom: -150px;
+      left: -50px;
+  }
+
+.cta .container {
+    position: relative;
+      z-index: 2;
+  }
+
+.cta h2 {
+    margin-bottom: var(--spacing-md);
+  }
+
+.cta p {
+    margin-bottom: var(--spacing-lg);
+      max-width: 600px;
+      margin-left: auto;
+      margin-right: auto;
+  }

@@ -1,0 +1,61 @@
+:root {
+    /* Primary Colors */
+    --primary: #BF0426; /* Infernal Red */
+    --primary-dark: #8C0327; /* Blood Crimson */
+    --primary-light: #F24236; /* Ember Orange */
+
+    /* Secondary Colors */
+    --secondary: #0D0D0D; /* Obsidian Black */
+    --secondary-light: #1A1A1A; /* Charcoal Ash */
+    --secondary-dark: #050505; /* Void Black */
+
+    /* Accent Colors */
+    --accent-orange: #FF4713; /* Hellfire Orange */
+    --accent-gold: #E6B325; /* Brimstone Gold */
+    --accent-yellow: #F9D923; /* Sulfur Yellow */
+    --accent-magma: #FF7D4D; /* Molten Magma */
+    
+    /* Text Colors */
+    --text-primary: #FFFFFF; /* Pure White */
+    --text-secondary: #F8F0E3; /* Bone White */
+    --text-muted: #B3B3B3; /* Ash Gray */
+    --text-highlight: #FF9776; /* Ember Glow */
+
+    /* Gradients */
+    --gradient-background: linear-gradient(135deg, #0D0D0D 0%, #260101 50%, #570111 100%);
+      --gradient-card: linear-gradient(120deg, rgba(13,13,13,0.7) 0%, rgba(191,4,38,0.3) 100%);
+      --gradient-button: linear-gradient(90deg, #BF0426 0%, #8C0327 100%);
+      --gradient-highlight: radial-gradient(circle, rgba(255,71,19,0.15) 0%, rgba(255,71,19,0) 70%);
+  
+    /* UI Elements */
+    --card-bg: var(--secondary); /* Obsidian Black */
+    --input-bg: rgba(13, 13, 13, 0.7); /* Dark with slight transparency */
+    --border-color: rgba(255, 71, 19, 0.1); /* Subtle orange border */
+
+    /* Spacing - Using 8px base unit */
+    --spacing-xs: 0.5rem; /* 8px */
+    --spacing-sm: 1rem; /* 16px */
+    --spacing-md: 1.5rem; /* 24px */
+    --spacing-lg: 2rem; /* 32px */
+    --spacing-xl: 3rem; /* 48px */
+    --spacing-xxl: 4rem; /* 64px */
+    --spacing-xxxl: 6rem; /* 96px */
+
+    /* Border Radius */
+    --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 16px;
+      --radius-xl: 24px;
+      --radius-full: 9999px;
+  
+    /* Shadows */
+    --shadow-sm: 0 4px 12px rgba(191, 4, 38, 0.15), 0 0 0 1px rgba(255, 71, 19, 0.05);
+      --shadow-md: 0 8px 24px rgba(191, 4, 38, 0.25), 0 0 0 1px rgba(255, 71, 19, 0.1);
+      --shadow-lg: 0 16px 48px rgba(191, 4, 38, 0.35), 0 0 0 1px rgba(255, 71, 19, 0.2);
+      --shadow-inner: inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
+  
+    /* Transitions */
+    --transition-fast: 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      --transition-normal: 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      --transition-slow: 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  }
