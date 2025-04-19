@@ -14,7 +14,8 @@ COPY . .
 RUN npm run build
 
 # Dev stage
-FROM node:18-alpine AS dev
+# <-- Updated Node version
+FROM node:20-alpine AS dev
 
 WORKDIR /app
 
@@ -38,5 +39,8 @@ COPY --from=build /app/dist /usr/share/nginx/html
 COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 80
+
+# Explicitly run as the non-root nginx user
+USER nginx
 
 CMD ["nginx", "-g", "daemon off;"]

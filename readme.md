@@ -68,7 +68,7 @@ This is the primary and recommended method for local development and testing.
     ```
 *   **these next ones have been giving me issues:**
     ```bash
-    docker compose -f docker-compose.dev.yml up --build -d
+    docker compose -f docker-compose.dev.yml up -d --build
     ```
     *   Use `-d` to run in detached mode (background). Omit it to see logs directly.
     *   The `--build` flag ensures images are rebuilt if Dockerfiles or contexts change. It's good practice to include it, especially after pulling code changes.
