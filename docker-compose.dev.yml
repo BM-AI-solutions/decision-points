@@ -1,7 +1,8 @@
 services:
   backend:
     build:
-      context: ./backend
+      context: . # Use project root as context
+      dockerfile: backend/Dockerfile # Specify Dockerfile location
       target: dev
     env_file:
       - ./.env

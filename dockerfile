@@ -14,7 +14,7 @@ RUN echo "setuptools>=68.0.0" >> requirements.txt.compatible && \
     sed 's/langchain==0.0.312/langchain>=0.0.312/g' >> requirements.txt.compatible
 
 # Install dependencies from the compatible requirements file
-RUN pip install --no-cache-dir -r requirements.txt.compatible
+RUN pip install --upgrade --prefer-binary --no-cache-dir -r requirements.txt -c constraints.txt
 
 # Copy the rest of the application
 COPY backend/ .
