@@ -19,7 +19,7 @@ Decision Points is an AI-powered system designed to assist with various business
 ## Technology Stack
 
 *   **Backend:**
-    *   Language: Python 3.9+
+    *   Language: Python 3.0
     *   Framework: Flask, Flask-SocketIO (for WebSocket communication)
     *   AI: Google Generative AI (Gemini)
 *   **Frontend:**
