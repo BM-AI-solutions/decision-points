@@ -3,7 +3,7 @@
 ############################
 # Base image for dependencies
 ############################
-FROM python:3.9-slim-buster AS base
+FROM python:3.11-slim AS base
 
 WORKDIR /app
 
