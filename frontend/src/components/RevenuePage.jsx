@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import apiService from '../../services/api.js'; // Corrected path
+import apiService from '../services/api.js'; // Corrected path
 
 const RevenuePage = () => {
   const [revenueData, setRevenueData] = useState(null);
