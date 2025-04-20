@@ -1,6 +1,6 @@
 import json
 import logging
-import requests
+import httpx
 from typing import List, Dict, Any
 
 from google.adk.agents import Agent
@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 # Keep agno/composio for Sheets writing as per prototype logic transfer
 from agno.agent import Agent as AgnoAgent
 from agno.tools.firecrawl import FirecrawlTools # Might not be needed if using SDK directly
-from agno.models.openai import OpenAIChat as AgnoOpenAIChat
+from agno.models.google import Gemini as AgnoGeminiChat
 from composio_phidata import Action, ComposioToolSet
 
 # Configure logging
@@ -51,7 +51,7 @@ def search_for_urls(company_description: str, firecrawl_api_key: str, num_links:
         "timeout": 60000,
     }
     try:
-        response = requests.post(url, json=payload, headers=headers)
+        response = httpx.post(url, json=payload, headers=headers)
         response.raise_for_status() # Raise HTTPError for bad responses (4xx or 5xx)
         data = response.json()
         if data.get("success"):
@@ -62,7 +62,7 @@ def search_for_urls(company_description: str, firecrawl_api_key: str, num_links:
         else:
             logger.warning(f"Firecrawl search API call was not successful: {data}")
             return []
-    except requests.exceptions.RequestException as e:
+    except httpx.exceptions.RequestException as e:
         logger.error(f"Error during Firecrawl search API call: {e}")
         return []
 
@@ -149,7 +149,7 @@ def format_user_info_to_flattened_json(user_info_list: List[dict]) -> List[dict]
 
 # Placeholder for Google Sheets writing using Agno/Composio as per prototype
 # Ideally, this would use ADK tools or direct Google API client
-def create_google_sheets_agent(composio_api_key: str, openai_api_key: str) -> AgnoAgent:
+def create_google_sheets_agent(composio_api_key: str, gemini_api_key: str) -> AgnoAgent:
     """Creates an Agno Agent configured for Google Sheets via Composio."""
     try:
         composio_toolset = ComposioToolSet(api_key=composio_api_key)
@@ -157,7 +157,7 @@ def create_google_sheets_agent(composio_api_key: str, openai_api_key: str) -> Ag
         google_sheets_tool = composio_toolset.get_tools(actions=[Action.GOOGLESHEETS_SHEET_FROM_JSON])[0]
 
         google_sheets_agent = AgnoAgent(
-            model=AgnoOpenAIChat(id="gpt-4o-mini", api_key=openai_api_key), # Consider making model configurable
+            model=AgnoGeminiChat(id="gemini-2.5-flash-preview-04-17", api_key=gemini_api_key), # Consider making model configurable
             tools=[google_sheets_tool],
             show_tool_calls=True, # For debugging
             system_prompt="You are an expert at creating Google Sheets. You will be given user information in JSON format, and you need to write it into a new Google Sheet.",
@@ -169,14 +169,14 @@ def create_google_sheets_agent(composio_api_key: str, openai_api_key: str) -> Ag
         logger.error(f"Failed to create Google Sheets AgnoAgent: {e}", exc_info=True)
         raise
 
-def write_to_google_sheets(flattened_data: List[dict], composio_api_key: str, openai_api_key: str) -> str | None:
+def write_to_google_sheets(flattened_data: List[dict], composio_api_key: str, gemini_api_key: str) -> str | None:
     """Writes data to Google Sheets using the Agno/Composio agent."""
     if not flattened_data:
         logger.warning("No data to write to Google Sheets.")
         return None
 
     try:
-        google_sheets_agent = create_google_sheets_agent(composio_api_key, openai_api_key)
+        google_sheets_agent = create_google_sheets_agent(composio_api_key, gemini_api_key)
         message = (
             "Create a new Google Sheet with this data. "
             "The sheet should have these columns: Website URL, Username, Bio, Post Type, Timestamp, Upvotes, and Links in the same order as mentioned. "
@@ -229,19 +229,19 @@ class LeadGenerationAgent(Agent):
         super().__init__()
         # Placeholder for ADK LLM Client initialization if needed for transformation
         # self.llm = llm_client or LlmClient() # Example
-        # Or initialize OpenAI client directly if ADK doesn't provide one easily
-        # self.openai_client = OpenAI(api_key=...) # Needs API key source
+        # Or initialize Gemini client directly if ADK doesn't provide one easily
+        # self.gemini_client = Gemini(api_key=...) # Needs API key source
 
-    async def transform_query_async(self, user_query: str, openai_api_key: str) -> str:
+    async def transform_query_async(self, user_query: str, gemini_api_key: str) -> str:
         """Transforms the user query into a concise company description using an LLM."""
         # This part replaces the prototype's `create_prompt_transformation_agent`
-        # Using direct OpenAI call as a placeholder for ADK's LLM integration
+        # Using direct Gemini call as a placeholder for ADK's LLM integration
         # In a real ADK setup, you'd use the provided LLM client/mechanism
         logger.info("Transforming user query...")
         try:
-            # Example using OpenAI client directly (requires 'openai' package)
-            from openai import OpenAI
-            client = OpenAI(api_key=openai_api_key)
+            # Example using Gemini client directly (requires 'gemini' package)
+            from gemini import Gemini
+            client = Gemini(api_key=gemini_api_key)
 
             prompt = f"""You are an expert at transforming detailed user queries into concise company descriptions.
 Your task is to extract the core business/product focus in 3-4 words.
@@ -264,7 +264,7 @@ Always focus on the core product/service and keep it concise but clear.
 Transform this query: "{user_query}"
 """
             response = client.chat.completions.create(
-                model="gpt-4o-mini", # Consider making model configurable
+                model="gemini-2.5-flash-preview-04-17", # Consider making model configurable
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.2,
             )
@@ -284,7 +284,7 @@ Transform this query: "{user_query}"
         Expected context.data keys:
         - user_query: str - Description of leads to find.
         - firecrawl_api_key: str - Firecrawl API key.
-        - openai_api_key: str - OpenAI API key.
+        - gemini_api_key: str - Gemini API key.
         - composio_api_key: str - Composio API key.
         - num_links: int (optional, default 3) - Number of links to search.
         """
@@ -294,15 +294,15 @@ Transform this query: "{user_query}"
             # 1. Get inputs from context
             user_query = context.data.get("user_query")
             firecrawl_api_key = context.data.get("firecrawl_api_key")
-            openai_api_key = context.data.get("openai_api_key")
+            gemini_api_key = context.data.get("gemini_api_key")
             composio_api_key = context.data.get("composio_api_key")
             num_links = context.data.get("num_links", 3) # Default to 3 links
 
-            if not all([user_query, firecrawl_api_key, openai_api_key, composio_api_key]):
+            if not all([user_query, firecrawl_api_key, gemini_api_key, composio_api_key]):
                 missing_keys = [k for k, v in {
                     "user_query": user_query,
                     "firecrawl_api_key": firecrawl_api_key,
-                    "openai_api_key": openai_api_key,
+                    "gemini_api_key": gemini_api_key,
                     "composio_api_key": composio_api_key
                 }.items() if not v]
                 error_msg = f"Missing required context data: {', '.join(missing_keys)}"
@@ -314,7 +314,7 @@ Transform this query: "{user_query}"
 
             # 2. Transform user query
             # Note: Using await for async function
-            company_description = await self.transform_query_async(user_query, openai_api_key)
+            company_description = await self.transform_query_async(user_query, gemini_api_key)
             await context.post_event_async(Event(type="query_transformed", data={"description": company_description}))
 
             # 3. Search for URLs (Synchronous function, run in executor if needed)
@@ -343,7 +343,7 @@ Transform this query: "{user_query}"
 
 
             # 6. Write to Google Sheets (Synchronous function using Agno/Composio)
-            google_sheets_link = write_to_google_sheets(flattened_data, composio_api_key, openai_api_key)
+            google_sheets_link = write_to_google_sheets(flattened_data, composio_api_key, gemini_api_key)
 
             if google_sheets_link:
                 logger.info("Lead generation process completed successfully.")

@@ -143,7 +143,7 @@ class DeploymentManager:
             "stripe": "https://dashboard.stripe.com/",
             "paypal": "https://www.paypal.com/dashboard/",
             "aws": "https://console.aws.amazon.com/",
-            "openai": "https://platform.openai.com/",
+            "gemini": "https://platform.gemini.com/",
             "gumroad": "https://app.gumroad.com/dashboard",
             "mailchimp": "https://us1.admin.mailchimp.com/",
             "digitalocean": "https://cloud.digitalocean.com/",

@@ -16,7 +16,7 @@ from google.adk.runtime.event import Event, EventSeverity
 # Tooling Imports
 from exa_py import Exa
 from firecrawl import FirecrawlApp, AsyncFirecrawlApp
-# import openai # Removed OpenAI import
+# import gemini # Removed Gemini import
 import google.generativeai as genai # Added Gemini import
 from google.api_core import exceptions as google_exceptions # Added Google API exceptions
 
@@ -28,7 +28,7 @@ logger.info("Attempting to load API keys from environment variables...")
 
 # --- Configuration ---
 # Load API keys from environment variables
-# OPENAI_API_KEY = os.getenv("OPENAI_API_KEY") # Removed OpenAI Key
+# GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") # Removed Gemini Key
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY") # Added Google API Key
 FIRECRAWL_API_KEY = os.getenv("FIRECRAWL_API_KEY")
 EXA_API_KEY = os.getenv("EXA_API_KEY")
@@ -36,7 +36,7 @@ PERPLEXITY_API_KEY = os.getenv("PERPLEXITY_API_KEY")
 SEARCH_PROVIDER = os.getenv("COMPETITOR_SEARCH_PROVIDER", "exa").lower()
 WEB_SEARCH_AGENT_URL = os.getenv("WEB_SEARCH_AGENT_URL")
 BRAVE_API_KEY = os.getenv("BRAVE_API_KEY")
-GEMINI_MODEL_NAME = os.getenv("GEMINI_MODEL_NAME", "gemini-1.5-flash-latest") # Configurable Gemini model
+GEMINI_MODEL_NAME = os.getenv("GEMINI_MODEL_NAME", "gemini-2.5-flash-preview-04-17") # Configurable Gemini model
 CONTENT_GENERATION_AGENT_URL = os.getenv("CONTENT_GENERATION_AGENT_URL")
 
 # --- Pydantic Models ---
@@ -97,11 +97,11 @@ class MarketResearchAgent(Agent):
         Initialize the agent and required clients.
 
         Args:
-            model_name: The name of the Gemini model to use for analysis (e.g., 'gemini-1.5-flash-latest').
+            model_name: The name of the Gemini model to use for analysis (e.g., 'gemini-2.5-flash-preview-04-17').
                         Defaults to a suitable model if None.
         """
         # Load API Keys (excluding Gemini model name)
-        # self.openai_api_key = os.getenv("OPENAI_API_KEY") # Removed
+        # self.gemini_api_key = os.getenv("GEMINI_API_KEY") # Removed
         self.google_api_key = os.getenv("GOOGLE_API_KEY")
         self.firecrawl_api_key = os.getenv("FIRECRAWL_API_KEY")
         self.exa_api_key = os.getenv("EXA_API_KEY")
@@ -109,11 +109,11 @@ class MarketResearchAgent(Agent):
         self.search_provider = os.getenv("COMPETITOR_SEARCH_PROVIDER", "exa").lower()
         self.web_search_agent_url = os.getenv("WEB_SEARCH_AGENT_URL")
         self.brave_api_key = os.getenv("BRAVE_API_KEY")
-        # self.gemini_model_name = os.getenv("GEMINI_MODEL_NAME", "gemini-1.5-flash-latest") # Removed direct env var read
+        # self.gemini_model_name = os.getenv("GEMINI_MODEL_NAME", "gemini-2.5-flash-preview-04-17") # Removed direct env var read
         self.content_generation_agent_url = os.getenv("CONTENT_GENERATION_AGENT_URL")
 
         # Determine the model name to use
-        effective_model_name = model_name if model_name else 'gemini-1.5-flash-latest' # Default for specialized agent
+        effective_model_name = model_name if model_name else 'gemini-2.5-flash-preview-04-17' # Default for specialized agent
         self.model_name = effective_model_name # Store the actual model name used
 
         # Initialize shared httpx client

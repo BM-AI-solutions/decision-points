@@ -14,7 +14,7 @@ import time
 import uuid
 import hashlib
 import logging
-import requests
+import httpx
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, List, Union, Callable
 from functools import wraps
@@ -373,7 +373,7 @@ class GoogleAnalyticsProvider(AnalyticsProvider):
         
         # Send request
         try:
-            response = requests.post(url, json=payload)
+            response = httpx.post(url, json=payload)
             if response.status_code != 204 and response.status_code != 200:
                 logger.warning(f"Google Analytics error: {response.status_code}")
         except Exception as e:
@@ -418,7 +418,7 @@ class MixpanelProvider(AnalyticsProvider):
         
         # Send request
         try:
-            response = requests.post(
+            response = httpx.post(
                 f"{self.base_url}/track",
                 data=json.dumps([mp_event]),
                 headers={'Content-Type': 'application/json'}
@@ -440,7 +440,7 @@ class MixpanelProvider(AnalyticsProvider):
         
         # Send request
         try:
-            response = requests.post(
+            response = httpx.post(
                 f"{self.base_url}/engage",
                 data=json.dumps([profile]),
                 headers={'Content-Type': 'application/json'}

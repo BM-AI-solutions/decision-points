@@ -11,7 +11,7 @@ services:
     volumes:
       - ./backend:/app
     restart: unless-stopped
-    command: flask run --host=0.0.0.0 --port=5000
+    command: uvicorn backend.app.main:app --host 0.0.0.0 --port 5000 --reload
     networks:
       - appnet
 

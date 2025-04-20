@@ -60,7 +60,7 @@ class MarketAnalyzer:
                     {"name": "Niche Knowledge Products", "type": "digital_products", "revenue": 3200.0,
                      "difficulty": 3, "saturation": 4, "apis": ["Gumroad", "Stripe", "MailChimp"]},
                     {"name": "AI-Generated Content Templates", "type": "digital_products", "revenue": 2700.0,
-                     "difficulty": 5, "saturation": 3, "apis": ["OpenAI", "MemberStack", "Stripe"]},
+                     "difficulty": 5, "saturation": 3, "apis": ["Gemini", "MemberStack", "Stripe"]},
                     {"name": "Premium Digital Planners", "type": "digital_products", "revenue": 1900.0,
                      "difficulty": 2, "saturation": 5, "apis": ["Podia", "PayPal", "ConvertKit"]}
                 ],

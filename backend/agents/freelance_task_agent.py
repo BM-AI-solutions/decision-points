@@ -1,11 +1,11 @@
 import json
 from google.cloud import firestore, pubsub_v1, secretmanager
-from google.adk.agents import Agent, LlmAgent  # Assuming Agent is the base, LlmAgent might be needed later
+from google.adk.agents import LlmAgent, BaseAgent  # Assuming Agent is the base, LlmAgent might be needed later
 from google.adk.runtime.event import Event, EventSeverity
 from google.adk.runtime.invocation_context import InvocationContext
 from backend.utils.logger import setup_logger
 
-class FreelanceTaskAgent(Agent):
+class FreelanceTaskAgent(BaseAgent):
     """
     ADK-compliant agent to monitor freelance platforms, analyze tasks, and potentially bid or execute them.
     - Interacts with freelance platform APIs (e.g., Upwork, Fiverr).

@@ -25,7 +25,7 @@ ENV FLASK_ENV=development
 ENV PYTHONUNBUFFERED=1
 
 # Install dev dependencies (if any)
-RUN pip install --no-cache-dir flask python-dotenv
+# RUN pip install --no-cache-dir flask python-dotenv # Removed: Dependencies should be in requirements.txt
 
 # Copy all code (for dev image, but will be mounted in compose)
 COPY . .

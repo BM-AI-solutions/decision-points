@@ -50,7 +50,7 @@ class ImprovementAgent(Agent): # Inherit from ADK Agent
         Initialize the Improvement Agent.
 
         Args:
-            model_name: The name of the Gemini model to use for analysis (e.g., 'gemini-1.5-flash-latest').
+            model_name: The name of the Gemini model to use for analysis (e.g., 'gemini-2.5-flash-preview-04-17').
                         Defaults to a suitable model if None.
         """
         super().__init__()
@@ -58,7 +58,7 @@ class ImprovementAgent(Agent): # Inherit from ADK Agent
         self.logger.info("Initializing ImprovementAgent...")
 
         # Determine the model name to use
-        effective_model_name = model_name if model_name else 'gemini-1.5-flash-latest' # Default for specialized agent
+        effective_model_name = model_name if model_name else 'gemini-2.5-flash-preview-04-17' # Default for specialized agent
         self.model_name = effective_model_name # Store the actual model name used
 
         # --- LLM Client Initialization ---

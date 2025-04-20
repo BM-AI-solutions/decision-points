@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import apiService from '../../services/api.js'; // Corrected path assuming InsightsPage is in components
+import apiService from '../services/api.js'; // Corrected path assuming InsightsPage is in components
 
 const InsightsPage = () => {
   const [insightsData, setInsightsData] = useState(null);

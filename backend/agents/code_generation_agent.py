@@ -26,12 +26,12 @@ class CodeGenerationAgent(LlmAgent):
 
         Args:
             agent_id: The unique identifier for this agent instance.
-            model_name: The name of the Gemini model to use (e.g., 'gemini-1.5-flash-latest').
+            model_name: The name of the Gemini model to use (e.g., 'gemini-2.5-flash-preview-04-17').
                         Defaults to a suitable model if None.
             target_framework: The target frontend framework (e.g., 'vite-react').
         """
         # Determine the model name to use
-        effective_model_name = model_name if model_name else 'gemini-1.5-flash-latest' # Default for specialized agent
+        effective_model_name = model_name if model_name else 'gemini-2.5-flash-preview-04-17' # Default for specialized agent
         self.model_name = effective_model_name # Store the actual model name used
 
         # Initialize the ADK Gemini model
@@ -44,7 +44,7 @@ class CodeGenerationAgent(LlmAgent):
             # instruction can be set here if needed, or rely on default/prompt
         )
         self.target_framework = target_framework
-        # self.llm_model = genai.GenerativeModel('gemini-pro') # Removed direct instantiation
+        # self.llm_model = genai.GenerativeModel('gemini-2.5-flash-preview-04-17') # Removed direct instantiation
         logger.info(f"CodeGenerationAgent initialized with model: {self.model_name} for framework: {self.target_framework}")
 
     async def run_async(self, context: InvocationContext) -> Event:

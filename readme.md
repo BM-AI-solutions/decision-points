@@ -86,8 +86,8 @@ The following environment variables need to be configured in your `.env` file (c
 
 *   `SECRET_KEY`: **(Required)** A strong, unique secret used by Flask for session security. Generate one using `python -c "import secrets; print(secrets.token_hex(32))"`.
 *   `GEMINI_API_KEY`: **(Required)** Your API key for Google Generative AI (Gemini), obtained from Google AI Studio. This is essential for the Orchestrator Panel and other AI features.
-*   `ORCHESTRATOR_LLM_MODEL`: **(Required)** The Gemini model name for the primary Orchestrator agent (e.g., `gemini-1.5-pro-latest`). This agent handles user interaction and often benefits from a more powerful model. Defaults to `gemini-1.5-pro-latest` if not set.
-*   `SPECIALIZED_AGENT_LLM_MODEL`: **(Required)** The default Gemini model name for specialized agents (e.g., Market Research, Branding, Code Generation). These agents perform focused tasks and can often use a faster/cheaper model like `gemini-1.5-flash-latest`. Defaults to `gemini-1.5-flash-latest` if not set.
+*   `ORCHESTRATOR_LLM_MODEL`: **(Required)** The Gemini model name for the primary Orchestrator agent (e.g., `gemini-2.5-pro-preview-03-25`). This agent handles user interaction and often benefits from a more powerful model. Defaults to `gemini-2.5-pro-preview-03-25` if not set.
+*   `SPECIALIZED_AGENT_LLM_MODEL`: **(Required)** The default Gemini model name for specialized agents (e.g., Market Research, Branding, Code Generation). These agents perform focused tasks and can often use a faster/cheaper model like `gemini-2.5-flash-preview-04-17`. Defaults to `gemini-2.5-flash-preview-04-17` if not set.
 *   `VITE_API_BASE_URL`: **(Required)** The URL the frontend uses to reach the backend API. For the default Docker setup, this **must** be `http://localhost:5000`.
 
 *   **(Optional)** `GCP_PROJECT_ID`: Google Cloud Project ID, potentially used by agents like `FreelanceTaskAgent`.
@@ -113,7 +113,6 @@ You can optionally override the `SPECIALIZED_AGENT_LLM_MODEL` for individual age
 
 ### Autonomous Income Workflow Variables:
 
-*   **(Optional)** `OPENAI_API_KEY`: Potentially used by `MarketResearchAgent`.
 *   `FIRECRAWL_API_KEY`: **(Required)** Used by `MarketResearchAgent` for web scraping. Get from [Firecrawl](https://www.firecrawl.dev/).
 *   **(Optional)** `COMPETITOR_SEARCH_PROVIDER`: Search engine for competitor analysis (e.g., 'google').
 *   **(Conditional)** `EXA_API_KEY`: Required if using Exa Search in `MarketResearchAgent`. Get from [Exa AI](https://exa.ai/).

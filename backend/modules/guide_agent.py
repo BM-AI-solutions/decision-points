@@ -131,7 +131,7 @@ class GuideAgentManager:
                             potential_revenue=2700.0,
                             implementation_difficulty=5,
                             market_saturation=3,
-                            required_apis=["OpenAI", "MemberStack", "Stripe"]
+                            required_apis=["Gemini", "MemberStack", "Stripe"]
                         )
                     ],
                     trending_keywords=["passive income", "AI tools", "productivity templates", "learn new skills"],

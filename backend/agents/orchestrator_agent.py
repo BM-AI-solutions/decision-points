@@ -40,7 +40,7 @@ class OrchestratorAgent(LlmAgent):
         Args:
             socketio: The Flask-SocketIO instance.
             agents: A dictionary mapping agent names to agent instances.
-            model_name: The name of the Gemini model to use (e.g., 'gemini-1.5-pro-latest').
+            model_name: The name of the Gemini model to use (e.g., 'gemini-2.5-pro-preview-03-25').
                         Defaults to a suitable model for orchestration if None.
             instruction: Default instruction for the LLM agent.
             name: Name of the agent.
@@ -48,7 +48,7 @@ class OrchestratorAgent(LlmAgent):
             **kwargs: Additional arguments for LlmAgent.
         """
         # Determine the model name to use
-        effective_model_name = model_name if model_name else 'gemini-1.5-pro-latest' # Default for Orchestrator
+        effective_model_name = model_name if model_name else 'gemini-2.5-pro-preview-03-25' # Default for Orchestrator
         self.model_name = effective_model_name # Store the actual model name used
 
         # Initialize the ADK Gemini model
@@ -298,13 +298,13 @@ Based on the user prompt, output ONLY the key of the most appropriate agent from
 
         if target_agent_key == "lead_generator":
             firecrawl_api_key = os.getenv("FIRECRAWL_API_KEY")
-            # openai_api_key = os.getenv("OPENAI_API_KEY") # Removed OpenAI Key
+            # gemini_api_key = os.getenv("GEMINI_API_KEY") # Removed Gemini Key
             composio_api_key = os.getenv("COMPOSIO_API_KEY")
-            if not all([firecrawl_api_key, openai_api_key, composio_api_key]):
+            if not all([firecrawl_api_key, gemini_api_key, composio_api_key]):
                  logger.warning(f"Missing API keys for {target_agent_key}. Delegation might fail.")
             metadata.update({
                 "firecrawl_api_key": firecrawl_api_key,
-                "openai_api_key": openai_api_key,
+                "gemini_api_key": gemini_api_key,
                 "composio_api_key": composio_api_key,
                 "user_query": prompt # Pass original prompt explicitly
             })
