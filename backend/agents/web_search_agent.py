@@ -1,6 +1,6 @@
 # backend/agents/web_search_agent.py
 import asyncio
-# import os # Removed unused import
+import os
 from typing import Dict, Any, Optional
 
 import httpx
@@ -8,7 +8,7 @@ import logfire
 from google.adk.agents import Agent
 from google.adk.runtime import InvocationContext, Event
 
-from backend.app.config import settings # Import centralized settings
+# # # from backend.app.config import settings # Import centralized settings
 
 # BRAVE_API_KEY is now loaded via settings
 
@@ -36,7 +36,7 @@ class WebSearchAgent(Agent):
             return Event(data={"error": "No search query provided."})
 
         # Get API key from settings
-        brave_api_key = settings.BRAVE_API_KEY
+        brave_api_key = os.environ.get('BRAVE_API_KEY')
         if not brave_api_key:
             logfire.error("BRAVE_API_KEY not configured in settings.")
             # Return a test result or an error event
