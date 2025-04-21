@@ -1,4 +1,3 @@
-import os
 import json
 import time
 import random
@@ -8,6 +7,8 @@ import uuid
 from enum import Enum
 from typing import Dict, Any, Optional, Union
 import logging # Import logging
+
+from backend.app.config import settings # Import centralized settings
 
 # Firestore client
 from google.cloud import firestore
@@ -24,12 +25,6 @@ from pydantic import BaseModel, Field, HttpUrl, ValidationError
 from google.adk.agents import Agent
 from google.adk.runtime import InvocationContext
 from google.adk.runtime.event import Event, EventType
-
-# --- Configuration ---
-AGENT_TIMEOUT_SECONDS = int(os.getenv("AGENT_TIMEOUT_SECONDS", 300)) # Timeout for A2A calls
-# --- Retry Configuration ---
-A2A_MAX_RETRIES = int(os.getenv("A2A_MAX_RETRIES", 3)) # Max retries for A2A calls
-A2A_RETRY_DELAY_SECONDS = int(os.getenv("A2A_RETRY_DELAY_SECONDS", 2)) # Delay between retries
 
 # Setup basic logging
 logging.basicConfig(level=logging.INFO)
@@ -152,8 +147,8 @@ class MarketingMaterialsPackage(BaseModel):
 
 # --- Workflow State Tracking (Internal) ---
 class WorkflowStatus(str, Enum):
-   STARTING = "STARTING"
-   RUNNING_MARKET_RESEARCH = "RUNNING_MARKET_RESEARCH"
+    STARTING = "STARTING"
+    RUNNING_MARKET_RESEARCH = "RUNNING_MARKET_RESEARCH"
     PENDING_APPROVAL = "PENDING_APPROVAL"
     APPROVED_RESUMING = "APPROVED_RESUMING"
     RUNNING_IMPROVEMENT = "RUNNING_IMPROVEMENT"
@@ -192,27 +187,27 @@ class WorkflowManagerAgent(Agent):
         socketio: SocketIO,
         firestore_db: Optional[FirestoreAsyncClient], # Accept Firestore client
         collection_name: str, # Firestore collection name
-        market_research_agent_url: Optional[str],
-        improvement_agent_url: Optional[str],
-        branding_agent_url: Optional[str],
-        code_generation_agent_url: Optional[str], # Added
-        deployment_agent_url: Optional[str],
-        marketing_agent_url: Optional[str], # Added Marketing Agent URL
-        timeout_seconds: int = AGENT_TIMEOUT_SECONDS,
+        market_research_agent_id: Optional[str],
+        improvement_agent_id: Optional[str],
+        branding_agent_id: Optional[str],
+        code_generation_agent_id: Optional[str], # Added
+        deployment_agent_id: Optional[str],
+        marketing_agent_id: Optional[str], # Added Marketing Agent ID
+        # timeout_seconds parameter removed, will use settings directly
     ):
         super().__init__(agent_id="workflow_manager_agent")
         self.socketio = socketio
         self.db = firestore_db
         self.collection_name = collection_name
-        self.market_research_agent_url = market_research_agent_url
-        self.improvement_agent_url = improvement_agent_url
-        self.branding_agent_url = branding_agent_url
-        self.code_generation_agent_url = code_generation_agent_url # Added
-        self.deployment_agent_url = deployment_agent_url
-        self.marketing_agent_url = marketing_agent_url # Added Marketing Agent URL
-        self.timeout_seconds = timeout_seconds
-        self.max_retries = A2A_MAX_RETRIES
-        self.retry_delay = A2A_RETRY_DELAY_SECONDS
+        self.market_research_agent_id = market_research_agent_id
+        self.improvement_agent_id = improvement_agent_id
+        self.branding_agent_id = branding_agent_id
+        self.code_generation_agent_id = code_generation_agent_id # Added
+        self.deployment_agent_id = deployment_agent_id
+        self.marketing_agent_id = marketing_agent_id # Added Marketing Agent ID
+        self.timeout_seconds = settings.AGENT_TIMEOUT_SECONDS # Use settings
+        self.max_retries = settings.A2A_MAX_RETRIES # Use settings
+        self.retry_delay = settings.A2A_RETRY_DELAY_SECONDS # Use settings
 
         if not self.db:
             logger.warning("WorkflowManagerAgent initialized without a valid Firestore client. State persistence will fail.")
@@ -226,6 +221,101 @@ class WorkflowManagerAgent(Agent):
         """Clean up resources, like the HTTP client."""
         await self._http_client.aclose()
         logger.info("WorkflowManagerAgent closed.")
+
+    async def _invoke_adk_skill(
+        self,
+        context: InvocationContext, # Pass the context
+        agent_name: str, # For logging
+        target_agent_id: Optional[str],
+        skill_name: str,
+        payload: Dict[str, Any],
+    ) -> Event:
+        """
+        Helper function to invoke another agent's skill asynchronously using ADK
+        with retry logic.
+
+        Args:
+            context: The current InvocationContext.
+            agent_name: User-friendly name of the agent (for logging).
+            target_agent_id: The ID of the agent to invoke.
+            skill_name: The name of the skill to invoke on the target agent.
+            payload: The data dictionary for the input event.
+
+        Returns:
+            An Event object representing the result or error from the agent skill.
+        """
+        invocation_id = context.invocation_id # Get invocation ID from context
+
+        if not target_agent_id:
+            error_msg = f"Agent ID for '{agent_name}' is not configured."
+            logger.error(f"[{invocation_id}] Error: {error_msg}")
+            return Event(type=EventType.ERROR, data={"error": error_msg})
+
+        input_event = Event(type=EventType.INPUT, data=payload)
+        last_exception: Optional[Exception] = None
+
+        logger.info(f"[{invocation_id}] Invoking {agent_name} skill '{skill_name}' on agent '{target_agent_id}' (Retries: {self.max_retries}, Delay: {self.retry_delay}s)...")
+
+        for attempt in range(self.max_retries):
+            try:
+                # Use context.invoke_skill for ADK A2A communication
+                result_event = await context.invoke_skill(
+                    target_agent_id=target_agent_id,
+                    skill_name=skill_name,
+                    input=input_event,
+                    timeout_seconds=self.timeout_seconds # Use configured timeout
+                )
+
+                # Check if the result is a valid Event (basic check)
+                if not isinstance(result_event, Event) or not hasattr(result_event, 'type') or not hasattr(result_event, 'data'):
+                     # This case might indicate an ADK internal issue or unexpected return type
+                     raise TypeError(f"Invalid response type received from {agent_name} skill '{skill_name}'. Expected Event, got {type(result_event)}.")
+
+                # Log success (even if the event type is ERROR, the call itself succeeded)
+                logger.info(f"[{invocation_id}] Agent '{agent_name}' skill '{skill_name}' invocation successful (Attempt {attempt + 1}/{self.max_retries}). Result Event Type: {result_event.type}")
+                return result_event # Return the received event (could be RESULT or ERROR)
+
+            except TimeoutError as e: # Catch specific timeout error if ADK raises it
+                last_exception = e
+                logger.warning(f"[{invocation_id}] Skill invocation for {agent_name} timed out (Attempt {attempt + 1}/{self.max_retries}).")
+                # Fall through to retry logic
+
+            except ConnectionError as e: # Catch connection errors if ADK raises them
+                 last_exception = e
+                 logger.warning(f"[{invocation_id}] Skill invocation for {agent_name} failed (Attempt {attempt + 1}/{self.max_retries}): Connection Error ({type(e).__name__}).")
+                 # Fall through to retry logic
+
+            except Exception as e:
+                 # Catch other potential errors during invoke_skill
+                 last_exception = e
+                 logger.error(f"[{invocation_id}] Unexpected error during {agent_name} skill '{skill_name}' invocation attempt {attempt + 1}/{self.max_retries}: {type(e).__name__}: {e}", exc_info=True)
+                 # If it's the last attempt, let it be handled below. Otherwise, retry.
+                 if attempt >= self.max_retries - 1:
+                     break # Exit loop to handle final error
+
+            # --- Retry Logic ---
+            if attempt < self.max_retries - 1:
+                wait_time = self.retry_delay * (2 ** attempt) # Exponential backoff
+                logger.info(f"[{invocation_id}] Retrying in {wait_time:.2f}s...")
+                await asyncio.sleep(wait_time)
+            else:
+                logger.error(f"[{invocation_id}] Skill invocation for {agent_name} failed after {self.max_retries} attempts.")
+                break # Exit loop after last attempt
+
+        # --- Handle Failure After Retries ---
+        error_msg = f"Skill invocation for {agent_name} ('{skill_name}') failed after {self.max_retries} attempts."
+        error_details = "Max retries exceeded"
+        if last_exception:
+            error_msg += f" Last error: {type(last_exception).__name__}: {last_exception}"
+            if isinstance(last_exception, TimeoutError):
+                error_details = "Timeout"
+            elif isinstance(last_exception, ConnectionError):
+                error_details = "Connection Error"
+            else:
+                 error_details = f"{type(last_exception).__name__}"
+
+        logger.error(f"[{invocation_id}] Final Error: {error_msg}")
+        return Event(type=EventType.ERROR, data={"error": error_msg, "details": error_details})
 
     async def _invoke_a2a_agent(
         self,
@@ -495,9 +585,10 @@ class WorkflowManagerAgent(Agent):
                     target_url=target_url
                 ).model_dump(exclude_none=True)
 
-                market_event = await self._invoke_a2a_agent(
-                    agent_name="Market Research", agent_url=self.market_research_agent_url,
-                    endpoint_suffix="market_research", invocation_id=invocation_id,
+                market_event = await self._invoke_adk_skill(
+                    context=context,
+                    agent_name="Market Research", target_agent_id=self.market_research_agent_id,
+                    skill_name="market_research",
                     payload=market_research_payload,
                 )
 
@@ -567,9 +658,10 @@ class WorkflowManagerAgent(Agent):
                     business_model_type="saas" # Placeholder
                 ).model_dump(exclude_none=True)
 
-                improvement_event = await self._invoke_a2a_agent(
-                    agent_name="Improvement", agent_url=self.improvement_agent_url,
-                    endpoint_suffix="improvement", invocation_id=invocation_id,
+                improvement_event = await self._invoke_adk_skill(
+                    context=context,
+                    agent_name="Improvement", target_agent_id=self.improvement_agent_id,
+                    skill_name="improvement",
                     payload=improvement_payload,
                 )
 
@@ -676,9 +768,10 @@ class WorkflowManagerAgent(Agent):
                     business_model_type="saas" # Placeholder
                 ).model_dump(exclude_none=True)
 
-                branding_event = await self._invoke_a2a_agent(
-                    agent_name="Branding", agent_url=self.branding_agent_url,
-                    endpoint_suffix="branding", invocation_id=invocation_id,
+                branding_event = await self._invoke_adk_skill(
+                    context=context,
+                    agent_name="Branding", target_agent_id=self.branding_agent_id,
+                    skill_name="branding",
                     payload=branding_payload,
                 )
 
@@ -730,9 +823,10 @@ class WorkflowManagerAgent(Agent):
                     brand_package=brand_package_model
                 ).model_dump(exclude_none=True)
 
-                code_gen_event = await self._invoke_a2a_agent(
-                    agent_name="Code Generation", agent_url=self.code_generation_agent_url,
-                    endpoint_suffix="code_generation", invocation_id=invocation_id,
+                code_gen_event = await self._invoke_adk_skill(
+                    context=context,
+                    agent_name="Code Generation", target_agent_id=self.code_generation_agent_id,
+                    skill_name="code_generation",
                     payload=code_gen_payload,
                 )
 
@@ -789,9 +883,10 @@ class WorkflowManagerAgent(Agent):
                     generated_code_dict=code_generation_result_data.get('generated_code_dict') # Pass the generated code
                 ).model_dump(exclude_none=True)
 
-                deployment_event = await self._invoke_a2a_agent(
-                    agent_name="Deployment", agent_url=self.deployment_agent_url,
-                    endpoint_suffix="deployment", invocation_id=invocation_id,
+                deployment_event = await self._invoke_adk_skill(
+                    context=context,
+                    agent_name="Deployment", target_agent_id=self.deployment_agent_id,
+                    skill_name="deployment",
                     payload=deployment_payload,
                 )
 
@@ -850,9 +945,10 @@ class WorkflowManagerAgent(Agent):
                     deployment_url=deployment_url
                 ).model_dump(exclude_none=True)
 
-                marketing_event = await self._invoke_a2a_agent(
-                    agent_name="Marketing", agent_url=self.marketing_agent_url,
-                    endpoint_suffix="marketing", invocation_id=invocation_id,
+                marketing_event = await self._invoke_adk_skill(
+                    context=context,
+                    agent_name="Marketing", target_agent_id=self.marketing_agent_id,
+                    skill_name="marketing",
                     payload=marketing_payload,
                 )
 
@@ -923,7 +1019,7 @@ class WorkflowManagerAgent(Agent):
             raise RuntimeError(f"Invalid state or logic error: Reached end of workflow execution checks with status '{current_status.value}'")
 
 
-        except (ValueError, TypeError, ConnectionError, TimeoutError, RuntimeError, ValidationError, httpx.RequestError, json.JSONDecodeError) as e:
+        except (ValueError, TypeError, ConnectionError, TimeoutError, RuntimeError, ValidationError, json.JSONDecodeError) as e:
             error_message = f"Workflow failed at Step '{current_step.value if current_step else 'UNKNOWN'}': {type(e).__name__}: {e}"
             # Ensure status is updated to FAILED in Firestore even if it was already FAILED
             # Use workflow_run_id directly as it's guaranteed to be set by this point

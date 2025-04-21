@@ -1,4 +1,3 @@
-import os
 import random
 import asyncio
 import logging
@@ -13,6 +12,8 @@ from pydantic import BaseModel, Field, ValidationError
 from google.adk.agents import Agent
 from google.adk.runtime import InvocationContext
 from google.adk.runtime.events import Event, ErrorEvent
+
+from backend.app.config import settings # Import centralized settings
 
 # TODO: Potentially align this more closely with the actual MarketOpportunityReport structure
 # if it becomes significantly different. For now, assume the necessary fields are passed.
@@ -62,9 +63,12 @@ class ImprovementAgent(Agent): # Inherit from ADK Agent
         self.model_name = effective_model_name # Store the actual model name used
 
         # --- LLM Client Initialization ---
-        gemini_api_key = os.getenv('GEMINI_API_KEY')
+        # Get API key from settings
+        gemini_api_key = settings.GEMINI_API_KEY
         if gemini_api_key:
             try:
+                # Configure genai globally (if not already done elsewhere)
+                # genai.configure(api_key=gemini_api_key) # Assuming configure is done at app startup
                 # Initialize the Gemini model using the determined model name
                 self.llm = genai.GenerativeModel(self.model_name)
                 self.logger.info(f"Gemini GenerativeModel initialized with model: {self.model_name}.")
@@ -73,20 +77,16 @@ class ImprovementAgent(Agent): # Inherit from ADK Agent
                 self.llm = None
         else:
             self.llm = None
-            self.logger.warning("GEMINI_API_KEY not found. LLM functionality will be disabled.")
+            self.logger.warning("GEMINI_API_KEY not configured in settings. LLM functionality will be disabled.")
 
         # --- Web Search Agent Integration ---
-        self.web_search_agent_url = os.getenv('WEB_SEARCH_AGENT_URL')
-        self.brave_api_key = os.getenv('BRAVE_API_KEY') # Needed if WebSearchAgent requires it implicitly
-        self.http_client = httpx.AsyncClient(timeout=60.0) # Increased timeout for A2A calls
+        # Get Agent ID from settings
+        self.web_search_agent_id = settings.WEB_SEARCH_AGENT_ID
 
-        if not self.web_search_agent_url:
-            self.logger.warning("WEB_SEARCH_AGENT_URL not found. Web search integration will be disabled.")
+        if not self.web_search_agent_id:
+            self.logger.warning("WEB_SEARCH_AGENT_ID not configured in settings. Web search integration will be disabled.")
         else:
-            self.logger.info(f"Web Search Agent URL configured: {self.web_search_agent_url}")
-            if not self.brave_api_key:
-                 # Log warning if Brave key is missing, as the search agent likely needs it.
-                 self.logger.warning("BRAVE_API_KEY not found. WebSearchAgent might fail if it requires this key.")
+            self.logger.info(f"Web Search Agent ID configured via settings: {self.web_search_agent_id}")
 
 
         self.logger.info("ImprovementAgent initialized.")
@@ -118,7 +118,7 @@ class ImprovementAgent(Agent): # Inherit from ADK Agent
         # Example: Search if concept is complex or mentions specific tech
         trigger_search = "technology" in inputs.product_concept.lower() or "competitor" in inputs.product_concept.lower()
 
-        if self.web_search_agent_url and trigger_search:
+        if self.web_search_agent_id and trigger_search:
             self.logger.info("Web search triggered based on product concept.")
             search_query = f"Technical details and competitors for product concept: {inputs.product_concept}"
             try:

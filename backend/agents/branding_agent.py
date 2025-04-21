@@ -1,4 +1,3 @@
-import os
 import random
 import string
 import httpx
@@ -11,6 +10,8 @@ from pydantic import BaseModel, Field
 from google.adk.agents import LlmAgent
 from google.adk.runtime import InvocationContext
 from google.adk.runtime.events import Event
+
+from backend.app.config import settings # Import centralized settings
 
 # Assuming ImprovedProductSpec structure is available or defined elsewhere
 # Define input based on what BrandingAgent needs from ImprovedProductSpec
@@ -78,7 +79,7 @@ class BrandingAgent(LlmAgent): # Inherit from LlmAgent
     def __init__(self,
                  agent_id: str = "branding_agent",
                  model_name: Optional[str] = None, # Added model_name parameter
-                 web_search_agent_url: Optional[str] = None):
+                 web_search_agent_id: Optional[str] = None):
         """
         Initialize the Branding Agent.
 
@@ -86,7 +87,7 @@ class BrandingAgent(LlmAgent): # Inherit from LlmAgent
             agent_id: The unique identifier for this agent instance.
             model_name: The name of the Gemini model to use (e.g., 'gemini-2.5-flash-preview-04-17').
                         Defaults to a suitable model if None.
-            web_search_agent_url: The URL for the WebSearchAgent A2A endpoint.
+            web_search_agent_id: The ID of the WebSearchAgent.
         """
         # Determine the model name to use
         effective_model_name = model_name if model_name else 'gemini-2.5-flash-preview-04-17' # Default for specialized agent
@@ -103,24 +104,22 @@ class BrandingAgent(LlmAgent): # Inherit from LlmAgent
             # instruction can be set here if needed, or rely on default/prompt
         )
 
-        self.web_search_agent_url = web_search_agent_url or os.getenv("WEB_SEARCH_AGENT_URL")
-        self.brave_api_key = os.getenv("BRAVE_API_KEY")
+        # Prioritize passed ID, fallback to central settings
+        self.web_search_agent_id = web_search_agent_id if web_search_agent_id is not None else settings.WEB_SEARCH_AGENT_ID
 
-        if not self.web_search_agent_url:
-            self.logger.warning("WEB_SEARCH_AGENT_URL is not configured. Availability checks will be skipped.")
-        if not self.brave_api_key:
-            # Log warning, but allow continuation if only URL is missing (maybe search works without API key for some basic checks?)
-            # Or raise an error if API key is absolutely essential for the WebSearchAgent. Let's warn for now.
-            self.logger.warning("BRAVE_API_KEY is not configured. Web search functionality might be limited or fail.")
+        if not self.web_search_agent_id:
+            self.logger.warning("WEB_SEARCH_AGENT_ID is not configured (checked constructor arg and settings). Availability checks will be skipped.")
+        else:
+             self.logger.info(f"Using WebSearchAgent ID: {self.web_search_agent_id}")
         self.logger.info(f"BrandingAgent initialized with model: {self.model_name}") # Added logging for model
 
-    async def _check_name_availability(self, name: str, client: httpx.AsyncClient) -> tuple[str, str]:
+    async def _check_name_availability(self, context: InvocationContext, name: str) -> tuple[str, str]:
         """
         Checks domain, social, and potentially trademark availability for a given name.
         Returns a tuple: (summary_string, availability_status).
         Status can be 'available', 'likely_taken', 'uncertain', 'error', or 'skipped'.
         """
-        if not self.web_search_agent_url or not self.brave_api_key:
+        if not self.web_search_agent_id:
             self.logger.warning(f"Skipping availability check for '{name}' due to missing configuration.")
             return "Availability check skipped (missing configuration).", "skipped"
 
@@ -139,54 +138,53 @@ class BrandingAgent(LlmAgent): # Inherit from LlmAgent
         raw_search_details = {} # Store snippets for summary
 
         async def perform_search(query_type: str, query: str):
-            search_url = f"{self.web_search_agent_url}/a2a/web_search/invoke"
-            payload = {
-                "input": {
-                    "event_type": "adk.agent.invoke",
-                    "data": {"query": query},
-                    "metadata": {"brave_api_key": self.brave_api_key} # Pass API key in metadata
-                },
-                "invocation_id": f"branding-search-{name.replace(' ', '-')}-{query_type}-{random.randint(1000, 9999)}",
-                "agent_id": "web_search_agent"
-            }
+            input_payload = {"query": query}
+            # Metadata might be needed if WebSearchAgent requires API keys passed this way
+            # input_metadata = {"brave_api_key": self.brave_api_key} # Example if needed
+            input_event = Event(payload=input_payload) # Add metadata=input_metadata if needed
             try:
-                self.logger.info(f"Sending search request for '{name}' ({query_type}) to {search_url}")
-                response = await client.post(search_url, json=payload, timeout=30.0)
-                response.raise_for_status() # Raise HTTPStatusError for bad responses (4xx or 5xx)
-                event_data = response.json()
-                self.logger.debug(f"Received search response for '{name}' ({query_type}): {event_data}")
+                self.logger.info(f"Invoking WebSearchAgent skill 'web_search' for '{name}' ({query_type}) via ADK...")
+                result_event = await context.invoke_skill(
+                    target_agent_id=self.web_search_agent_id,
+                    skill_name="web_search", # Assuming skill name
+                    input=input_event,
+                    timeout_seconds=30.0
+                )
+                self.logger.debug(f"Received search response event for '{name}' ({query_type}): Type={result_event.type}, Payload={result_event.payload}")
 
-                if event_data.get("event_type") == "adk.agent.result" and isinstance(event_data.get("data"), dict):
+                if result_event.type == "error":
+                    error_msg = result_event.payload.get('message', 'Unknown error from WebSearchAgent skill')
+                    self.logger.error(f"WebSearchAgent skill invocation failed for '{name}' ({query_type}): {error_msg}")
+                    results[query_type] = "Error during check"
+                    raw_search_details[query_type] = "Error during check."
+                elif result_event.payload and result_event.payload.get("status") == "success":
                     # Extract relevant info - structure depends on WebSearchAgent's output
-                    # Assuming 'summary' or 'results' field contains the answer
-                    search_result = event_data["data"].get("summary") or event_data["data"].get("results", "No specific result found.")
+                    search_result_data = result_event.payload.get("results", "No specific result found.") # Assuming 'results' key
                     # Basic interpretation (can be improved)
-                    raw_search_details[query_type] = f"{search_result[:150]}..." # Store for summary
-                    if "available" in str(search_result).lower() and "not available" not in str(search_result).lower():
+                    raw_search_details[query_type] = f"{str(search_result_data)[:150]}..." # Store for summary
+                    if "available" in str(search_result_data).lower() and "not available" not in str(search_result_data).lower():
                         results[query_type] = "Likely Available"
-                    elif "not available" in str(search_result).lower() or "taken" in str(search_result).lower():
+                    elif "not available" in str(search_result_data).lower() or "taken" in str(search_result_data).lower():
                         results[query_type] = "Likely Unavailable"
                     else:
                         results[query_type] = "Unclear/Check Manually"
-                elif event_data.get("event_type") == "adk.agent.error":
-                     self.logger.error(f"WebSearchAgent returned error for '{name}' ({query_type}): {event_data.get('data')}")
-                     results[query_type] = "Error during check"
-                     raw_search_details[query_type] = "Error during check."
                 else:
-                    self.logger.warning(f"Unexpected event type from WebSearchAgent for '{name}' ({query_type}): {event_data.get('event_type')}")
+                    # Handle cases where the skill call succeeded but indicated an internal failure or unexpected payload
+                    error_msg = result_event.payload.get("message", "Unknown or unsuccessful response from WebSearchAgent skill")
+                    self.logger.warning(f"WebSearchAgent skill call for '{name}' ({query_type}) reported failure or unexpected payload: {error_msg}")
                     results[query_type] = "Unknown response format"
                     raw_search_details[query_type] = "Unknown response format."
 
-            except httpx.HTTPStatusError as e:
-                self.logger.error(f"HTTP error calling WebSearchAgent for '{name}' ({query_type}): {e.response.status_code} - {e.response.text}")
-                results[query_type] = f"HTTP Error ({e.response.status_code})"
-                raw_search_details[query_type] = f"HTTP Error ({e.response.status_code})."
-            except httpx.RequestError as e:
-                self.logger.error(f"Request error calling WebSearchAgent for '{name}' ({query_type}): {e}")
-                results[query_type] = "Request Error"
-                raw_search_details[query_type] = "Request Error."
+            except TimeoutError:
+                self.logger.error(f"ADK skill invocation for WebSearchAgent timed out for '{name}' ({query_type}).", exc_info=True)
+                results[query_type] = "Timeout Error"
+                raw_search_details[query_type] = "Timeout Error."
+            except ConnectionError as conn_err:
+                self.logger.error(f"ADK skill invocation for WebSearchAgent failed (Connection Error) for '{name}' ({query_type}): {conn_err}", exc_info=True)
+                results[query_type] = "Connection Error"
+                raw_search_details[query_type] = "Connection Error."
             except Exception as e:
-                self.logger.error(f"Unexpected error during web search for '{name}' ({query_type}): {e}", exc_info=True)
+                self.logger.error(f"Unexpected error during WebSearchAgent skill invocation for '{name}' ({query_type}): {e}", exc_info=True)
                 results[query_type] = "Unexpected Error"
                 raw_search_details[query_type] = "Unexpected Error."
 

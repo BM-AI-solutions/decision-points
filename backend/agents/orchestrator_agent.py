@@ -1,4 +1,3 @@
-import os
 import asyncio
 from typing import Any, Dict, List, Optional, Union, Tuple
 
@@ -11,6 +10,7 @@ from google.adk.tools import ToolContext
 from google.adk.events import Event, EventActions, Action, Content, Part
 from google.adk.sessions import InvocationContext
 from utils.logger import setup_logger
+from backend.app.config import settings # Import centralized settings
 
 logger = setup_logger('agents.orchestrator')
 
@@ -27,7 +27,7 @@ class OrchestratorAgent(LlmAgent):
     def __init__(
         self,
         socketio: SocketIO,
-        agents: Dict[str, BaseAgent], # Add agents parameter
+        agent_ids: Dict[str, str], # Add agent IDs parameter
         model_name: Optional[str] = None, # Changed from 'model' to 'model_name'
         instruction: Optional[str] = None,
         name: str = "OrchestratorAgent",
@@ -39,7 +39,7 @@ class OrchestratorAgent(LlmAgent):
 
         Args:
             socketio: The Flask-SocketIO instance.
-            agents: A dictionary mapping agent names to agent instances.
+            agent_ids: A dictionary mapping logical agent names (e.g., 'market_analyzer') to their ADK agent IDs.
             model_name: The name of the Gemini model to use (e.g., 'gemini-2.5-pro-preview-03-25').
                         Defaults to a suitable model for orchestration if None.
             instruction: Default instruction for the LLM agent.
@@ -66,9 +66,9 @@ class OrchestratorAgent(LlmAgent):
             **kwargs
         )
         self.socketio = socketio
-        self.agents = agents # Store the agents dictionary
+        self.agent_ids = agent_ids # Store the agent IDs dictionary
         # Use self.model_name which holds the string name, self.model.model also works if super().__init__ sets it
-        logger.info(f"{self.name} initialized with SocketIO, model: {self.model_name}, and agents: {list(self.agents.keys())}.")
+        logger.info(f"{self.name} initialized with SocketIO, model: {self.model_name}, and agent IDs: {list(self.agent_ids.keys())}.")
 
 
     async def run_async(self, context: InvocationContext) -> Event:
@@ -102,16 +102,16 @@ class OrchestratorAgent(LlmAgent):
             # Optionally emit a specific error update here
             # self.socketio.emit(...)
 
-        target_agent = self.agents.get(target_agent_key)
+        target_agent_id = self.agent_ids.get(target_agent_key)
 
         # --- Handle Delegation or Direct Processing ---
-        if target_agent_key != "self" and target_agent:
+        if target_agent_key != "self" and target_agent_id:
             logger.info(f"Task {task_id} classified for delegation to {target_agent_key}.")
             self.socketio.emit('task_update', {
                 'task_id': task_id,
                 'status': 'delegating',
                 'agent': target_agent_key,
-                'message': f"Delegating task to {target_agent.name}..."
+                'message': f"Delegating task to {target_agent_key}..."
             })
             logger.info(f"Emitted 'task_update' (delegating to {target_agent_key}) for task {task_id}")
 
@@ -121,8 +121,14 @@ class OrchestratorAgent(LlmAgent):
                 # For now, pass the original context. Specific agents might need tailored metadata.
                 delegated_context = self._prepare_delegation_context(context, target_agent_key, prompt)
 
-                # Invoke the target agent
-                delegated_output_event = await target_agent.run_async(delegated_context)
+                # Invoke the target agent skill using ADK A2A
+                # Assuming 'run' is the default skill for delegated agents
+                delegated_output_event = await context.invoke_skill(
+                    target_agent_id=target_agent_id,
+                    skill_name="run", # Assuming a default 'run' skill
+                    input=delegated_context.input_event,
+                    # timeout_seconds=... # Optional: Add timeout if needed
+                )
 
                 # Extract result from the delegated agent's response
                 delegated_result_text = self._extract_text_from_event(delegated_output_event, f"No text response from {target_agent_key}.")
@@ -297,14 +303,16 @@ Based on the user prompt, output ONLY the key of the most appropriate agent from
         # For example, extracting API keys or specific parameters from the prompt.
 
         if target_agent_key == "lead_generator":
-            firecrawl_api_key = os.getenv("FIRECRAWL_API_KEY")
-            # gemini_api_key = os.getenv("GEMINI_API_KEY") # Removed Gemini Key
-            composio_api_key = os.getenv("COMPOSIO_API_KEY")
+            # Use settings object
+            firecrawl_api_key = settings.FIRECRAWL_API_KEY
+            gemini_api_key = settings.GEMINI_API_KEY # Use settings
+            composio_api_key = settings.COMPOSIO_API_KEY # Use settings
+            # Check if keys obtained from settings are None or empty
             if not all([firecrawl_api_key, gemini_api_key, composio_api_key]):
-                 logger.warning(f"Missing API keys for {target_agent_key}. Delegation might fail.")
+                 logger.warning(f"Missing API keys (checked via settings) for {target_agent_key}. Delegation might fail.")
             metadata.update({
                 "firecrawl_api_key": firecrawl_api_key,
-                "gemini_api_key": gemini_api_key,
+                "gemini_api_key": gemini_api_key, # Pass key from settings
                 "composio_api_key": composio_api_key,
                 "user_query": prompt # Pass original prompt explicitly
             })
@@ -322,11 +330,12 @@ Based on the user prompt, output ONLY the key of the most appropriate agent from
              })
 
         elif target_agent_key == "web_searcher":
-            brave_api_key = os.getenv("BRAVE_API_KEY")
+            # Use settings object
+            brave_api_key = settings.BRAVE_API_KEY
             if not brave_api_key:
-                 logger.warning(f"Missing BRAVE_API_KEY for {target_agent_key}. Delegation might fail.")
+                 logger.warning(f"Missing BRAVE_API_KEY (checked via settings) for {target_agent_key}. Delegation might fail.")
             metadata.update({
-                "brave_api_key": brave_api_key,
+                "brave_api_key": brave_api_key, # Pass key from settings
                 "query": prompt # Use original prompt as query
             })
 

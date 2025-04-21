@@ -1,0 +1,93 @@
+{
+  "projectName": "decision-points",
+  "description": "Analysis of the project stack for refactoring towards a Dockerized AI agent SAAS platform.",
+  "timestamp": "2025-04-20T22:50:44-07:00",
+  "backend": {
+    "language": "Python 3.10",
+    "framework": "FastAPI",
+    "server": {
+      "development": "Uvicorn",
+      "production": "Gunicorn"
+    },
+    "database": {
+      "orm": "SQLAlchemy",
+      "migration": "Alembic",
+      "drivers": ["psycopg2-binary", "asyncpg"],
+      "type": "PostgreSQL (implied by drivers)"
+    },
+    "messaging": [
+      "Google Cloud Pub/Sub",
+      "Kafka (aiokafka)"
+    ],
+    "ai_agents": {
+      "framework": "Google Agent Development Kit (ADK)",
+      "libraries": [
+        "google-genai",
+        "google-adk",
+        "exa-py",
+        "firecrawl-py"
+      ],
+      "structure": {
+        "orchestration": ["OrchestratorAgent", "WorkflowManagerAgent"],
+        "specialized_agents": [
+          "BrandingAgent",
+          "CodeGenerationAgent",
+          "ContentGenerationAgent",
+          "DeploymentAgent",
+          "FreelanceTaskAgent",
+          "ImprovementAgent",
+          "LeadGenerationAgent",
+          "MarketAnalysisAgent",
+          "MarketResearchAgent",
+          "MarketingAgent",
+          "WebSearchAgent"
+        ],
+        "communication": ["ADK invoke_skill", "A2A HTTP (implied by WorkflowManagerAgent._invoke_a2a_agent)"]
+      },
+      "external_integrations": [
+        "Exa AI",
+        "Firecrawl",
+        "Perplexity (via HTTP)",
+        "Composio",
+        "Google Gemini",
+        "Vercel API",
+        "Netlify API"
+      ]
+    },
+    "authentication": ["Passlib", "Python-JOSE"],
+    "payments": "Stripe",
+    "cloud_services": ["Google Cloud Secret Manager"],
+    "logging_observability": ["Loguru", "Logfire"],
+    "other_libraries": [
+      "Pydantic (Data Validation, Settings)",
+      "HTTPX (API Client)",
+      "python-multipart (File Uploads)"
+    ],
+    "inconsistencies": [
+      "backend/Dockerfile 'dev' stage CMD uses 'flask run', conflicting with FastAPI/Uvicorn setup indicated elsewhere."
+    ]
+  },
+  "frontend": {
+    "language": "JavaScript",
+    "framework_library": "React",
+    "build_tool": "Vite",
+    "routing": "React Router",
+    "realtime": "Socket.IO Client",
+    "ui_libraries": [
+      "Chart.js (react-chartjs-2)"
+    ],
+    "css": {
+      "processing": ["PostCSS", "CSSNano (implied)"],
+      "styling": "Plain CSS (css/styles.css)"
+    },
+    "server": {
+      "development": "Vite Dev Server",
+      "production": "Nginx"
+    }
+  },
+  "infrastructure": {
+    "containerization": "Docker",
+    "orchestration": "Docker Compose (dev/prod configurations)",
+    "networking": "Docker Bridge Network ('appnet')"
+  }
+}

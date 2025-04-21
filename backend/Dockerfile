@@ -30,10 +30,10 @@ ENV PYTHONUNBUFFERED=1
 # Copy all code (for dev image, but will be mounted in compose)
 COPY . .
 
-# Expose port for Flask dev server
-EXPOSE 5000
+# Expose port for Uvicorn dev server
+EXPOSE 8000
 
-CMD ["flask", "run", "--host=0.0.0.0", "--port=5000"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 
 ############################
 # Production image
@@ -42,8 +42,23 @@ FROM base AS prod
 
 ENV FLASK_ENV=production
 
-COPY . .
+# Copy only necessary application files
+COPY app/ ./app/
+COPY alembic/ ./alembic/
+COPY alembic.ini .
+COPY utils/ ./utils/
+COPY agents/ ./agents/
+
+# Create a non-root user and group
+RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
+
+# Change ownership of the app directory
+RUN chown -R appuser:appgroup /app
+
+# Switch to the non-root user
+USER appuser
 
 EXPOSE 5000
 
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "app:app"]
+# Corrected CMD to reference the main application object within the app package
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "app.main:app"]

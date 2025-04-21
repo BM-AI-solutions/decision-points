@@ -1,4 +1,3 @@
-import os
 import asyncio
 import httpx
 import logging
@@ -7,6 +6,8 @@ from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
 from google.adk.agents import Agent
 from google.adk.runtime import InvocationContext, Event, Status
+
+from backend.app.config import settings # Import centralized settings
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -50,15 +51,62 @@ class MarketingAgent(Agent):
         Retrieves the ContentGenerationAgent URL from environment variables.
         """
         super().__init__(unique_id="marketing_agent")
-        self.content_generation_agent_url = os.getenv("CONTENT_GENERATION_AGENT_URL")
-        if not self.content_generation_agent_url:
-            logger.error("CONTENT_GENERATION_AGENT_URL environment variable not set.")
-            raise ValueError("CONTENT_GENERATION_AGENT_URL must be set")
-        # Ensure the URL ends with the specific A2A endpoint
-        if not self.content_generation_agent_url.endswith('/a2a/content_generation/invoke'):
-             self.content_generation_agent_url = self.content_generation_agent_url.rstrip('/') + '/a2a/content_generation/invoke'
-        logger.info(f"MarketingAgent initialized. ContentGenerationAgent URL: {self.content_generation_agent_url}")
+        # Get agent ID from settings
+        self.content_generation_agent_id = settings.CONTENT_GENERATION_AGENT_ID
+        if not self.content_generation_agent_id:
+            logger.error("CONTENT_GENERATION_AGENT_ID not configured in settings.")
+            raise ValueError("CONTENT_GENERATION_AGENT_ID must be configured in settings")
+        logger.info(f"MarketingAgent initialized. ContentGenerationAgent ID (from settings): {self.content_generation_agent_id}")
 
+
+    async def _invoke_content_generation_skill(self, context: InvocationContext, prompt: str, request_key: str) -> tuple[str, Optional[str]]:
+        """
+        Invokes the ContentGenerationAgent's 'generate' skill and returns the result.
+
+        Args:
+            context: The current InvocationContext.
+            prompt: The prompt for the content generation.
+            request_key: An identifier for the request (for logging/mapping results).
+
+        Returns:
+            A tuple containing the request_key and the generated content (str) or None if failed.
+        """
+        input_payload = {"prompt": prompt}
+        input_event = Event(payload=input_payload)
+        logger.info(f"Invoking ContentGenerationAgent skill 'generate' for '{request_key}' via ADK...")
+
+        try:
+            result_event = await context.invoke_skill(
+                target_agent_id=self.content_generation_agent_id,
+                skill_name="generate", # Assuming the skill name is 'generate'
+                input=input_event,
+                timeout_seconds=60.0
+            )
+
+            if result_event.type == "error":
+                error_msg = result_event.payload.get('message', 'Unknown error from ContentGenerationAgent skill')
+                logger.error(f"ContentGenerationAgent skill invocation failed for '{request_key}': {error_msg}")
+                return request_key, None
+            # Check for success status and expected data key
+            elif result_event.payload and result_event.payload.get("status") == "success" and "generated_content" in result_event.payload:
+                logger.info(f"Successfully received content from ContentGenerationAgent skill for '{request_key}'.")
+                return request_key, result_event.payload["generated_content"]
+            else:
+                # Handle cases where the skill call succeeded but indicated an internal failure or unexpected payload
+                error_msg = result_event.payload.get("message", "Unknown or unsuccessful response from ContentGenerationAgent skill")
+                logger.error(f"ContentGenerationAgent skill call for '{request_key}' reported failure or unexpected payload: {error_msg}")
+                logger.debug(f"ContentGenerationAgent Payload for '{request_key}': {result_event.payload}")
+                return request_key, None
+
+        except TimeoutError:
+            logger.error(f"ADK skill invocation for ContentGenerationAgent timed out for '{request_key}'.", exc_info=True)
+            return request_key, None
+        except ConnectionError as conn_err:
+            logger.error(f"ADK skill invocation for ContentGenerationAgent failed (Connection Error) for '{request_key}': {conn_err}", exc_info=True)
+            return request_key, None
+        except Exception as e:
+            logger.error(f"Unexpected error during ContentGenerationAgent skill invocation for '{request_key}': {e}", exc_info=True)
+            return request_key, None
 
     async def generate_content(self, client: httpx.AsyncClient, prompt: str, context_data: Dict[str, Any]) -> Optional[str]:
         """
@@ -134,21 +182,21 @@ class MarketingAgent(Agent):
                 "email_announcement_1": f"Draft a brief email announcement for {product_spec.product_name} launch/update. Target Audience: {product_spec.target_audience}. Include key features: {', '.join(product_spec.key_features)}. Tone: {branding.tone_of_voice}. Brand: {branding.brand_name}."
             }
 
-            # 3. Delegate to ContentGenerationAgent Concurrently
+            # 3. Delegate to ContentGenerationAgent Concurrently using ADK invoke_skill
+            tasks = []
+            for key, prompt in content_requests.items():
+                # Create a task for each content request using the ADK helper
+                tasks.append(self._invoke_content_generation_skill(context, prompt, key))
+
+            logger.info(f"Dispatching {len(tasks)} content generation skill invocations concurrently.")
+            # Gather results. Each result is a tuple: (request_key, content_or_none)
+            gathered_results = await asyncio.gather(*tasks)
+            logger.info("Received responses from ContentGenerationAgent skill invocations.")
+
+            # Process results into a dictionary
             results = {}
-            async with httpx.AsyncClient() as client:
-                tasks = []
-                for key, prompt in content_requests.items():
-                    # Pass original invocation ID for traceability if available
-                    helper_context = {"original_invocation_id": context.invocation_id}
-                    tasks.append(self.generate_content(client, prompt, helper_context))
-
-                logger.info(f"Dispatching {len(tasks)} content generation tasks concurrently.")
-                generated_contents = await asyncio.gather(*tasks)
-                logger.info("Received responses from ContentGenerationAgent tasks.")
-
-                # Map results back to keys
-                results = dict(zip(content_requests.keys(), generated_contents))
+            for key, content in gathered_results:
+                results[key] = content # content will be None if the specific invocation failed
 
             # Check for failures
             failed_tasks = [key for key, content in results.items() if content is None]

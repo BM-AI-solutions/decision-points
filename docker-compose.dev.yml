@@ -5,13 +5,38 @@ services:
       target: dev
     env_file:
       - ./.env
+    environment:
+      # Pass specific ADK/Kafka variables for clarity and potential ADK library needs
+      - ADK_AGENT_ID=${ADK_AGENT_ID} # Ensure this is defined in your .env file
+      - KAFKA_BOOTSTRAP_SERVERS=${KAFKA_BOOTSTRAP_SERVERS}
+      # Add Database URL using the correct service name 'db'
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB} # Corrected host and protocol
     working_dir: /app
     ports:
-      - "5000:5000"
+      - "8000:8000" # Map host 8000 to container 8000
     volumes:
       - ./backend:/app
     restart: unless-stopped
-    command: uvicorn backend.app.main:app --host 0.0.0.0 --port 5000 --reload
+    # Update command to use port 8000
+    command: uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
+    depends_on:
+      - db # Correct dependency name to 'db'
+    networks:
+      - appnet
+
+  db: # Correct service name to 'db'
+    image: postgres:15
+    env_file:
+      - ./.env # Load common env vars
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432" # Expose postgres port for potential direct access/debugging
+    restart: unless-stopped
     networks:
       - appnet
 
@@ -32,9 +57,31 @@ services:
     networks:
       - appnet
 
+  agent-web-search:
+    build:
+      context: ./backend
+      dockerfile: agents/web_search.Dockerfile
+    env_file:
+      - ./.env
+    environment:
+      # Pass necessary API keys and agent ID
+      - BRAVE_API_KEY=${BRAVE_API_KEY}
+      - ADK_AGENT_ID=web-search-agent # Define a specific ID for this agent
+      # Pass other env vars if needed by config.py or ADK
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    ports:
+      - "8081:8080" # Expose agent port (e.g., 8081 on host to 8080 in container)
+    restart: unless-stopped
+    networks:
+      - appnet
+
+
 networks:
   appnet:
     driver: bridge
+
+volumes:
+  postgres_data: # Define the named volume
 
 # =========================
 # .env Usage Instructions

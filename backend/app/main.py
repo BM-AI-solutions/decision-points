@@ -1,5 +1,7 @@
 import logging
 from contextlib import asynccontextmanager
+import socketio
+
 from fastapi import FastAPI
 from fastapi import Request, HTTPException, status
 from fastapi.responses import JSONResponse
@@ -21,6 +23,11 @@ setup_logging()
 # Get logger after configuration is applied
 logger = logging.getLogger("app") # Use 'app' logger defined in config
 # Configure logging basic setup (adjust as needed)
+
+# Initialize Socket.IO
+sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins='*') # Adjust cors_allowed_origins for production
+sio_app = socketio.ASGIApp(sio, other_asgi_app=app) # Wrap FastAPI app
+
 
 
 @asynccontextmanager

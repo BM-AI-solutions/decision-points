@@ -1,4 +1,3 @@
-import os
 import json
 import httpx
 import asyncio
@@ -20,24 +19,13 @@ from firecrawl import FirecrawlApp, AsyncFirecrawlApp
 import google.generativeai as genai # Added Gemini import
 from google.api_core import exceptions as google_exceptions # Added Google API exceptions
 
+from backend.app.config import settings # Import centralized settings
+
 # Setup basic logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 logger.info("Attempting to load API keys from environment variables...")
-
-# --- Configuration ---
-# Load API keys from environment variables
-# GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") # Removed Gemini Key
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY") # Added Google API Key
-FIRECRAWL_API_KEY = os.getenv("FIRECRAWL_API_KEY")
-EXA_API_KEY = os.getenv("EXA_API_KEY")
-PERPLEXITY_API_KEY = os.getenv("PERPLEXITY_API_KEY")
-SEARCH_PROVIDER = os.getenv("COMPETITOR_SEARCH_PROVIDER", "exa").lower()
-WEB_SEARCH_AGENT_URL = os.getenv("WEB_SEARCH_AGENT_URL")
-BRAVE_API_KEY = os.getenv("BRAVE_API_KEY")
-GEMINI_MODEL_NAME = os.getenv("GEMINI_MODEL_NAME", "gemini-2.5-flash-preview-04-17") # Configurable Gemini model
-CONTENT_GENERATION_AGENT_URL = os.getenv("CONTENT_GENERATION_AGENT_URL")
 
 # --- Pydantic Models ---
 # ... (Models remain the same) ...
@@ -100,46 +88,44 @@ class MarketResearchAgent(Agent):
             model_name: The name of the Gemini model to use for analysis (e.g., 'gemini-2.5-flash-preview-04-17').
                         Defaults to a suitable model if None.
         """
-        # Load API Keys (excluding Gemini model name)
-        # self.gemini_api_key = os.getenv("GEMINI_API_KEY") # Removed
-        self.google_api_key = os.getenv("GOOGLE_API_KEY")
-        self.firecrawl_api_key = os.getenv("FIRECRAWL_API_KEY")
-        self.exa_api_key = os.getenv("EXA_API_KEY")
-        self.perplexity_api_key = os.getenv("PERPLEXITY_API_KEY")
-        self.search_provider = os.getenv("COMPETITOR_SEARCH_PROVIDER", "exa").lower()
-        self.web_search_agent_url = os.getenv("WEB_SEARCH_AGENT_URL")
-        self.brave_api_key = os.getenv("BRAVE_API_KEY")
-        # self.gemini_model_name = os.getenv("GEMINI_MODEL_NAME", "gemini-2.5-flash-preview-04-17") # Removed direct env var read
-        self.content_generation_agent_url = os.getenv("CONTENT_GENERATION_AGENT_URL")
+        # Load configuration from the central settings object
+        self.google_api_key = settings.GOOGLE_API_KEY
+        self.firecrawl_api_key = settings.FIRECRAWL_API_KEY
+        self.exa_api_key = settings.EXA_API_KEY
+        self.perplexity_api_key = settings.PERPLEXITY_API_KEY
+        self.search_provider = settings.COMPETITOR_SEARCH_PROVIDER.lower() # Use settings
+        self.web_search_agent_id = settings.WEB_SEARCH_AGENT_ID # Use settings
+        self.brave_api_key = settings.BRAVE_API_KEY # Use settings
+        self.content_generation_agent_id = settings.CONTENT_GENERATION_AGENT_ID # Use settings
 
-        # Determine the model name to use
-        effective_model_name = model_name if model_name else 'gemini-2.5-flash-preview-04-17' # Default for specialized agent
+        # Determine the model name to use (use argument or fallback to settings)
+        effective_model_name = model_name if model_name else settings.GEMINI_MODEL_NAME
         self.model_name = effective_model_name # Store the actual model name used
 
         # Initialize shared httpx client
         self.http_client = httpx.AsyncClient(timeout=30.0)
 
-        # --- Validation & Client Initialization ---
+        # --- Validation & Client Initialization (using values from settings) ---
         if not self.firecrawl_api_key:
-            raise ValueError("FIRECRAWL_API_KEY environment variable not set.")
+            raise ValueError("FIRECRAWL_API_KEY not configured in settings.")
         self.firecrawl_client = AsyncFirecrawlApp(api_key=self.firecrawl_api_key)
 
         if self.search_provider == "exa":
             if not self.exa_api_key:
-                raise ValueError("EXA_API_KEY environment variable not set for Exa search provider.")
+                raise ValueError("EXA_API_KEY not configured in settings for Exa search provider.")
             self.exa_client = Exa(api_key=self.exa_api_key)
-            logger.info("Using Exa for competitor search.")
+            logger.info("Using Exa for competitor search (configured via settings).")
         elif self.search_provider == "perplexity":
             if not self.perplexity_api_key:
-                raise ValueError("PERPLEXITY_API_KEY environment variable not set for Perplexity search provider.")
-            logger.info("Using Perplexity for competitor search.")
+                raise ValueError("PERPLEXITY_API_KEY not configured in settings for Perplexity search provider.")
+            logger.info("Using Perplexity for competitor search (configured via settings).")
         else:
-            raise ValueError(f"Unsupported SEARCH_PROVIDER: {self.search_provider}. Use 'exa' or 'perplexity'.")
+            raise ValueError(f"Unsupported COMPETITOR_SEARCH_PROVIDER in settings: {self.search_provider}. Use 'exa' or 'perplexity'.")
 
         # --- Gemini Initialization ---
         if not self.google_api_key:
             # Log warning, analysis step will fail if key is missing
-            logger.warning("GOOGLE_API_KEY not set. Gemini model initialization skipped.")
+            logger.warning("GOOGLE_API_KEY not configured in settings. Gemini model initialization skipped.")
             self.gemini_model = None # Explicitly set to None
         else:
             try:
@@ -163,17 +149,17 @@ class MarketResearchAgent(Agent):
                 self.gemini_model = None # Ensure model is None on error
         # --- End Gemini Initialization ---
 
-        # --- WebSearchAgent A2A Validation ---
-        if not self.web_search_agent_url:
-            raise ValueError("WEB_SEARCH_AGENT_URL environment variable not set. Cannot call WebSearchAgent.")
+        # --- WebSearchAgent A2A Validation (using settings) ---
+        if not self.web_search_agent_id:
+            raise ValueError("WEB_SEARCH_AGENT_ID not configured in settings. Cannot call WebSearchAgent.")
         if not self.brave_api_key:
-            logger.warning("BRAVE_API_KEY environment variable not set. WebSearchAgent might require it.")
-        logger.info(f"WebSearchAgent A2A endpoint configured: {self.web_search_agent_url}")
+            logger.warning("BRAVE_API_KEY not configured in settings. WebSearchAgent might require it.")
+        logger.info(f"WebSearchAgent ID configured via settings: {self.web_search_agent_id}")
         # --- End Additions ---
-        # --- ContentGenerationAgent A2A Validation ---
-        if not self.content_generation_agent_url:
-            raise ValueError("CONTENT_GENERATION_AGENT_URL environment variable not set. Cannot call ContentGenerationAgent.")
-        logger.info(f"ContentGenerationAgent A2A endpoint configured: {self.content_generation_agent_url}")
+        # --- ContentGenerationAgent A2A Validation (using settings) ---
+        if not self.content_generation_agent_id:
+            raise ValueError("CONTENT_GENERATION_AGENT_ID not configured in settings. Cannot call ContentGenerationAgent.")
+        logger.info(f"ContentGenerationAgent ID configured via settings: {self.content_generation_agent_id}")
 
 
     # ... (_find_competitor_urls_exa, _find_competitor_urls_perplexity, _extract_competitor_info, _call_web_search_agent remain the same) ...
@@ -241,9 +227,9 @@ class MarketResearchAgent(Agent):
         }
 
         try:
-            # Use native async httpx client
-            async with self.http_client as client: # Use the initialized client
-                 response = await client.post(perplexity_url, json=payload, headers=headers) # Removed timeout here, set on client init
+            # Use httpx for external Perplexity API call
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                 response = await client.post(perplexity_url, json=payload, headers=headers)
 
             response.raise_for_status() # Raise HTTPError for bad responses (4xx or 5xx)
             response_data = response.json()
@@ -324,64 +310,48 @@ class MarketResearchAgent(Agent):
             return None # Return None on error, handled in run_async
 
     # --- New Method for WebSearchAgent A2A Call ---
-    async def _call_web_search_agent(self, query: str, parent_context: InvocationContext) -> Optional[Dict[str, Any]]:
+    async def _call_web_search_agent(self, context: InvocationContext, query: str) -> Optional[Dict[str, Any]]:
         """Calls the WebSearchAgent via A2A to perform a general web search."""
-        if not self.web_search_agent_url or not self.brave_api_key:
-            logger.error("WebSearchAgent URL or Brave API Key not configured for A2A call.")
+        if not self.web_search_agent_id:
+            logger.error("WebSearchAgent ID not configured for A2A call.")
             return None
 
-        a2a_endpoint = f"{self.web_search_agent_url.rstrip('/')}/a2a/web_search/invoke"
-        logger.info(f"Calling WebSearchAgent A2A endpoint: {a2a_endpoint} with query: '{query}'")
+        logger.info(f"Invoking WebSearchAgent skill 'web_search' on agent '{self.web_search_agent_id}' with query: '{query}' via ADK...")
 
-        # Prepare the InvocationContext payload for the WebSearchAgent
-        web_search_input = {
-            "query": query,
-            "config": { # Pass necessary config within the input payload
-                "brave_api_key": self.brave_api_key
-            }
-        }
-
-        # Construct a minimal InvocationContext data structure for the request body
-        a2a_payload = {
-            "agent_id": "web_search_agent", # Target agent ID
-            "invocation_id": f"a2a-{parent_context.invocation_id}-{os.urandom(4).hex()}", # Generate unique ID for this call
-            "parent_invocation_id": parent_context.invocation_id, # Link back
-            "input": web_search_input,
-            "credentials": {},
-            "state": {}
-        }
+        # Prepare the input Event for the WebSearchAgent skill
+        # Pass Brave key via metadata if WebSearchAgent expects it there
+        input_payload = {"query": query}
+        input_metadata = {"brave_api_key": self.brave_api_key} if self.brave_api_key else None
+        input_event = Event(payload=input_payload, metadata=input_metadata)
 
         try:
-            async with self.http_client as client: # Reuse the client
-                 response = await client.post(
-                     a2a_endpoint,
-                     json=a2a_payload,
-                     headers={"Content-Type": "application/json", "Accept": "application/json"}
-                 )
-            response.raise_for_status() # Raise HTTPError for bad responses (4xx or 5xx)
+            # Use context.invoke_skill for ADK A2A
+            result_event = await context.invoke_skill(
+                target_agent_id=self.web_search_agent_id,
+                skill_name="web_search", # Assuming skill name
+                input=input_event,
+                timeout_seconds=30.0 # Keep timeout
+            )
 
-            # Parse the Event response from WebSearchAgent
-            event_data = response.json()
-            event = Event(**event_data) # Validate response against Event model
+            if result_event.type == "error":
+                error_msg = result_event.payload.get('message', 'Unknown error from WebSearchAgent skill')
+                logger.error(f"WebSearchAgent skill invocation failed: {error_msg}")
+                return None
+            elif result_event.payload:
+                logger.info(f"WebSearchAgent skill invocation successful.")
+                return result_event.payload # Return the payload containing results
+            else:
+                logger.warning("WebSearchAgent skill invocation succeeded but returned no payload.")
+                return {}
 
-            if event.severity >= EventSeverity.ERROR:
-                 logger.error(f"WebSearchAgent A2A call failed. Severity: {event.severity}. Message: {event.message}. Payload: {event.payload}")
-                 return None
-
-            logger.info(f"WebSearchAgent A2A call successful. Message: {event.message}")
-            return event.payload if event.payload else {} # Return payload or empty dict
-
-        except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP error calling WebSearchAgent A2A: {e.response.status_code} - {e.response.text}", exc_info=True)
+        except TimeoutError:
+            logger.error(f"ADK skill invocation for WebSearchAgent timed out.", exc_info=True)
             return None
-        except httpx.RequestError as e:
-            logger.error(f"Request error calling WebSearchAgent A2A: {str(e)}", exc_info=True)
+        except ConnectionError as conn_err:
+            logger.error(f"ADK skill invocation for WebSearchAgent failed (Connection Error): {conn_err}", exc_info=True)
             return None
-        except (ValidationError, json.JSONDecodeError, TypeError) as e:
-             logger.error(f"Error parsing/validating WebSearchAgent A2A response: {e}", exc_info=True)
-             return None
         except Exception as e:
-            logger.error(f"Unexpected error during WebSearchAgent A2A call: {str(e)}", exc_info=True)
+            logger.error(f"Unexpected error during WebSearchAgent skill invocation: {str(e)}", exc_info=True)
             return None
     # --- End New Method ---
 
@@ -451,73 +421,56 @@ class MarketResearchAgent(Agent):
         Focus on synthesizing insights from *both* competitor data and web search results into actionable recommendations within the specified JSON structure.
         """
 
-        # Prepare the InvocationContext payload for the ContentGenerationAgent
-        content_gen_input = {
+        # Prepare the input Event for the ContentGenerationAgent skill
+        input_payload = {
             "prompt": prompt,
             "output_format": "json" # Assuming ContentGenAgent supports this
-            # Add any other necessary config/parameters for ContentGenerationAgent here
         }
-
-        a2a_payload = {
-            "agent_id": "content_generation_agent", # Target agent ID
-            "invocation_id": f"a2a-{parent_context.invocation_id}-{os.urandom(4).hex()}",
-            "parent_invocation_id": parent_context.invocation_id,
-            "input": content_gen_input,
-            "credentials": {},
-            "state": {}
-        }
+        input_event = Event(payload=input_payload)
 
         try:
-            async with self.http_client as client:
-                 response = await client.post(
-                     a2a_endpoint,
-                     json=a2a_payload,
-                     headers={"Content-Type": "application/json", "Accept": "application/json"}
-                 )
-            response.raise_for_status()
+            # Use context.invoke_skill for ADK A2A
+            result_event = await context.invoke_skill(
+                target_agent_id=self.content_generation_agent_id,
+                skill_name="generate", # Assuming skill name
+                input=input_event,
+                timeout_seconds=60.0 # Keep timeout
+            )
 
-            event_data = response.json()
-            event = Event(**event_data)
-
-            if event.severity >= EventSeverity.ERROR:
-                 logger.error(f"ContentGenerationAgent A2A call failed. Severity: {event.severity}. Message: {event.message}. Payload: {event.payload}")
-                 return None
-
-            logger.info(f"ContentGenerationAgent A2A call successful. Message: {event.message}")
-            # Assuming the structured JSON is in the payload under a key like 'generated_content' or directly as the payload
-            # Adjust this based on ContentGenerationAgent's actual response structure
-            if isinstance(event.payload, dict) and 'generated_content' in event.payload:
-                # Attempt to parse if it's a string containing JSON
-                if isinstance(event.payload['generated_content'], str):
+            if result_event.type == "error":
+                error_msg = result_event.payload.get('message', 'Unknown error from ContentGenerationAgent skill')
+                logger.error(f"ContentGenerationAgent skill invocation failed: {error_msg}")
+                return None
+            elif result_event.payload and result_event.payload.get("status") == "success":
+                logger.info(f"ContentGenerationAgent skill invocation successful.")
+                # Assuming the structured JSON is in the payload under 'generated_content'
+                generated_content = result_event.payload.get('generated_content')
+                if isinstance(generated_content, str):
                     try:
-                        return json.loads(event.payload['generated_content'])
+                        return json.loads(generated_content)
                     except json.JSONDecodeError as json_err:
-                        logger.error(f"Failed to parse JSON from ContentGenerationAgent payload: {json_err}. Content: {event.payload['generated_content']}")
+                        logger.error(f"Failed to parse JSON from ContentGenerationAgent payload: {json_err}. Content: {generated_content}")
                         return None
-                elif isinstance(event.payload['generated_content'], dict):
-                     return event.payload['generated_content'] # Already a dict
+                elif isinstance(generated_content, dict):
+                    return generated_content # Already a dict
                 else:
-                    logger.error(f"Unexpected type for 'generated_content' in ContentGenerationAgent payload: {type(event.payload['generated_content'])}")
+                    logger.error(f"Unexpected type for 'generated_content' in ContentGenerationAgent payload: {type(generated_content)}")
                     return None
-            elif isinstance(event.payload, dict):
-                 # Maybe the payload *is* the structured content
-                 logger.warning("ContentGenerationAgent payload does not have 'generated_content' key, assuming payload is the content.")
-                 return event.payload
             else:
-                logger.error(f"Unexpected payload structure from ContentGenerationAgent: {event.payload}")
+                # Handle cases where the skill call succeeded but indicated an internal failure or unexpected payload
+                error_msg = result_event.payload.get("message", "Unknown or unsuccessful response from ContentGenerationAgent skill")
+                logger.error(f"ContentGenerationAgent skill call reported failure or unexpected payload: {error_msg}")
+                logger.debug(f"ContentGenerationAgent Payload: {result_event.payload}")
                 return None
 
-        except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP error calling ContentGenerationAgent A2A: {e.response.status_code} - {e.response.text}", exc_info=True)
+        except TimeoutError:
+            logger.error(f"ADK skill invocation for ContentGenerationAgent timed out.", exc_info=True)
             return None
-        except httpx.RequestError as e:
-            logger.error(f"Request error calling ContentGenerationAgent A2A: {str(e)}", exc_info=True)
+        except ConnectionError as conn_err:
+            logger.error(f"ADK skill invocation for ContentGenerationAgent failed (Connection Error): {conn_err}", exc_info=True)
             return None
-        except (ValidationError, json.JSONDecodeError, TypeError) as e:
-             logger.error(f"Error parsing/validating ContentGenerationAgent A2A response: {e}", exc_info=True)
-             return None
         except Exception as e:
-            logger.error(f"Unexpected error during ContentGenerationAgent A2A call: {str(e)}", exc_info=True)
+            logger.error(f"Unexpected error during ContentGenerationAgent skill invocation: {str(e)}", exc_info=True)
             return None
 
 
