@@ -46,7 +46,7 @@ services:
       target: build
     working_dir: /app
     ports:
-      - "8000:5173"
+      - "3000:5173" # Changed host port to 3000 to avoid conflict
     volumes:
       - ./frontend:/app
       - /app/node_modules

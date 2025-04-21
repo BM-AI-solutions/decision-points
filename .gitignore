@@ -81,3 +81,4 @@ backend/**/__pycache__/
 .roo/
 .tasks
 .workflows/
+.roo/
