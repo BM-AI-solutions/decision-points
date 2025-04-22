@@ -4,7 +4,7 @@ from typing import Any, Union
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 
-from backend.app.config import settings
+from app.config import settings
 
 # Initialize the password context
 # Using bcrypt as the default hashing algorithm

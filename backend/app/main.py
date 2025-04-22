@@ -5,12 +5,12 @@ import socketio
 from fastapi import FastAPI
 from fastapi import Request, HTTPException, status
 from fastapi.responses import JSONResponse
-from backend.app.core.logging_config import setup_logging
-from backend.app.config import settings
-from backend.app.api.v1.api import api_router
-from backend.app.core.db import Base, engine
-from backend.app.models.user import User  # Import model to ensure it's registered with Base
-from backend.app.core.messaging import (
+from app.core.logging_config import setup_logging
+from app.config import settings
+from app.api.v1.api import api_router
+from app.core.db import Base, engine
+from app.models.user import User  # Import model to ensure it's registered with Base
+from app.core.messaging import (
     start_kafka_producer,
     stop_kafka_producer,
     start_kafka_consumer,

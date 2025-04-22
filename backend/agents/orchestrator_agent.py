@@ -10,7 +10,7 @@ from google.adk.tools import ToolContext
 from google.adk.events import Event, EventActions, Action, Content, Part
 from google.adk.sessions import InvocationContext
 from utils.logger import setup_logger
-from backend.app.config import settings # Import centralized settings
+from app.config import settings # Import centralized settings
 
 logger = setup_logger('agents.orchestrator')
 

@@ -8,8 +8,8 @@ from pydantic import BaseModel
 from google.adk.events import Event, Action, Content, Part
 from google.adk.sessions import InvocationContext
 
-from backend.app.main import sio # Import the initialized SocketIO server
-from backend.app.config import settings
+from app.main import sio # Import the initialized SocketIO server
+from app.config import settings
 from backend.agents.orchestrator_agent import OrchestratorAgent
 
 logger = logging.getLogger(__name__)

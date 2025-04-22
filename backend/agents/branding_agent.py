@@ -11,7 +11,7 @@ from google.adk.agents import LlmAgent
 from google.adk.runtime import InvocationContext
 from google.adk.runtime.events import Event
 
-from backend.app.config import settings # Import centralized settings
+from app.config import settings # Import centralized settings
 
 # Assuming ImprovedProductSpec structure is available or defined elsewhere
 # Define input based on what BrandingAgent needs from ImprovedProductSpec

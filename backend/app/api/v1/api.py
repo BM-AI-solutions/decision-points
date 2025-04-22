@@ -1,10 +1,10 @@
 from fastapi import APIRouter
 
-from backend.app.api.v1.endpoints import health
-from backend.app.api.v1.endpoints import messages
-from backend.app.api.v1.endpoints import users
-from backend.app.api.v1.endpoints import login # Import the new login endpoint
-from backend.app.api.v1.endpoints import agents # Import the new agents endpoint
+from .endpoints import health
+from .endpoints import messages
+from .endpoints import users
+from .endpoints import login # Import the new login endpoint
+from .endpoints import agents # Import the new agents endpoint
 
 
 api_router = APIRouter()

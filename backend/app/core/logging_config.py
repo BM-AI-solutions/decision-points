@@ -1,6 +1,6 @@
 import logging
 import sys
-from backend.app.config import settings
+from app.config import settings
 
 # Determine log level from settings
 log_level_str = settings.LOG_LEVEL.upper()

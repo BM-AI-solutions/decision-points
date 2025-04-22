@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from aiokafka import AIOKafkaProducer, AIOKafkaConsumer
-from backend.app.config import settings
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 

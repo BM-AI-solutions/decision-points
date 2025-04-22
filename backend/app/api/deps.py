@@ -1,7 +1,7 @@
 from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.db import SessionLocal
+from .core.db import SessionLocal
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """
@@ -22,7 +22,7 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             # Explicit close is not strictly needed but doesn't hurt.
             await session.close()
 from aiokafka import AIOKafkaProducer
-from backend.app.core.messaging import get_kafka_producer as get_kafka_producer_instance
+from .core.messaging import get_kafka_producer as get_kafka_producer_instance
 
 async def get_kafka_producer() -> AIOKafkaProducer:
     """
@@ -37,9 +37,9 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError # Although verify_access_token handles it, good practice to have it if refining error handling
 
-from backend.app import crud, models, schemas # Import top-level packages
-from backend.app.core import security
-from backend.app.config import settings
+from app import crud, models, schemas # Import top-level packages
+from app.core import security
+from app.config import settings
 
 # Define the OAuth2 scheme
 # tokenUrl should point to the login endpoint we created

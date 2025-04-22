@@ -8,7 +8,7 @@ from enum import Enum
 from typing import Dict, Any, Optional, Union
 import logging # Import logging
 
-from backend.app.config import settings # Import centralized settings
+from app.config import settings # Import centralized settings
 
 # Firestore client
 from google.cloud import firestore

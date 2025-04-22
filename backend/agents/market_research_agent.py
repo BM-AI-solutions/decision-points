@@ -19,7 +19,7 @@ from firecrawl import FirecrawlApp, AsyncFirecrawlApp
 import google.generativeai as genai # Added Gemini import
 from google.api_core import exceptions as google_exceptions # Added Google API exceptions
 
-from backend.app.config import settings # Import centralized settings
+from app.config import settings # Import centralized settings
 
 # Setup basic logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')

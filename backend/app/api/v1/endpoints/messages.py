@@ -3,8 +3,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from aiokafka import AIOKafkaProducer
 
-from backend.app.api.deps import get_kafka_producer
-from backend.app.config import settings
+from app.api.deps import get_kafka_producer
+from app.config import settings
 
 router = APIRouter()
 logger = logging.getLogger(__name__)

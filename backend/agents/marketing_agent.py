@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from google.adk.agents import Agent
 from google.adk.runtime import InvocationContext, Event, Status
 
-from backend.app.config import settings # Import centralized settings
+from app.config import settings # Import centralized settings
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

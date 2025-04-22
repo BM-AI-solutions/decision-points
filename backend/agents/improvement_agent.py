@@ -13,7 +13,7 @@ from google.adk.agents import Agent
 from google.adk.runtime import InvocationContext
 from google.adk.runtime.events import Event, ErrorEvent
 
-from backend.app.config import settings # Import centralized settings
+from app.config import settings # Import centralized settings
 
 # TODO: Potentially align this more closely with the actual MarketOpportunityReport structure
 # if it becomes significantly different. For now, assume the necessary fields are passed.
