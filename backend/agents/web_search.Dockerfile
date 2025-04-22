@@ -29,6 +29,6 @@ ENV PYTHONPATH=/app
 # Expose the port the agent will listen on (defaulting to 8080 for ADK serve)
 EXPOSE 8080
 
-# Command to run the agent using adk serve
-# Format: adk serve <module_path>:<ClassName> --host <host> --port <port>
-CMD ["adk", "serve", "backend.agents.web_search_agent:WebSearchAgent", "--host", "0.0.0.0", "--port", "8080"]
+# Command to run the agent using adk api_server
+# Corrected: Removed invalid --host argument
+CMD ["adk", "api_server", "backend.agents.web_search_agent:WebSearchAgent", "--port", "8080"]
