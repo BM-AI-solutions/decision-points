@@ -140,12 +140,12 @@ The backend provides several API endpoints, including:
 
 ## Development Status
 
-*   **Stage:** Active Development / Functional Prototype
-*   **Core Features:** Dashboard pages (Automation, Analytics, etc.), Orchestrator Panel (Gemini/WebSocket), Workflow backend.
-*   **Data:** Analytics, Insights, Customers, Revenue pages currently use placeholder data from their respective API endpoints.
+*   **Stage:** polishing the docker local testing version
+*   **Core Features:** Dashboard pages to access and observe the agent system 
+*   **Data:** Analytics
 *   **Setup:** Docker Compose is the standard local development environment.
-*   **Known Issues:** (List any known issues here, e.g., "Placeholder data needs replacing with real logic.")
-*   **Roadmap:** (Outline future plans, e.g., "Implement real data fetching for dashboard pages", "Expand workflow capabilities.")
+*   **Known Issues:** decision-points-agent-web-search-1 container is constantly restarting
+*   **Roadmap:** implement reddit market research agent
 
 ## Contribution Guidelines
 
