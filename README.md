@@ -1,91 +1,156 @@
-# 👑 Roo Commander: An Advanced Multi-Agent Framework for Roo Code
+# Decision Points AI System
+![Decision Points AI Logo](https://i.imgur.com/5AVm5uo.jpeg)
 
-Roo Commander transforms your [Roo Code](https://github.com/roocode/roo) experience by implementing a sophisticated framework for managing software development projects using a structured, **multi-agent approach**. Imagine having a virtual, specialized software team within your VS Code workspace, orchestrated by the 👑 Roo Commander, to handle tasks with specific expertise and maintain a clear project history.
+## Summary/Overview
 
----
-
-**🐾 Join the Community:** [Roo Commander Discord](https://discord.gg/f77YYF3S)
-
----
-
-## What is Roo Commander?
-
-Roo Commander isn't just a collection of modes; it's an **opinionated workflow and project management system** built on top of Roo Code. It addresses the challenges of complex projects and context limitations in LLMs by:
-
-*   **Specialized Roles:** Assigning tasks to AI agents (modes) with specific expertise (e.g., React, API Design, Git, AWS, Testing).
-*   **Structured Communication:** Using a defined task delegation and reporting system.
-*   **Persistent Context:** Leveraging a structured project journal (`.tasks/`, `.decisions/`, etc.) and standardized document formats (TOML+Markdown) to maintain state and history effectively.
-*   **Standardized Processes:** Defining reusable workflows and procedures for common development activities.
-
-The goal is to bring structure, consistency, traceability, and the power of specialized AI skills to your development process.
-
-## Why Use Roo Commander?
-
-*   **🧠 Specialized Expertise:** Delegate tasks to the right AI expert (e.g., let the `framework-react` mode handle React code, not a generalist).
-*   **🏗️ Structured Workflow:** Breaks down complex goals into manageable, trackable tasks using a defined system (MDTM).
-*   **💾 Enhanced Context Management:** Mitigates LLM context window limitations through structured logging and dedicated context retrieval agents.
-*   **🔍 Traceability & Auditability:** Creates a clear history of tasks, decisions (ADRs), and actions within your project repository.
-*   **⚙️ Consistency:** Promotes consistent project structure, documentation formats, and development processes.
-*   **🚀 Potential for Automation:** The structured nature enables more reliable automation of complex development sequences.
-
-## Core Concepts
-
-Understanding these concepts is key to using Roo Commander effectively:
-
-1.  **Multi-Agent System (The "Team"):**
-    *   **Hierarchy:** Modes are organized loosely into roles: Commander (Coordination), Managers (Planning), Leads (Domain Oversight), Agents (Support), and Specialists (Execution).
-    *   **Delegation:** Commander analyzes user goals and delegates tasks to the most appropriate Manager, Lead, or Specialist mode using the `new_task` tool.
-    *   **(See `.modes/roo-commander/kb/kb-available-modes-summary.md` for a list of roles in your current build).**
-
-2.  **Structured Project Artifacts (TOML+Markdown):**
-    *   **Standard Folders:** Uses hidden folders like `.tasks`, `.decisions`, `.docs`, `.context`, `.workflows`, `.processes` for specific artifact types. (See `.roo/rules/02-workspace-default-folders.md`).
-    *   **TOML+MD Format:** Combines machine-readable TOML metadata (for status, IDs, tags, etc.) with human-readable Markdown content in files like tasks and ADRs. Ensures consistency and facilitates automation. (See `.roo/rules/01-standard-toml-md-format.md`).
-
-3.  **Knowledge Bases (KB) & Rules:**
-    *   **Rules (`.roo/rules-/`):** Define core operational logic, standard procedures, and triggers for each mode. Loaded into the AI's context.
-    *   **Knowledge Base (`.modes/<slug>/kb/`):** Contains detailed reference information, complex procedures, templates, and examples specific to a mode. Looked up *on demand* based on rules. This balances context size with detailed knowledge access.
+Decision Points is an AI-powered system designed to assist with various business automation and analysis tasks. It features a web-based dashboard with functional pages for Automation (Workflow creation/listing), Analytics, Insights, Customers, and Revenue (currently using placeholder data for the latter four). A key feature is the Orchestrator Panel, allowing direct interaction with a Google Gemini-powered agent via WebSockets. The system is built with a Flask backend, React frontend, and utilizes Docker for a streamlined local development setup.
 
 ## Key Features
 
-*   **👑 Central Coordinator:** Roo Commander orchestrates workflows and delegates tasks.
-*   **🚦 Project Onboarding:** Streamlined process for initializing new projects or analyzing existing ones.
-*   **📋 Task Management (MDTM):** Structured task tracking using TOML+Markdown files in `.tasks/`.
-*   **📖 Context Management:** Dedicated agents (`agent-context-resolver`, `agent-context-condenser`) help manage and summarize project information.
-*   **🛠️ Specialist Modes:** A wide range of modes covering various frameworks (React, Vue, Angular, Next.js, Laravel, Django, FastAPI, etc.), cloud platforms (AWS, Azure, GCP), databases (SQL, NoSQL), design tools (Tailwind, MUI, Bootstrap), testing, DevOps, security, and utilities.
-*   **📝 Decision Logging (ADRs):** Formal process for recording significant architectural decisions in `.decisions/`.
-*   **🧩 Standardized Workflows & Processes:** Reusable definitions in `.workflows/` and `.processes/`.
+*   **Functional Dashboard Pages:**
+    *   **Automation:** Create and list automated workflows.
+    *   **Analytics, Insights, Customers, Revenue:** Dedicated pages (currently displaying placeholder data fetched from backend APIs).
+*   **Orchestrator Panel:** Interact directly with a Gemini-powered AI agent via a WebSocket connection for real-time task execution and feedback.
+*   **Workflow Management:** Backend support for defining and managing automated workflows.
+*   **API Endpoints:** Provides backend APIs for dashboard data and orchestrator tasks.
+*   **Dockerized Local Setup:** Easy-to-use local development environment using Docker Compose.
+*   **Autonomous Income Workflow:** An integrated workflow utilizing specialized agents (Market Research, Improvement, Branding, Deployment) orchestrated by a `WorkflowManagerAgent` to identify, refine, brand, and deploy simple digital products or services.
 
-## Getting Started (Installation)
+## Technology Stack
 
-**Prerequisite:** You need the [Roo Code](https://marketplace.visualstudio.com/items?itemName=RooCode.roo-code) VS Code extension installed.
+*   **Backend:**
+    *   Language: Python 3.0
+    *   Framework: Flask, Flask-SocketIO (for WebSocket communication)
+    *   AI: Google Generative AI (Gemini)
+*   **Frontend:**
+    *   Library: React
+    *   Build Tool: Vite
+    *   Styling: CSS (potentially Tailwind CSS if used)
+*   **Containerization:** Docker, Docker Compose
+*   **Communication:** REST APIs, WebSockets
 
-The recommended installation method uses the pre-built release:
+## Architecture Overview
 
-1.  **Download:** Go to the [GitHub Project Builds] [[link-to-latest-releases](https://github.com/jezweb/roo-commander/tree/main/.builds)] directory and download the latest `roo-commander-vX.Y.Z-Codename.zip` file. *(Currently: `roo-commander-v7.0.4-Wallaby.zip`)*
-2.  **Extract:** Unzip the contents directly into the **root directory** of your VS Code project workspace. This is the top-level folder containing your code, `.git` directory (if applicable), etc.
-3.  **Reload VS Code:** Reload the VS Code window (`Ctrl+Shift+P` or `Cmd+Shift+P` -> "Developer: Reload Window") to ensure Roo Code recognizes the new mode configurations.
+The system uses a Client-Server architecture. A React frontend communicates with a Flask backend API via REST calls for standard data retrieval and WebSockets for real-time interaction with the Orchestrator agent. The backend leverages Google Gemini for its AI capabilities. Docker Compose is used to manage the local development environment, running the frontend and backend services in separate containers.
 
-This will add/overwrite the necessary hidden configuration folders (`.modes`, `.roo`, `.templates`, etc.) and files (`.roomodes`).
+## Autonomous Income Generation Workflow
 
-## Basic Usage
+This system includes an autonomous workflow designed to generate income by identifying a market need, creating/improving a simple digital product or service, branding it, and deploying it. This workflow is orchestrated by the `WorkflowManagerAgent` and involves the following specialized agents:
 
-1.  **Activate Commander:** Select the "👑 Roo Commander" mode in the Roo Code chat interface.
-2.  **State Your Goal:** Tell Commander what you want to achieve (e.g., "Start planning a new Python API using FastAPI", "Implement the login UI based on the design in .docs/designs/login.md", "Fix the bug described in task BUG-123").
-3.  **Interact:** Follow Commander's lead. It will likely:
-    *   Ask clarifying questions.
-    *   Propose a plan or workflow.
-    *   Delegate tasks to specialist modes (using `<new_task>`).
-    *   Ask for your approval or feedback on steps or results.
-4.  **Review:** Check the files created/modified by the modes, especially in the `.tasks/` directory, to understand the progress and details.
+1.  **Market Research Agent:** Scans the web, analyzes trends, and identifies potential niches or product ideas with low competition and high demand.
+2.  **Improvement Agent:** Takes the initial idea or existing simple product and refines it, potentially adding features, improving code quality, or enhancing its value proposition based on research.
+3.  **Branding Agent:** Develops a simple brand identity, including name suggestions, logos (potentially placeholder/simple generation), and marketing copy for the product.
+4.  **Deployment Agent:** Takes the finalized product and branding assets and deploys them to a suitable platform (e.g., Vercel, Netlify, Cloudflare Pages, simple web hosting).
 
-## Contributing
+The `WorkflowManagerAgent` coordinates the execution of these agents, passing context and results between steps. The user can trigger this workflow via specific prompts to the Orchestrator Panel (e.g., "start income workflow").
 
-*(Optional: Add guidelines if you welcome contributions)*
+**Note on Analytics:** The `CodeGenerationAgent` (used implicitly by the workflow) now includes a basic Google Analytics (GA4) setup in the generated application's `index.html`. However, it uses a placeholder Measurement ID (`G-XXXXXXXXXX`). For analytics tracking to function, you **must** replace this placeholder with your actual GA4 Measurement ID in the deployed application's code.
+
+**Note on AdSense:** Similarly, the `CodeGenerationAgent` includes placeholder Google AdSense setup (script in `index.html` and example ad units in components). These use placeholder IDs (`ca-pub-XXXXXXXXXXXXXXXX`, `YYYYYYYYYY`). For monetization to work, you **must** replace these placeholders with your actual Google AdSense Publisher ID and Ad Unit Slot IDs. You will also need an active and approved Google AdSense account.
+
+## Local Setup (Docker - Recommended Method)
+
+This is the primary and recommended method for local development and testing.
+
+*   **Prerequisites:** Ensure Docker Desktop (or Docker Engine + Docker Compose) is installed and running.
+*   **Environment Setup:**
+    *   Copy the root `.env.example` file to `.env`:
+        ```bash
+        cp .env.example .env
+        ```
+    *   **Crucially, edit the new `.env` file and fill in *all* required values.** This includes:
+    *   `SECRET_KEY`: Generate a unique secret key (see `.env.example` for command).
+    *   `GEMINI_API_KEY`: Your API key from Google AI Studio.
+*   **Run:**
+    ```bash
+    docker compose -f docker-compose.dev.yml up --build -d
+    ```
+    *   Use `-d` to run in detached mode (background). Omit it to see logs directly.
+    *   The `--build` flag ensures images are rebuilt if Dockerfiles or contexts change. It's good practice to include it, especially after pulling code changes.
+*   **Access:**
+    *   Frontend: `http://localhost:8000` (served by Vite dev server with hot-reloading)
+    *   Backend API: `http://localhost:5000` (Flask dev server with hot-reloading)
+*   **How it Works:**
+    *   `docker-compose.dev.yml` defines `frontend` and `backend` services.
+    *   It uses multi-stage Dockerfiles optimized for development (volume mounts for code, dev servers).
+    *   Services are connected on a Docker network. The frontend JavaScript code running in your **browser** accesses the API via the host machine's mapped port: `http://localhost:5000` (as configured by `VITE_API_BASE_URL` in your `.env` file).
+    *   The root `.env` file provides environment variables to the services.
+*   **Stopping:**
+    ```bash
+    docker compose -f docker-compose.dev.yml down
+    ```
+
+## Environment Variables
+
+The following environment variables need to be configured in your `.env` file (copied from `.env.example`):
+
+*   `SECRET_KEY`: **(Required)** A strong, unique secret used by Flask for session security. Generate one using `python -c "import secrets; print(secrets.token_hex(32))"`.
+*   `GEMINI_API_KEY`: **(Required)** Your API key for Google Generative AI (Gemini), obtained from Google AI Studio. This is essential for the Orchestrator Panel and other AI features.
+*   `ORCHESTRATOR_LLM_MODEL`: **(Required)** The Gemini model name for the primary Orchestrator agent (e.g., `gemini-2.5-pro-preview-03-25`). This agent handles user interaction and often benefits from a more powerful model. Defaults to `gemini-2.5-pro-preview-03-25` if not set.
+*   `SPECIALIZED_AGENT_LLM_MODEL`: **(Required)** The default Gemini model name for specialized agents (e.g., Market Research, Branding, Code Generation). These agents perform focused tasks and can often use a faster/cheaper model like `gemini-2.5-flash-preview-04-17`. Defaults to `gemini-2.5-flash-preview-04-17` if not set.
+*   `VITE_API_BASE_URL`: **(Required)** The URL the frontend uses to reach the backend API. For the default Docker setup, this **must** be `http://localhost:5000`.
+
+*   **(Optional)** `GCP_PROJECT_ID`: Google Cloud Project ID, potentially used by agents like `FreelanceTaskAgent`.
+*   **(Optional)** `BRAVE_API_KEY`: API key for Brave Search, used by `WebSearchAgent`.
+
+### Optional Agent-Specific LLM Models:
+
+You can optionally override the `SPECIALIZED_AGENT_LLM_MODEL` for individual agents by setting specific environment variables. If an agent-specific variable is not set, the agent will use the model defined by `SPECIALIZED_AGENT_LLM_MODEL`. Examples include:
+
+*   `MARKET_RESEARCH_LLM_MODEL`: Model for the Market Research Agent.
+*   `IMPROVEMENT_LLM_MODEL`: Model for the Improvement Agent.
+*   `BRANDING_LLM_MODEL`: Model for the Branding Agent.
+*   `DEPLOYMENT_LLM_MODEL`: Model for the Deployment Agent.
+*   `CODE_GENERATION_LLM_MODEL`: Model for the Code Generation Agent.
+*   `CONTENT_GENERATION_LLM_MODEL`: Model for the Content Generation Agent.
+*   `FREELANCE_TASK_LLM_MODEL`: Model for the Freelance Task Agent.
+*   `LEAD_GENERATION_LLM_MODEL`: Model for the Lead Generation Agent.
+*   `MARKET_ANALYSIS_LLM_MODEL`: Model for the Market Analysis Agent.
+*   `MARKETING_LLM_MODEL`: Model for the Marketing Agent.
+*   `WEB_SEARCH_LLM_MODEL`: Model for the Web Search Agent.
+*   `WORKFLOW_MANAGER_LLM_MODEL`: Model for the Workflow Manager Agent.
+*   *(Add others as needed based on implemented agents)*
+
+### Autonomous Income Workflow Variables:
+
+*   `FIRECRAWL_API_KEY`: **(Required)** Used by `MarketResearchAgent` for web scraping. Get from [Firecrawl](https://www.firecrawl.dev/).
+*   **(Optional)** `COMPETITOR_SEARCH_PROVIDER`: Search engine for competitor analysis (e.g., 'google').
+*   **(Conditional)** `EXA_API_KEY`: Required if using Exa Search in `MarketResearchAgent`. Get from [Exa AI](https://exa.ai/).
+*   **(Conditional)** `PERPLEXITY_API_KEY`: Required if using Perplexity AI in `MarketResearchAgent`. Get from [Perplexity AI](https://docs.perplexity.ai/docs/getting-started).
+*   `MARKET_RESEARCH_AGENT_URL`: **(Required)** Endpoint for the `WorkflowManagerAgent` to reach the `MarketResearchAgent`. (Example: `http://localhost:5001`)
+*   `IMPROVEMENT_AGENT_URL`: **(Required)** Endpoint for the `WorkflowManagerAgent` to reach the `ImprovementAgent`. (Example: `http://localhost:5002`)
+*   `BRANDING_AGENT_URL`: **(Required)** Endpoint for the `WorkflowManagerAgent` to reach the `BrandingAgent`. (Example: `http://localhost:5003`)
+*   `DEPLOYMENT_AGENT_URL`: **(Required)** Endpoint for the `WorkflowManagerAgent` to reach the `DeploymentAgent`. (Example: `http://localhost:5004`)
+*   **(Optional)** `AGENT_TIMEOUT_SECONDS`: Max wait time for sub-agent responses (Default: 300).
+*   **(Conditional)** Deployment Provider Keys (e.g., `VERCEL_API_TOKEN`, `CLOUDFLARE_API_TOKEN`, etc.): Required by the `DeploymentAgent` based on the chosen deployment platform(s). Add the specific keys needed for your setup.
+
+## API Endpoints
+
+The backend provides several API endpoints, including:
+
+*   `/api/workflows`: Manage automation workflows (GET, POST).
+*   `/api/analytics`: Fetch data for the Analytics dashboard (GET).
+*   `/api/insights`: Fetch data for the Insights dashboard (GET).
+*   `/api/customers`: Fetch data for the Customers dashboard (GET).
+*   `/api/revenue`: Fetch data for the Revenue dashboard (GET).
+*   `/api/orchestrator/tasks`: Endpoint related to orchestrator tasks (details may vary).
+*   WebSocket Endpoint (typically `/ws` or similar, handled by Flask-SocketIO): For real-time communication with the Orchestrator Panel.
+
+*(Note: This list might not be exhaustive. Refer to backend route definitions for complete details.)*
+
+## Development Status
+
+*   **Stage:** Active Development / Functional Prototype
+*   **Core Features:** Dashboard pages (Automation, Analytics, etc.), Orchestrator Panel (Gemini/WebSocket), Workflow backend.
+*   **Data:** Analytics, Insights, Customers, Revenue pages currently use placeholder data from their respective API endpoints.
+*   **Setup:** Docker Compose is the standard local development environment.
+*   **Known Issues:** (List any known issues here, e.g., "Placeholder data needs replacing with real logic.")
+*   **Roadmap:** (Outline future plans, e.g., "Implement real data fetching for dashboard pages", "Expand workflow capabilities.")
+
+## Contribution Guidelines
+
+Contributions are welcome. Please establish contribution guidelines (e.g., in a `CONTRIBUTING.md` file) covering coding standards, branch strategy, and the pull request process.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](./LICENSE) file for details.
-
----
-
-Command your virtual team and build amazing things!
+Apache License 2.0 (Assuming, based on previous context - verify LICENSE file)

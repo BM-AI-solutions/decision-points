@@ -82,3 +82,9 @@ backend/**/__pycache__/
 .tasks
 .workflows/
 .roo/
+.context
+.planning
+.processes
+.roomodes
+.changelog.md
+.rooREADME.md
