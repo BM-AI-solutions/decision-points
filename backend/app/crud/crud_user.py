@@ -1,3 +1,4 @@
+import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import update as sqlalchemy_update, delete as sqlalchemy_delete # Avoid name collision
@@ -6,6 +7,10 @@ from typing import List, Optional
 from app.models.user import User
 from app.schemas.user import UserCreate, UserUpdate
 from app.core.security import get_password_hash # Will be created later
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 async def get_user(db: AsyncSession, user_id: int) -> Optional[User]:
     """Get a user by ID."""
@@ -24,18 +29,24 @@ async def get_users(db: AsyncSession, skip: int = 0, limit: int = 100) -> List[U
 
 async def create_user(db: AsyncSession, *, user_in: UserCreate) -> User:
     """Create a new user."""
-    # Hash the password before storing
-    hashed_password = get_password_hash(user_in.password) # Use the utility function
-    db_user = User(
-        email=user_in.email,
-        name=user_in.name,
-        hashed_password=hashed_password,
-        # is_active defaults to True in the model
-    )
-    db.add(db_user)
-    await db.commit()
-    await db.refresh(db_user)
-    return db_user
+    try:
+        # Hash the password before storing
+        hashed_password = get_password_hash(user_in.password) # Use the utility function
+        db_user = User(
+            email=user_in.email,
+            name=user_in.name,
+            hashed_password=hashed_password,
+            # is_active defaults to True in the model
+        )
+        db.add(db_user)
+        await db.commit()
+        await db.refresh(db_user)
+        logger.info(f"User created successfully: {db_user.email}")
+        return db_user
+    except Exception as e:
+        logger.error(f"Error creating user: {e}", exc_info=True)
+        await db.rollback() # Rollback the transaction in case of error
+        raise # Re-raise the exception to be handled by the API endpoint
 
 async def update_user(db: AsyncSession, *, db_user: User, user_in: UserUpdate) -> User:
     """Update an existing user."""

@@ -10,6 +10,7 @@ httpx==0.28.1
 
 
 google-genai==1.11.0
+google-api-core
 
 exa-py==1.12.1 # Used by MarketResearchAgent for Exa search
 firecrawl-py==2.1.2 # Used by MarketResearchAgent for data extraction
@@ -42,3 +43,5 @@ python-multipart
 alembic
 pydantic-settings
 python-socketio
+flask-socketio
+email-validator

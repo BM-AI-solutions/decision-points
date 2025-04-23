@@ -5,12 +5,12 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request
 from pydantic import BaseModel
 
 # Import necessary components from ADK and the application
-from google.adk.events import Event, Action, Content, Part
-from google.adk.sessions import InvocationContext
+# from google.adk.events import Event, Content, Part
+# from google.adk.sessions import InvocationContext
 
-from app.main import sio # Import the initialized SocketIO server
+# from app.main import sio # Import the initialized SocketIO server
 from app.config import settings
-from backend.agents.orchestrator_agent import OrchestratorAgent
+from agents.orchestrator_agent import OrchestratorAgent
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -35,7 +35,7 @@ def get_orchestrator_agent() -> OrchestratorAgent:
 
         logger.info(f"Instantiating OrchestratorAgent with SocketIO and agent IDs: {filtered_agent_ids}")
         orchestrator_agent_instance = OrchestratorAgent(
-            socketio=sio,
+            # socketio=sio,
             agent_ids=filtered_agent_ids,
             model_name=settings.GEMINI_MODEL_NAME # Pass model name from settings
             # instruction="Your primary goal is..." # Add specific instruction if needed
@@ -65,15 +65,15 @@ async def run_orchestration(
     logger.info(f"Received orchestration request. Task ID: {task_id}, Prompt: '{payload.prompt}'")
 
     # Create ADK Event and Context
-    input_event = Event(
-        author=payload.user_id or "user", # Use user_id if provided, else 'user'
-        actions=[Action(content=Content(parts=[Part(text=payload.prompt)]))],
-        invocation_id=task_id, # Use task_id as invocation_id
-        metadata={"user_id": payload.user_id} if payload.user_id else {}
-    )
+    # input_event = Event(
+    #     author=payload.user_id or "user", # Use user_id if provided, else 'user'
+    #     actions=[Action(content=Content(parts=[Part(text=payload.prompt)]))],
+    #     invocation_id=task_id, # Use task_id as invocation_id
+    #     metadata={"user_id": payload.user_id} if payload.user_id else {}
+    # )
     # Create a new session for this task
-    session = InvocationContext.create_session(session_id=task_id)
-    context = InvocationContext(session=session, input_event=input_event)
+    # session = InvocationContext.create_session(session_id=task_id)
+    # context = InvocationContext(session=session, input_event=input_event)
 
     # Run the agent's main logic in the background
     logger.info(f"Creating background task for agent run_async (Task ID: {task_id})")
@@ -86,18 +86,19 @@ async def run_orchestration(
     )
 
 # --- Socket.IO Event Handlers (Example) ---
-@sio.event
-async def connect(sid, environ):
-    logger.info(f"Socket.IO client connected: {sid}")
-
-@sio.event
-async def disconnect(sid):
-    logger.info(f"Socket.IO client disconnected: {sid}")
-
-# Add more specific Socket.IO event handlers if needed, e.g., for joining rooms
+# --- Socket.IO Event Handlers (Example) ---
 # @sio.event
-# async def join_task_room(sid, data):
-#     task_id = data.get('task_id')
-#     if task_id:
-#         logger.info(f"Client {sid} joining room for task {task_id}")
-#         sio.enter_room(sid, task_id)
+# async def connect(sid, environ):
+#     logger.info(f"Socket.IO client connected: {sid}")
+
+# @sio.event
+# async def disconnect(sid):
+#     logger.info(f"Socket.IO client disconnected: {sid}")
+
+# # Add more specific Socket.IO event handlers if needed, e.g., for joining rooms
+# # @sio.event
+# # async def join_task_room(sid, data):
+# #     task_id = data.get('task_id')
+# #     if task_id:
+# #         logger.info(f"Client {sid} joining room for task {task_id}")
+# #         sio.enter_room(sid, task_id)

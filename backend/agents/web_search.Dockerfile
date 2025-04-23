@@ -31,4 +31,4 @@ EXPOSE 8080
 
 # Command to run the agent using adk api_server
 # Corrected: Removed invalid --host argument
-CMD ["adk", "api_server", "backend.agents.web_search_agent:WebSearchAgent", "--port", "8080"]
+CMD ["adk", "api_server", "/app/backend/agents/", "--port", "8080"]

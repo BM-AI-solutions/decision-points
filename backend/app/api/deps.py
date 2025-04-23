@@ -1,7 +1,7 @@
 from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .core.db import SessionLocal
+from app.core.db import SessionLocal
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """
@@ -22,7 +22,7 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             # Explicit close is not strictly needed but doesn't hurt.
             await session.close()
 from aiokafka import AIOKafkaProducer
-from .core.messaging import get_kafka_producer as get_kafka_producer_instance
+from app.core.messaging import get_kafka_producer as get_kafka_producer_instance
 
 async def get_kafka_producer() -> AIOKafkaProducer:
     """

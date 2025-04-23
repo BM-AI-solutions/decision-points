@@ -17,7 +17,7 @@ export default defineConfig({
     proxy: {
       // Proxy /api requests to backend server running on port 5000
       '/api': {
-        target: 'http://backend:5000', // Target the backend service in Docker
+        target: 'http://backend:8000', // Target the backend service in Docker
         changeOrigin: true, // Necessary for proxying
         // secure: false, // Keep commented unless needed
         // Don't rewrite the path, as the backend routes already include /api

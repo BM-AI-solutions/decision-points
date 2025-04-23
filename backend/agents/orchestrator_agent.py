@@ -2,7 +2,7 @@ import asyncio
 from typing import Any, Dict, List, Optional, Union, Tuple
 
 from flask_socketio import SocketIO
-from google.ai import generativelanguage as glm
+import google.generativeai
 
 from google.adk.agents import LlmAgent, BaseAgent # Import BaseAgent for type hinting
 from google.adk.models import Gemini, BaseLlm
