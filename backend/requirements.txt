@@ -6,7 +6,7 @@ pydantic[dotenv,email]>=2.0.0 # Includes pydantic-settings for .env loading and 
 httpx==0.28.1
 
 # AI and NLP
-google-generativeai>=0.3.0 # Google Gemini API
+google-genai>=0.3.0 # Google Gemini API
 python-dateutil>=2.8.2 # Required for date parsing
 
 # Agent Development
