@@ -21,9 +21,10 @@ Decision Points is an AI-powered system designed to assist with various business
 *   **Backend:**
     *   Language: Python 3.0
     *   Framework: FastAPI
-    *   AI: Google Generative AI (Gemini)
+    *   AI: Google Generative AI (Gemini) - Direct integration without Vertex AI
     *   Database: PostgreSQL (for state persistence)
     *   ORM: SQLAlchemy with Alembic for migrations
+    *   Agent Communication: A2A Protocol
 *   **Frontend:**
     *   Library: React
     *   Build Tool: Vite
@@ -40,7 +41,7 @@ Docker Compose is used to manage the local development environment, running the 
 
 ## Multi-Agent Architecture
 
-The system implements a multi-agent architecture using the Agent-to-Agent (A2A) protocol and the Agent Development Kit (ADK). Each agent is a specialized service that can be run independently and communicates with other agents through a standardized protocol.
+The system implements a multi-agent architecture using the Agent-to-Agent (A2A) protocol and Google Gemini. Each agent is a specialized service that can be run independently and communicates with other agents through a standardized protocol.
 
 ### Agent State Persistence
 
@@ -118,6 +119,21 @@ This is the primary and recommended method for local development and testing.
     *   To apply migrations manually:
         ```bash
         docker compose exec backend alembic upgrade head
+        ```
+
+*   **Starting Agents:**
+    *   To start all agents:
+        ```bash
+        docker compose exec backend python scripts/start_all_agents.py
+        ```
+    *   To start a specific agent:
+        ```bash
+        docker compose exec backend python scripts/start_agent.py --agent <agent_name> --port <port>
+        ```
+        Where `<agent_name>` is one of: `market_research`, `improvement`, `branding`, `code_generation`, `deployment`, `marketing`, `lead_generation`, `freelance_tasker`, `workflow_manager`, `content_generation`
+    *   Example:
+        ```bash
+        docker compose exec backend python scripts/start_agent.py --agent market_research --port 8004
         ```
 
 ## Environment Variables
