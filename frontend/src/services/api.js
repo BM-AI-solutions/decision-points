@@ -4,12 +4,15 @@
  * This file contains functions for making API requests to the backend.
  */
 
+// Define API base URL for export
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+
 // API client with consistent configuration
 class ApiClient {
   constructor() {
     // Get configuration from Vite environment variables
     // Since all endpoints now include the '/api/' prefix, we set the base URL to an empty string
-    this.baseUrl = import.meta.env.VITE_API_BASE_URL || '';
+    this.baseUrl = API_BASE_URL;
     this.timeout = parseInt(import.meta.env.VITE_API_TIMEOUT || '60000', 10); // Default 60 seconds
     // Convert string 'true'/'false' to boolean, default true
     this.withCredentials = (import.meta.env.VITE_API_WITH_CREDENTIALS !== 'false');

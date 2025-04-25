@@ -4,7 +4,9 @@
  */
 
 import { io } from 'socket.io-client';
-import { API_BASE_URL } from './api';
+
+// Get API base URL from environment variables
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
 // Create a Socket.IO instance
 const socket = io(API_BASE_URL, {
@@ -69,7 +71,7 @@ const socketService = {
 
   /**
    * Join a task room to receive updates for a specific task.
-   * 
+   *
    * @param {string} taskId - The ID of the task to join.
    * @returns {Promise<boolean>} - A promise that resolves to true if the join was successful.
    */
@@ -89,7 +91,7 @@ const socketService = {
 
   /**
    * Leave a task room to stop receiving updates for a specific task.
-   * 
+   *
    * @param {string} taskId - The ID of the task to leave.
    * @returns {Promise<boolean>} - A promise that resolves to true if the leave was successful.
    */
@@ -109,7 +111,7 @@ const socketService = {
 
   /**
    * Add an event listener for a specific event.
-   * 
+   *
    * @param {string} event - The event to listen for ('connect', 'disconnect', 'agent_update', 'error').
    * @param {Function} callback - The callback function to call when the event occurs.
    */
@@ -123,7 +125,7 @@ const socketService = {
 
   /**
    * Remove an event listener for a specific event.
-   * 
+   *
    * @param {string} event - The event to stop listening for.
    * @param {Function} callback - The callback function to remove.
    */
@@ -140,7 +142,7 @@ const socketService = {
 
   /**
    * Check if the socket is connected.
-   * 
+   *
    * @returns {boolean} - True if the socket is connected, false otherwise.
    */
   isConnected() {

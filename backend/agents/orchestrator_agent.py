@@ -1,8 +1,8 @@
 import asyncio
 from typing import Any, Dict, List, Optional, Union, Tuple
 
-# TODO: Replace flask_socketio with a FastAPI-compatible WebSocket solution (e.g., using Depends)
-from google.ai import generativelanguage as glm
+# Import Google Generative AI
+import google.generativeai as genai
 
 from google.adk.agents import LlmAgent, BaseAgent # Import BaseAgent for type hinting
 from google.adk.models import Gemini, BaseLlm

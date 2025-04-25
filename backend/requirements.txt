@@ -5,8 +5,7 @@ pydantic[dotenv,email]>=2.0.0 # Includes pydantic-settings for .env loading and 
 # API clients
 httpx==0.28.1
 
-# AI and NLP
-google-genai>=0.3.0 # Google Gemini API
+AI and NLP
 python-dateutil>=2.8.2 # Required for date parsing
 
 # Agent Development
@@ -21,8 +20,6 @@ firecrawl-py==2.1.2 # Used by MarketResearchAgent for data extraction
 
 loguru==0.7.3
 logfire==3.14.0 # For observability, used in WebSearchAgent
-google-cloud-pubsub==2.29.0 # For Pub/Sub integration
-google-cloud-secret-manager>=2.22.0 # For secret management (Version updated for google-adk compatibility)
 sqlalchemy>=1.4.0 # Removed <2.0.0 constraint to resolve conflict
 psycopg2-binary>=2.9.0
 asyncpg>=0.25.0
@@ -32,4 +29,4 @@ python-jose[cryptography]
 python-multipart
 alembic==1.15.2
 pydantic-settings
-python-socketio
+fastapi-socketio
