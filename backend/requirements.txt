@@ -7,14 +7,20 @@ httpx==0.28.1
 
 # AI and NLP
 python-dateutil>=2.8.2 # Required for date parsing
+google-generativeai>=0.7.2 # For direct Gemini calls in agents
 
 # Agent Development
 google-adk==0.2.0 # Google Agent Development Kit
-python-a2a>=0.1.0 # For Agent-to-Agent protocol implementation
+# python-a2a>=0.1.0 # Removed, using pure ADK now
 
 # Search and Data Extraction
 exa-py==1.12.1 # Used by MarketResearchAgent for Exa search
 firecrawl-py==2.1.2 # Used by MarketResearchAgent for data extraction
+
+# Cloud & External Services
+google-cloud-secret-manager>=2.16.0 # For freelance agent credentials
+agno-py>=0.1.0 # For LeadGen agent Sheets integration (if still used)
+composio-phidata>=0.1.0 # For LeadGen agent Sheets integration (if still used)
 
 # Utilities
 
@@ -29,4 +35,5 @@ python-jose[cryptography]
 python-multipart
 alembic==1.15.2
 pydantic-settings
-fastapi-socketio
+python-socketio>=5.10.0 # Standard Socket.IO library for ASGI/FastAPI
+# fastapi-socketio # Removed, replaced by python-socketio

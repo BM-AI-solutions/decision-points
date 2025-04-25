@@ -15,11 +15,7 @@ import traceback
 from enum import Enum
 from typing import Dict, Any, Optional, Union, List
 
-# Import SocketIO type hint if needed
-try:
-    from flask_socketio import SocketIO
-except ImportError:
-    SocketIO = Any # Fallback
+import socketio # Import the correct library
 
 # Import database service and Pydantic models
 from app.services.db_service import DatabaseService
@@ -32,6 +28,7 @@ from google.adk.events import Event # Import Event for tool return type
 
 # Removed BaseSpecializedAgent import
 from app.config import settings
+from app.core.socketio import sio # Import the actual Socket.IO server instance
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -41,8 +38,8 @@ logger = logging.getLogger(__name__)
 AGENT_ID = "workflow_manager_adk"
 DB_SERVICE = DatabaseService() # Instantiate DB service
 # SocketIO instance needs to be provided/managed externally
-# For this refactor, we'll assume a global SOCKETIO instance exists or is None
-SOCKETIO: Optional[SocketIO] = None # Placeholder: Inject or initialize appropriately
+# Assign the imported instance to the global variable
+SOCKETIO: Optional[socketio.AsyncServer] = sio # Use the correct type hint and assign the instance
 
 # --- Pydantic Models (Simplified/Combined for Workflow State) ---
 # Using simplified dicts for state storage, validation happens during step execution

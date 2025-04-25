@@ -8,72 +8,40 @@ from pydantic import BaseModel
 from google.adk.events import Event, Action, Content, Part
 from google.adk.sessions import InvocationContext
 
-from python_a2a import Message, TextContent, MessageRole
+# Removed A2A imports
+# from python_a2a import Message, TextContent, MessageRole
 
 from app.core.socketio import websocket_manager # Import the WebSocket manager
 from app.config import settings
-from agents.orchestrator_agent import OrchestratorAgent
-from agents.agent_network import agent_network
+# Import the refactored ADK agent
+from agents.orchestrator_agent import OrchestratorAgentADK
+# Removed agent_network import
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# --- Agent Instantiation ---
-# Simple global instance for now. Consider dependency injection for better management.
-orchestrator_agent_instance: OrchestratorAgent | None = None
+# --- Agent Instantiation (ADK Approach) ---
+# ADK agents are typically discovered, not instantiated directly here.
+# This endpoint might need to interact with the ADK runtime or a specific agent like the workflow manager.
+# For now, let's remove the old instantiation logic.
+# We might need a way to get the ADK runtime or session manager later.
 
-def get_orchestrator_agent() -> OrchestratorAgent:
-    """Gets the singleton OrchestratorAgent instance."""
-    global orchestrator_agent_instance
-    if orchestrator_agent_instance is None:
-        # Define the agent IDs mapping using settings
-        agent_ids = {
-            "web_searcher": settings.AGENT_WEB_SEARCH_ID,
-            "content_generator": settings.CONTENT_GENERATION_AGENT_ID,
-            "market_research": settings.MARKET_RESEARCH_AGENT_ID,
-            "improvement": settings.IMPROVEMENT_AGENT_ID,
-            "branding": settings.BRANDING_AGENT_ID,
-            "code_generation": settings.CODE_GENERATION_AGENT_ID,
-            "deployment": settings.DEPLOYMENT_AGENT_ID,
-            "marketing": settings.MARKETING_AGENT_ID,
-            "lead_generator": settings.LEAD_GENERATION_AGENT_ID,
-            "freelance_tasker": settings.FREELANCE_TASKER_AGENT_ID,
-            "workflow_manager": settings.WORKFLOW_MANAGER_AGENT_ID,
-        }
-        # Filter out None values in case some IDs are not set
-        filtered_agent_ids = {k: v for k, v in agent_ids.items() if v is not None}
+# Placeholder for getting the ADK agent instance if needed directly (uncommon from API endpoint)
+# orchestrator_adk_instance: OrchestratorAgentADK | None = None
+# def get_orchestrator_adk_agent() -> OrchestratorAgentADK:
+#     global orchestrator_adk_instance
+#     if orchestrator_adk_instance is None:
+#         logger.info("Instantiating OrchestratorAgentADK...")
+#         # Note: ADK agents usually don't take websocket_manager directly in __init__
+#         # Dependencies are often handled differently or passed via context.
+#         orchestrator_adk_instance = OrchestratorAgentADK(
+#             websocket_manager=websocket_manager, # This might need adjustment based on ADK patterns
+#             model_name=settings.GEMINI_MODEL_NAME
+#             # Instruction is part of the class definition now
+#         )
+#     return orchestrator_adk_instance
 
-        # Use the WebSocket manager singleton
-
-        logger.info(f"Instantiating OrchestratorAgent with WebSocket Manager and agent IDs: {filtered_agent_ids}")
-        orchestrator_agent_instance = OrchestratorAgent(
-            websocket_manager=websocket_manager,
-            agent_ids=filtered_agent_ids,
-            model_name=settings.GEMINI_MODEL_NAME, # Pass model name from settings
-            instruction="Process user requests and delegate to specialized agents when appropriate. Use the agent network for routing."
-        )
-
-        # Start the A2A server in a background task
-        asyncio.create_task(
-            start_a2a_server(orchestrator_agent_instance)
-        )
-
-    return orchestrator_agent_instance
-
-async def start_a2a_server(agent: OrchestratorAgent):
-    """Start the A2A server for the orchestrator agent."""
-    try:
-        # Run the server in a separate thread to avoid blocking
-        import threading
-        server_thread = threading.Thread(
-            target=agent.run_server,
-            kwargs={"host": "0.0.0.0", "port": settings.A2A_ORCHESTRATOR_PORT}
-        )
-        server_thread.daemon = True
-        server_thread.start()
-        logger.info(f"A2A server started for orchestrator agent on port {settings.A2A_ORCHESTRATOR_PORT}")
-    except Exception as e:
-        logger.error(f"Failed to start A2A server: {e}", exc_info=True)
+# Removed A2A server start logic
 
 # --- API Models ---
 class AgentPrompt(BaseModel):
@@ -85,35 +53,33 @@ class OrchestrationResponse(BaseModel):
     message: str
 
 # --- API Endpoint ---
-@router.post("/orchestrate", status_code=status.HTTP_202_ACCEPTED, response_model=OrchestrationResponse)
+# TODO: Refactor this endpoint to interact with ADK runtime or Workflow Manager Agent
+
+@router.post("/orchestrate", status_code=status.HTTP_501_NOT_IMPLEMENTED, response_model=OrchestrationResponse)
 async def run_orchestration(
     payload: AgentPrompt,
-    orchestrator: OrchestratorAgent = Depends(get_orchestrator_agent)
+    # orchestrator: OrchestratorAgentADK = Depends(get_orchestrator_adk_agent) # Dependency needs update
 ):
     """
-    Receives a prompt and initiates the orchestration process via the OrchestratorAgent.
-    Uses the A2A protocol for agent communication.
+    Receives a prompt and initiates the orchestration process.
+    (Needs refactoring for ADK interaction - likely invoking Workflow Manager)
     """
     task_id = str(uuid.uuid4())
-    logger.info(f"Received orchestration request. Task ID: {task_id}, Prompt: '{payload.prompt}'")
+    logger.warning(f"Received orchestration request for ADK refactor (Task ID: {task_id}). Endpoint needs implementation.")
 
-    # Create a background task to run the orchestration
-    async def run_orchestration_task():
-        try:
-            # Use the orchestrate skill directly
-            result = await orchestrator.orchestrate(payload.prompt)
-            logger.info(f"Orchestration completed for task {task_id}")
-        except Exception as e:
-            logger.error(f"Orchestration failed for task {task_id}: {e}", exc_info=True)
+    # Placeholder: This endpoint needs to be redesigned.
+    # Option 1: Interact with ADK Runtime/SessionManager (complex setup needed here)
+    # Option 2: Send a message/trigger to the WorkflowManagerAgent (e.g., via PubSub, or direct call if co-located)
+    # Option 3: Directly invoke the WorkflowManagerAgent's start_workflow_tool if ADK context can be created here.
 
-    # Start the orchestration task in the background
-    logger.info(f"Creating background task for orchestration (Task ID: {task_id})")
-    asyncio.create_task(run_orchestration_task())
-    logger.info(f"Background task created for Task ID: {task_id}")
+    # For now, return Not Implemented
+    # raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="ADK orchestration endpoint not yet implemented.")
 
+    # Returning 202 but logging warning, actual invocation needs implementation
+    logger.warning(f"Task {task_id} accepted but ADK invocation logic is not implemented in this endpoint.")
     return OrchestrationResponse(
         task_id=task_id,
-        message="Orchestration task accepted and initiated."
+        message="Task accepted, but ADK orchestration endpoint needs implementation."
     )
 
 # --- Socket.IO Event Handlers (Example) ---
