@@ -4,49 +4,16 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from pydantic import BaseModel
 
-# Import necessary components from ADK and the application
-# Placeholder for ADK imports - these would need to be installed
-class Event:
-    def __init__(self, author=None, actions=None, invocation_id=None, metadata=None):
-        self.author = author
-        self.actions = actions or []
-        self.invocation_id = invocation_id
-        self.metadata = metadata or {}
+# Import necessary components from ADK and A2A
+from google.adk.events import Event, Action, Content, Part
+from google.adk.sessions import InvocationContext
 
-class Action:
-    def __init__(self, content=None):
-        self.content = content
-
-class Content:
-    def __init__(self, parts=None):
-        self.parts = parts or []
-
-class Part:
-    def __init__(self, text=None):
-        self.text = text
-
-class InvocationContext:
-    @classmethod
-    def create_session(cls, session_id=None):
-        return {"session_id": session_id}
-
-    def __init__(self, session=None, input_event=None):
-        self.session = session
-        self.input_event = input_event
+from python_a2a import Message, TextContent, MessageRole
 
 from app.core.socketio import sio # Import the initialized SocketIO server
 from app.config import settings
-
-# Placeholder for OrchestratorAgent - this would need to be implemented
-class OrchestratorAgent:
-    def __init__(self, socketio=None, agent_ids=None, model_name=None):
-        self.socketio = socketio
-        self.agent_ids = agent_ids or {}
-        self.model_name = model_name
-
-    async def run_async(self, context):
-        # This is a placeholder implementation
-        pass
+from agents.orchestrator_agent import OrchestratorAgent
+from agents.agent_network import agent_network
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -62,21 +29,61 @@ def get_orchestrator_agent() -> OrchestratorAgent:
         # Define the agent IDs mapping using settings
         agent_ids = {
             "web_searcher": settings.AGENT_WEB_SEARCH_ID,
-            # Add other agent IDs from settings here as they are implemented
-            # "content_generator": settings.CONTENT_GENERATION_AGENT_ID,
-            # "market_analyzer": settings.MARKET_ANALYZER_AGENT_ID, # Example
+            "content_generator": settings.CONTENT_GENERATION_AGENT_ID,
+            "market_research": settings.MARKET_RESEARCH_AGENT_ID,
+            "improvement": settings.IMPROVEMENT_AGENT_ID,
+            "branding": settings.BRANDING_AGENT_ID,
+            "code_generation": settings.CODE_GENERATION_AGENT_ID,
+            "deployment": settings.DEPLOYMENT_AGENT_ID,
+            "marketing": settings.MARKETING_AGENT_ID,
+            "lead_generator": settings.LEAD_GENERATION_AGENT_ID,
+            "freelance_tasker": settings.FREELANCE_TASKER_AGENT_ID,
+            "workflow_manager": settings.WORKFLOW_MANAGER_AGENT_ID,
         }
         # Filter out None values in case some IDs are not set
         filtered_agent_ids = {k: v for k, v in agent_ids.items() if v is not None}
 
-        logger.info(f"Instantiating OrchestratorAgent with SocketIO and agent IDs: {filtered_agent_ids}")
+        # Create a WebSocket manager class that wraps the SocketIO instance
+        class WebSocketManager:
+            def __init__(self, sio_instance):
+                self.sio = sio_instance
+
+            def broadcast(self, room, data):
+                """Broadcast a message to a room."""
+                asyncio.create_task(self.sio.emit('agent_update', data, room=room))
+                return True
+
+        websocket_manager = WebSocketManager(sio)
+
+        logger.info(f"Instantiating OrchestratorAgent with WebSocket Manager and agent IDs: {filtered_agent_ids}")
         orchestrator_agent_instance = OrchestratorAgent(
-            socketio=sio,
+            websocket_manager=websocket_manager,
             agent_ids=filtered_agent_ids,
-            model_name=settings.GEMINI_MODEL_NAME # Pass model name from settings
-            # instruction="Your primary goal is..." # Add specific instruction if needed
+            model_name=settings.GEMINI_MODEL_NAME, # Pass model name from settings
+            instruction="Process user requests and delegate to specialized agents when appropriate. Use the agent network for routing."
         )
+
+        # Start the A2A server in a background task
+        asyncio.create_task(
+            start_a2a_server(orchestrator_agent_instance)
+        )
+
     return orchestrator_agent_instance
+
+async def start_a2a_server(agent: OrchestratorAgent):
+    """Start the A2A server for the orchestrator agent."""
+    try:
+        # Run the server in a separate thread to avoid blocking
+        import threading
+        server_thread = threading.Thread(
+            target=agent.run_server,
+            kwargs={"host": "0.0.0.0", "port": settings.A2A_ORCHESTRATOR_PORT}
+        )
+        server_thread.daemon = True
+        server_thread.start()
+        logger.info(f"A2A server started for orchestrator agent on port {settings.A2A_ORCHESTRATOR_PORT}")
+    except Exception as e:
+        logger.error(f"Failed to start A2A server: {e}", exc_info=True)
 
 # --- API Models ---
 class AgentPrompt(BaseModel):
@@ -95,25 +102,23 @@ async def run_orchestration(
 ):
     """
     Receives a prompt and initiates the orchestration process via the OrchestratorAgent.
-    Runs the agent task in the background.
+    Uses the A2A protocol for agent communication.
     """
     task_id = str(uuid.uuid4())
     logger.info(f"Received orchestration request. Task ID: {task_id}, Prompt: '{payload.prompt}'")
 
-    # Create ADK Event and Context
-    input_event = Event(
-        author=payload.user_id or "user", # Use user_id if provided, else 'user'
-        actions=[Action(content=Content(parts=[Part(text=payload.prompt)]))],
-        invocation_id=task_id, # Use task_id as invocation_id
-        metadata={"user_id": payload.user_id} if payload.user_id else {}
-    )
-    # Create a new session for this task
-    session = InvocationContext.create_session(session_id=task_id)
-    context = InvocationContext(session=session, input_event=input_event)
+    # Create a background task to run the orchestration
+    async def run_orchestration_task():
+        try:
+            # Use the orchestrate skill directly
+            result = await orchestrator.orchestrate(payload.prompt)
+            logger.info(f"Orchestration completed for task {task_id}")
+        except Exception as e:
+            logger.error(f"Orchestration failed for task {task_id}: {e}", exc_info=True)
 
-    # Run the agent's main logic in the background
-    logger.info(f"Creating background task for agent run_async (Task ID: {task_id})")
-    asyncio.create_task(orchestrator.run_async(context))
+    # Start the orchestration task in the background
+    logger.info(f"Creating background task for orchestration (Task ID: {task_id})")
+    asyncio.create_task(run_orchestration_task())
     logger.info(f"Background task created for Task ID: {task_id}")
 
     return OrchestrationResponse(

@@ -409,8 +409,13 @@ const apiService = {
   submitOrchestratorTask: (goal, parameters = {}) => {
     console.log("API Call: submitOrchestratorTask", { goal, parameters });
     return apiClientInstance.post('/api/v1/orchestrator/tasks', { goal, parameters });
-  }
-,
+  },
+
+  // Agent Orchestration
+  orchestrateAgents: (prompt, userId = null) => {
+    console.log("API Call: orchestrateAgents", { prompt, userId });
+    return apiClientInstance.post('/api/v1/agents/orchestrate', { prompt, user_id: userId });
+  },
 
   // Workflow Resume
   resumeWorkflow: (workflowRunId, decision) => {

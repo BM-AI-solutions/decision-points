@@ -44,6 +44,16 @@ class Settings(BaseSettings):
     A2A_MAX_RETRIES: int = 3 # Max retries for A2A calls
     A2A_RETRY_DELAY_SECONDS: int = 2 # Delay between retries
 
+    # A2A Protocol Settings
+    A2A_NETWORK_NAME: str = "decision_points_network" # Name for the agent network
+    A2A_ORCHESTRATOR_PORT: int = 8001 # Port for the orchestrator A2A server
+    A2A_ENABLE_STREAMING: bool = True # Enable streaming responses
+    A2A_CONVERSATION_HISTORY: bool = True # Enable conversation history
+
+    # ADK Settings
+    ADK_APP_NAME: str = "decision_points_app" # Name for the ADK app
+    ADK_ENABLE_TRACING: bool = True # Enable tracing for debugging
+
     # Agent Specific Configs
     COMPETITOR_SEARCH_PROVIDER: str = "exa" # Default search provider
     GEMINI_MODEL_NAME: str = "gemini-2.5-flash-preview-04-17" # Default model
@@ -51,10 +61,27 @@ class Settings(BaseSettings):
     # Agent Service Locators (URLs/IDs - Phase 1 might use IDs, Phase 2 URLs/Discovery)
     # Using Optional[str] as they might not be set in all envs or needed by all parts
     AGENT_WEB_SEARCH_ID: Optional[str] = "agent-web-search" # Default ID for the web search agent service
-    AGENT_WEB_SEARCH_URL: Optional[str] = None
-    CONTENT_GENERATION_AGENT_ID: Optional[str] = None
-    CONTENT_GENERATION_AGENT_URL: Optional[str] = None
-    # Add other agent IDs/URLs as needed
+    AGENT_WEB_SEARCH_URL: Optional[str] = "http://localhost:8002" # Default URL for the web search agent
+    CONTENT_GENERATION_AGENT_ID: Optional[str] = "content-generation-agent"
+    CONTENT_GENERATION_AGENT_URL: Optional[str] = "http://localhost:8003"
+    MARKET_RESEARCH_AGENT_ID: Optional[str] = "market-research-agent"
+    MARKET_RESEARCH_AGENT_URL: Optional[str] = "http://localhost:8004"
+    IMPROVEMENT_AGENT_ID: Optional[str] = "improvement-agent"
+    IMPROVEMENT_AGENT_URL: Optional[str] = "http://localhost:8005"
+    BRANDING_AGENT_ID: Optional[str] = "branding-agent"
+    BRANDING_AGENT_URL: Optional[str] = "http://localhost:8006"
+    CODE_GENERATION_AGENT_ID: Optional[str] = "code-generation-agent"
+    CODE_GENERATION_AGENT_URL: Optional[str] = "http://localhost:8007"
+    DEPLOYMENT_AGENT_ID: Optional[str] = "deployment-agent"
+    DEPLOYMENT_AGENT_URL: Optional[str] = "http://localhost:8008"
+    MARKETING_AGENT_ID: Optional[str] = "marketing-agent"
+    MARKETING_AGENT_URL: Optional[str] = "http://localhost:8009"
+    LEAD_GENERATION_AGENT_ID: Optional[str] = "lead-generation-agent"
+    LEAD_GENERATION_AGENT_URL: Optional[str] = "http://localhost:8010"
+    FREELANCE_TASKER_AGENT_ID: Optional[str] = "freelance-tasker-agent"
+    FREELANCE_TASKER_AGENT_URL: Optional[str] = "http://localhost:8011"
+    WORKFLOW_MANAGER_AGENT_ID: Optional[str] = "workflow-manager-agent"
+    WORKFLOW_MANAGER_AGENT_URL: Optional[str] = "http://localhost:8012"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

@@ -13,6 +13,7 @@ google-genai==1.11.0
 exa-py==1.12.1 # Used by MarketResearchAgent for Exa search
 firecrawl-py==2.1.2 # Used by MarketResearchAgent for data extraction
 google-adk==0.2.0
+python-a2a>=0.1.0 # For Agent-to-Agent protocol implementation
 
 # Utilities
 

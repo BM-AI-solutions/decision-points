@@ -9,20 +9,29 @@ from google.adk.models import Gemini, BaseLlm
 from google.adk.tools import ToolContext
 from google.adk.events import Event, EventActions, Action, Content, Part
 from google.adk.sessions import InvocationContext
+
+from python_a2a import A2AServer, agent, skill, run_server
+from python_a2a import TaskStatus, TaskState, Message, TextContent, MessageRole
+from python_a2a import StreamingClient
+
 from utils.logger import setup_logger
 from app.config import settings # Import centralized settings
+from agents.agent_network import agent_network # Import the agent network singleton
 
 logger = setup_logger('agents.orchestrator')
 
-class OrchestratorAgent(LlmAgent):
+@agent(
+    name="OrchestratorAgent",
+    description="Handles user prompts and orchestrates tasks, potentially delegating to specialized agents.",
+    version="1.0.0"
+)
+class OrchestratorAgent(A2AServer, LlmAgent):
     """
-    Orchestrator agent refactored to use ADK patterns.
+    Orchestrator agent refactored to use both ADK and A2A patterns.
     Handles tasks, interacts with Gemini via ADK model abstraction,
-    and emits updates via SocketIO.
+    and delegates to specialized agents using A2A protocol.
     """
     websocket_manager: Any # TODO: Replace Any with the actual type of your WebSocket manager dependency
-
-    agents: Dict[str, BaseAgent] # Dictionary to hold references to other agents
 
     def __init__(
         self,
@@ -35,7 +44,7 @@ class OrchestratorAgent(LlmAgent):
         **kwargs: Any,
     ):
         """
-        Initializes the ADK-based Orchestrator Agent.
+        Initializes the ADK-based Orchestrator Agent with A2A protocol support.
 
         Args:
             websocket_manager: The WebSocket manager instance (injected dependency).
@@ -47,8 +56,11 @@ class OrchestratorAgent(LlmAgent):
             description: Description of the agent.
             **kwargs: Additional arguments for LlmAgent.
         """
+        # Initialize A2AServer
+        A2AServer.__init__(self)
+
         # Determine the model name to use
-        effective_model_name = model_name if model_name else 'gemini-2.5-pro-preview-03-25' # Default for Orchestrator
+        effective_model_name = model_name if model_name else settings.GEMINI_MODEL_NAME
         self.model_name = effective_model_name # Store the actual model name used
 
         # Initialize the ADK Gemini model
@@ -56,24 +68,141 @@ class OrchestratorAgent(LlmAgent):
 
         # Ensure instruction is provided, even if basic
         if instruction is None:
-            instruction = "Process the user's request."
+            instruction = "Process the user's request and delegate to specialized agents when appropriate."
 
-        super().__init__(
+        # Initialize LlmAgent
+        LlmAgent.__init__(
+            self,
             name=name,
             description=description,
             model=adk_model, # Pass the initialized ADK model object
             instruction=instruction,
             **kwargs
         )
+
         self.websocket_manager = websocket_manager # Changed from self.socketio = socketio
         self.agent_ids = agent_ids # Store the agent IDs dictionary
+
+        # Initialize the agent network router with self as the LLM client
+        # This allows the router to use this agent's LLM for routing decisions
+        self.a2a_client = StreamingClient(f"http://localhost:{settings.A2A_ORCHESTRATOR_PORT}")
+        agent_network.initialize_router(self.a2a_client)
+
         # Use self.model_name which holds the string name, self.model.model also works if super().__init__ sets it
         logger.info(f"{self.name} initialized with WebSocket Manager, model: {self.model_name}, and agent IDs: {list(self.agent_ids.keys())}.")
 
+    @skill(
+        name="orchestrate",
+        description="Orchestrate a task, potentially delegating to specialized agents",
+        tags=["orchestration", "delegation"]
+    )
+    async def orchestrate(self, prompt: str) -> str:
+        """
+        Orchestrates a task using A2A protocol, potentially delegating to specialized agents.
+
+        Args:
+            prompt: The user's prompt to orchestrate.
+
+        Returns:
+            The result of the orchestration.
+        """
+        task_id = f"task-{id(prompt)}"
+        logger.info(f"{self.name} received task {task_id} with prompt: '{prompt}'")
+
+        # Use the agent network to route the query
+        target_agent_name, confidence = agent_network.route_query(prompt)
+
+        if target_agent_name != "orchestrator" and confidence > 0.7:
+            # Delegate to specialized agent
+            logger.info(f"Task {task_id} routed to {target_agent_name} with {confidence:.2f} confidence")
+
+            # Send WebSocket update
+            if self.websocket_manager:
+                self.websocket_manager.broadcast(task_id, {
+                    'status': 'delegating',
+                    'agent': target_agent_name,
+                    'message': f"Delegating task to {target_agent_name}..."
+                })
+
+            try:
+                # Get the agent client
+                agent_client = agent_network.get_agent(target_agent_name)
+                if not agent_client:
+                    raise ValueError(f"Agent '{target_agent_name}' not found in network")
+
+                # Invoke the agent's skill
+                response = await agent_client.ask(prompt)
+
+                # Send WebSocket update
+                if self.websocket_manager:
+                    self.websocket_manager.broadcast(task_id, {
+                        'status': 'completed',
+                        'agent': target_agent_name,
+                        'message': f"Task completed by {target_agent_name}",
+                        'result': response
+                    })
+
+                return response
+            except Exception as e:
+                error_message = f"Delegation to {target_agent_name} failed: {str(e)}"
+                logger.error(f"Task {task_id} delegation failed: {error_message}", exc_info=True)
+
+                # Send WebSocket update
+                if self.websocket_manager:
+                    self.websocket_manager.broadcast(task_id, {
+                        'status': 'failed',
+                        'message': error_message
+                    })
+
+                return f"Error: {error_message}"
+        else:
+            # Handle directly by orchestrator
+            logger.info(f"Task {task_id} handled directly by orchestrator (confidence: {confidence:.2f})")
+
+            # Send WebSocket update
+            if self.websocket_manager:
+                self.websocket_manager.broadcast(task_id, {
+                    'status': 'processing',
+                    'message': f"Processing task with {self.model_name}..."
+                })
+
+            try:
+                # Create a message for the LLM
+                message = Message(
+                    content=TextContent(text=prompt),
+                    role=MessageRole.USER
+                )
+
+                # Get response from LLM
+                response = await self.handle_message(message)
+                result = response.content.text
+
+                # Send WebSocket update
+                if self.websocket_manager:
+                    self.websocket_manager.broadcast(task_id, {
+                        'status': 'completed',
+                        'message': "Task completed by orchestrator",
+                        'result': result
+                    })
+
+                return result
+            except Exception as e:
+                error_message = f"Orchestrator processing failed: {str(e)}"
+                logger.error(f"Task {task_id} failed: {error_message}", exc_info=True)
+
+                # Send WebSocket update
+                if self.websocket_manager:
+                    self.websocket_manager.broadcast(task_id, {
+                        'status': 'failed',
+                        'message': error_message
+                    })
+
+                return f"Error: {error_message}"
 
     async def run_async(self, context: InvocationContext) -> Event:
         """
         Processes a task using ADK patterns and emits updates via SocketIO.
+        This method is maintained for backward compatibility with ADK.
 
         Args:
             context: The invocation context containing session and input event.
@@ -90,281 +219,74 @@ class OrchestratorAgent(LlmAgent):
             if text_parts:
                 prompt = text_parts[0]
 
-        logger.info(f"{self.name} received task {task_id} with prompt: '{prompt}'")
-
-        # --- LLM-based Delegation Logic ---
-        target_agent_key, classification_error = await self._classify_intent(prompt, task_id)
-
-        if classification_error:
-            # Handle classification error (e.g., log it, maybe default to 'self' or return error)
-            logger.error(f"Task {task_id} classification failed: {classification_error}. Defaulting to 'self'.")
-            target_agent_key = "self"
-            # Optionally emit a specific error update here
-            # self.socketio.emit(...)
-
-        target_agent_id = self.agent_ids.get(target_agent_key)
-
-        # --- Handle Delegation or Direct Processing ---
-        if target_agent_key != "self" and target_agent_id:
-            logger.info(f"Task {task_id} classified for delegation to {target_agent_key}.")
-            # TODO: Replace with WebSocket manager call
-            # self.websocket_manager.broadcast(task_id, {
-            #     'status': 'delegating',
-            #     'agent': target_agent_key,
-            #     'message': f"Delegating task to {target_agent_key}..."
-            # })
-            # logger.info(f"Sent WebSocket update (delegating to {target_agent_key}) for task {task_id}")
-            logger.warning(f"WebSocket update (delegating to {target_agent_key}) for task {task_id} skipped - TODO")
-
-            try:
-                # Prepare context for the delegated agent
-                # TODO: Implement more sophisticated parameter extraction if needed later.
-                # For now, pass the original context. Specific agents might need tailored metadata.
-                delegated_context = self._prepare_delegation_context(context, target_agent_key, prompt)
-
-                # Invoke the target agent skill using ADK A2A
-                # Assuming 'run' is the default skill for delegated agents
-                delegated_output_event = await context.invoke_skill(
-                    target_agent_id=target_agent_id,
-                    skill_name="run", # Assuming a default 'run' skill
-                    input=delegated_context.input_event,
-                    # timeout_seconds=... # Optional: Add timeout if needed
-                )
-
-                # Extract result from the delegated agent's response
-                delegated_result_text = self._extract_text_from_event(delegated_output_event, f"No text response from {target_agent_key}.")
-
-                # Emit final completion update
-                completion_message = f"Task completed by {target_agent_key}." # Assuming target_agent_key is sufficient
-                # TODO: Replace with WebSocket manager call
-                # self.websocket_manager.broadcast(task_id, {
-                #     'status': 'completed',
-                #     'message': completion_message,
-                #     'result': delegated_result_text
-                # })
-                # logger.info(f"Sent WebSocket update (completed by {target_agent_key}) for task {task_id}.")
-                logger.warning(f"WebSocket update (completed by {target_agent_key}) for task {task_id} skipped - TODO")
-                return delegated_output_event # Return the event from the delegate
-
-            except Exception as e:
-                error_message = f"Delegation to {target_agent_key} failed: {str(e)}"
-                logger.error(f"Task {task_id} delegation to {target_agent_key} failed: {error_message}", exc_info=True)
-                # TODO: Replace with WebSocket manager call
-                # self.websocket_manager.broadcast(task_id, {
-                #     'status': 'failed',
-                #     'message': error_message,
-                #     'result': None
-                # })
-                # logger.info(f"Sent WebSocket update ({target_agent_key} delegation failed) for task {task_id}")
-                logger.warning(f"WebSocket update ({target_agent_key} delegation failed) for task {task_id} skipped - TODO")
-                return self._create_error_event(error_message, context.input_event)
-
-        else:
-            # Handle directly by Orchestrator ('self' or no valid agent found)
-            if target_agent_key != "self":
-                 logger.warning(f"Task {task_id} classified for '{target_agent_key}', but agent not found or invalid. Handling directly.")
-            else:
-                 logger.info(f"Task {task_id} classified for 'self'. Handling directly by {self.name}.")
-
-            # Emit initial acknowledgment via SocketIO
-            # TODO: Replace with WebSocket manager call
-            # self.websocket_manager.broadcast(task_id, {
-            #     'status': 'submitted',
-            #     'message': f"Task received by Orchestrator: {prompt}"
-            # })
-            # logger.info(f"Sent WebSocket update (submitted by orchestrator) for task {task_id}")
-            logger.warning(f"WebSocket update (submitted by orchestrator) for task {task_id} skipped - TODO")
-
-            # Emit processing update
-            processing_message = f"Processing prompt with {self.model.model}..."
-            # TODO: Replace with WebSocket manager call
-            # self.websocket_manager.broadcast(task_id, {
-            #     'status': 'working',
-            #     'message': processing_message
-            # })
-            # logger.info(f"Sent WebSocket update (working by orchestrator) for task {task_id}")
-            logger.warning(f"WebSocket update (working by orchestrator) for task {task_id} skipped - TODO")
-
-            try:
-                # Execute the core LLM logic using the parent LlmAgent's run_async
-                # Use the original context here
-                output_event = await super().run_async(context)
-
-                # Extract the result text
-                llm_response_text = self._extract_text_from_event(output_event, "No text response generated by orchestrator.")
-
-                # Check for errors indicated by the ADK event structure
-                if not output_event.actions:
-                    raise ValueError("Orchestrator LLM Agent did not produce any output actions.")
-
-                # Emit final completion update
-                completion_message = "Task completed successfully by Orchestrator."
-                # TODO: Replace with WebSocket manager call
-                # self.websocket_manager.broadcast(task_id, {
-                #     'status': 'completed',
-                #     'message': completion_message,
-                #     'result': llm_response_text
-                # })
-                # logger.info(f"Sent WebSocket update (completed by orchestrator) for task {task_id} with LLM response.")
-                logger.warning(f"WebSocket update (completed by orchestrator) for task {task_id} skipped - TODO")
-                return output_event
-
-            except Exception as e:
-                error_message = f"Orchestrator processing failed: {str(e)}"
-                logger.error(f"Task {task_id} failed during orchestrator processing: {error_message}", exc_info=True)
-                # TODO: Replace with WebSocket manager call
-                # self.websocket_manager.broadcast(task_id, {
-                #     'status': 'failed',
-                #     'message': error_message,
-                #     'result': None
-                # })
-                # logger.info(f"Sent WebSocket update (orchestrator failed) for task {task_id}")
-                logger.warning(f"WebSocket update (orchestrator failed) for task {task_id} skipped - TODO")
-                return self._create_error_event(error_message, context.input_event)
-
-
-    async def _classify_intent(self, user_prompt: str, task_id: str) -> Tuple[str, Optional[str]]:
-        """
-        Uses the agent's LLM to classify the user prompt's intent.
-
-        Args:
-            user_prompt: The user's input prompt.
-            task_id: The ID of the current task for logging.
-
-        Returns:
-            A tuple containing the classified agent key (str) and an optional error message (str).
-            Defaults to "self" on error.
-        """
-        CLASSIFICATION_PROMPT_TEMPLATE = """
-Analyze the following user prompt and classify the primary intent. Your goal is to determine which specialized agent should handle this request, or if the orchestrator should handle it directly ('self').
-
-Available agents and their functions:
-- market_analyzer: Handles market analysis, trend identification, and finding business opportunities.
-- content_generator: Writes articles, marketing copy, or other forms of content.
-- lead_generator: Finds potential leads, often involving web scraping or searching specific platforms like Quora.
-- freelance_tasker: Finds and manages freelance jobs on platforms like Upwork.
-- web_searcher: Performs general web searches to find information.
-- workflow_manager: Manages the multi-step autonomous income generation workflow.
-- self: Use this if the request is general, doesn't fit other agents, or is a direct request to the orchestrator.
-
-User Prompt:
-"{user_prompt}"
-
-Based on the user prompt, output ONLY the key of the most appropriate agent from the list above (market_analyzer, content_generator, lead_generator, freelance_tasker, web_searcher, workflow_manager, self). Do not add any explanation or other text.
-"""
-        VALID_AGENT_KEYS = [
-            "market_analyzer", "content_generator", "lead_generator",
-            "freelance_tasker", "web_searcher", "workflow_manager", "self"
-        ]
-
-        classification_prompt = CLASSIFICATION_PROMPT_TEMPLATE.format(user_prompt=user_prompt)
-        logger.debug(f"Task {task_id}: Sending classification prompt to LLM: {classification_prompt}")
+        logger.info(f"{self.name} received ADK task {task_id} with prompt: '{prompt}'")
 
         try:
-            # Create a simple event for the classification call
-            classification_event = Event(
-                author="system", # Or self.name?
-                actions=[Action(content=Content(parts=[Part(text=classification_prompt)]))]
-                # No invocation_id needed here as it's an internal call
-            )
-            # Use a temporary context for the internal LLM call
-            # We don't want to pollute the main session or context history with this internal step
-            temp_context = InvocationContext(
-                 session=InvocationContext.create_session(), # Create a temporary session
-                 input_event=classification_event
-            )
+            # Use the orchestrate skill
+            result = await self.orchestrate(prompt)
 
-            # Call the LLM using the base class method but with the classification prompt
-            # Note: We are calling super().run_async which uses the agent's configured model (Gemini)
-            classification_output_event = await super().run_async(temp_context)
-
-            # Extract the classification result
-            llm_response_text = self._extract_text_from_event(classification_output_event, "").strip()
-
-            logger.debug(f"Task {task_id}: Received classification response from LLM: '{llm_response_text}'")
-
-            # Validate the response
-            if llm_response_text in VALID_AGENT_KEYS:
-                return llm_response_text, None
-            else:
-                logger.warning(f"Task {task_id}: LLM classification returned invalid key: '{llm_response_text}'. Valid keys: {VALID_AGENT_KEYS}")
-                return "self", f"LLM returned invalid classification key: {llm_response_text}"
-
+            # Create an output event
+            output_action = Action(content=Content(parts=[Part(text=result)]))
+            return Event(author=self.name, actions=[output_action], invocation_id=input_event.invocation_id)
         except Exception as e:
-            error_message = f"LLM classification call failed: {str(e)}"
-            logger.error(f"Task {task_id}: {error_message}", exc_info=True)
-            return "self", error_message
+            error_message = f"Orchestration failed: {str(e)}"
+            logger.error(f"Task {task_id} failed: {error_message}", exc_info=True)
+            return self._create_error_event(error_message, input_event)
 
-
-    def _prepare_delegation_context(self, original_context: InvocationContext, target_agent_key: str, prompt: str) -> InvocationContext:
+    def handle_task(self, task):
         """
-        Prepares the InvocationContext for the delegated agent.
-        Currently passes the original context but adds agent-specific metadata if needed.
+        Handles a task using A2A protocol.
+
+        Args:
+            task: The task to handle.
+
+        Returns:
+            The updated task with results.
         """
-        # Start with the original event
-        input_event = original_context.input_event
-        metadata = (input_event.metadata or {}).copy() # Start with existing metadata
+        # Extract message from task
+        message_data = task.message or {}
+        content = message_data.get("content", {})
+        prompt = content.get("text", "") if isinstance(content, dict) else ""
 
-        # --- Add agent-specific metadata ---
-        # This section can be expanded based on the specific needs of each agent
-        # For example, extracting API keys or specific parameters from the prompt.
-
-        if target_agent_key == "lead_generator":
-            # Use settings object
-            firecrawl_api_key = settings.FIRECRAWL_API_KEY
-            gemini_api_key = settings.GEMINI_API_KEY # Use settings
-            composio_api_key = settings.COMPOSIO_API_KEY # Use settings
-            # Check if keys obtained from settings are None or empty
-            if not all([firecrawl_api_key, gemini_api_key, composio_api_key]):
-                 logger.warning(f"Missing API keys (checked via settings) for {target_agent_key}. Delegation might fail.")
-            metadata.update({
-                "firecrawl_api_key": firecrawl_api_key,
-                "gemini_api_key": gemini_api_key, # Pass key from settings
-                "composio_api_key": composio_api_key,
-                "user_query": prompt # Pass original prompt explicitly
-            })
-
-        elif target_agent_key == "freelance_tasker":
-             # Basic example: Determine action and user ID
-             action = 'execute_task' # Default
-             if any(k in prompt.lower() for k in ["bid", "monitor"]):
-                 action = 'monitor_and_bid'
-             user_identifier = original_context.session.metadata.get('user_id', 'placeholder_user_id')
-             metadata.update({
-                 'action': action,
-                 'user_identifier': user_identifier,
-                 'keywords': prompt # Simplistic keyword extraction
-             })
-
-        elif target_agent_key == "web_searcher":
-            # Use settings object
-            brave_api_key = settings.BRAVE_API_KEY
-            if not brave_api_key:
-                 logger.warning(f"Missing BRAVE_API_KEY (checked via settings) for {target_agent_key}. Delegation might fail.")
-            metadata.update({
-                "brave_api_key": brave_api_key, # Pass key from settings
-                "query": prompt # Use original prompt as query
-            })
-
-        # Add more elif blocks here for other agents requiring specific metadata
-
-        # Create a potentially modified input event if metadata changed
-        if metadata != (original_context.input_event.metadata or {}):
-            modified_input_event = Event(
-                author=input_event.author,
-                actions=input_event.actions,
-                invocation_id=input_event.invocation_id,
-                metadata=metadata
+        if not prompt:
+            task.status = TaskStatus(
+                state=TaskState.INPUT_REQUIRED,
+                message={"role": "agent", "content": {"type": "text", "text": "Please provide a prompt."}}
             )
-        else:
-             modified_input_event = input_event # No changes needed
+            return task
 
-        # Return a new context with the potentially modified event
-        # Use the original session to maintain conversation history if needed by the delegate
-        return InvocationContext(
-            session=original_context.session,
-            input_event=modified_input_event
-        )
+        # Create a task for async execution
+        asyncio.create_task(self._handle_task_async(task, prompt))
+
+        # Return the task with pending status
+        task.status = TaskStatus(state=TaskState.PENDING)
+        return task
+
+    async def _handle_task_async(self, task, prompt):
+        """
+        Handles a task asynchronously using A2A protocol.
+
+        Args:
+            task: The task to handle.
+            prompt: The prompt to process.
+        """
+        try:
+            # Use the orchestrate skill
+            result = await self.orchestrate(prompt)
+
+            # Update the task with the result
+            task.artifacts = [{
+                "parts": [{"type": "text", "text": result}]
+            }]
+            task.status = TaskStatus(state=TaskState.COMPLETED)
+        except Exception as e:
+            error_message = f"Orchestration failed: {str(e)}"
+            logger.error(f"Task handling failed: {error_message}", exc_info=True)
+
+            task.artifacts = [{
+                "parts": [{"type": "text", "text": f"Error: {error_message}"}]
+            }]
+            task.status = TaskStatus(state=TaskState.FAILED)
 
 
     def _extract_text_from_event(self, event: Event, default_text: str = "") -> str:
@@ -381,4 +303,14 @@ Based on the user prompt, output ONLY the key of the most appropriate agent from
          invocation_id = getattr(input_event, 'invocation_id', None) if input_event else None
          return Event(author=self.name, actions=[error_action], invocation_id=invocation_id)
 
-    # Removed process_task and get_task_status as they are replaced by run_async and ADK session management.
+    def run_server(self, host: str = "0.0.0.0", port: Optional[int] = None):
+        """
+        Run the A2A server for this agent.
+
+        Args:
+            host: The host to bind to.
+            port: The port to bind to. Defaults to settings.A2A_ORCHESTRATOR_PORT.
+        """
+        effective_port = port or settings.A2A_ORCHESTRATOR_PORT
+        logger.info(f"Starting A2A server for {self.name} on {host}:{effective_port}")
+        run_server(self, host=host, port=effective_port)
