@@ -15,11 +15,7 @@ from google.adk.tools import tool # Import tool decorator
 
 from firecrawl import FirecrawlApp
 from pydantic import BaseModel, Field
-# Keep agno/composio for Sheets writing as per prototype logic transfer
-from agno.agent import Agent as AgnoAgent
-from agno.tools.firecrawl import FirecrawlTools # Might not be needed if using SDK directly
-from agno.models.google import Gemini as AgnoGeminiChat
-from composio_phidata import Action, ComposioToolSet
+# Removed Agno/Composio imports
 
 # Removed BaseSpecializedAgent import
 from app.config import settings
@@ -84,7 +80,7 @@ def extract_user_info_from_urls(urls: List[str], firecrawl_api_key: str) -> List
                      }
                  }
              )
-             if response and response.get('data'):
+             if response and isinstance(response, dict) and response.get('data'): # Added isinstance check
                  extracted_data = response['data']
                  interactions = extracted_data.get('interactions', [])
                  if isinstance(interactions, list) and interactions:
@@ -123,52 +119,6 @@ def format_user_info_to_flattened_json(user_info_list: List[dict]) -> List[dict]
     logger.info(f"Formatted data into {len(flattened_data)} flattened records.")
     return flattened_data
 
-def create_google_sheets_agent(composio_api_key: str, gemini_api_key: str) -> AgnoAgent:
-    """Creates an Agno Agent configured for Google Sheets via Composio."""
-    # (Implementation remains the same, relies on Agno/Composio)
-    try:
-        composio_toolset = ComposioToolSet(api_key=composio_api_key)
-        google_sheets_tool = composio_toolset.get_tools(actions=[Action.GOOGLESHEETS_SHEET_FROM_JSON])[0]
-        google_sheets_agent = AgnoAgent(
-            model=AgnoGeminiChat(id="gemini-1.5-flash", api_key=gemini_api_key), # Updated model ID example
-            tools=[google_sheets_tool], show_tool_calls=True,
-            system_prompt="You are an expert at creating Google Sheets from JSON data.", markdown=True
-        )
-        logger.info("Created Google Sheets AgnoAgent.")
-        return google_sheets_agent
-    except Exception as e:
-        logger.error(f"Failed to create Google Sheets AgnoAgent: {e}", exc_info=True)
-        raise
-
-def write_to_google_sheets(flattened_data: List[dict], composio_api_key: str, gemini_api_key: str) -> Optional[str]:
-    """Writes data to Google Sheets using the Agno/Composio agent."""
-    # (Implementation remains the same, relies on Agno/Composio)
-    if not flattened_data: return None
-    try:
-        google_sheets_agent = create_google_sheets_agent(composio_api_key, gemini_api_key)
-        message = (
-            "Create a new Google Sheet with this data. Columns: Website URL, Username, Bio, Post Type, Timestamp, Upvotes, Links.\n\n"
-            f"{json.dumps(flattened_data, indent=2)}"
-        )
-        logger.info("Attempting to write data to Google Sheets...")
-        response = google_sheets_agent.run(message)
-        if response and hasattr(response, 'content'):
-             content = response.content
-             if "https://docs.google.com/spreadsheets/d/" in content:
-                 start_index = content.find("https://docs.google.com/spreadsheets/d/")
-                 link_part = content[start_index:]
-                 end_index = link_part.find(" ")
-                 google_sheets_link = link_part if end_index == -1 else link_part[:end_index]
-                 if google_sheets_link.startswith("https://docs.google.com/spreadsheets/d/"):
-                     logger.info(f"Successfully wrote data to Google Sheet: {google_sheets_link}")
-                     return google_sheets_link
-                 else: logger.error(f"Extracted link seems invalid: {google_sheets_link}")
-             else: logger.error(f"Google Sheet link not found in response: {content}")
-        else: logger.error(f"Invalid response from Google Sheets agent: {response}")
-    except Exception as e:
-        logger.error(f"Error writing to Google Sheets: {e}", exc_info=True)
-    return None
-
 async def transform_query_async(user_query: str, gemini_api_key: str) -> str:
     """Transforms the user query into a concise company description using Gemini."""
     # (Implementation remains the same, uses direct Gemini call)
@@ -182,9 +132,13 @@ async def transform_query_async(user_query: str, gemini_api_key: str) -> str:
         prompt = f"""Extract the core business/product focus (3-4 words) from the query: "{user_query}"
 Examples:
 Input: "AI chatbots for e-commerce support" -> Output: "AI e-commerce chatbots"
-Input: "voice cloning for audiobooks" -> Output: "voice cloning technology"
-Input: "automated video editing software" -> Output: "AI video editing software"
-Input: "ML for fraud detection" -> Output: "ML fraud detection"
+Input: "find people interested in voice cloning technology for creating audiobooks and podcasts" -> Output: "voice cloning technology"
+Input: "looking for users who need automated video editing software with AI capabilities" -> Output: "AI video editing software"
+Input: "need to find businesses interested in implementing machine learning solutions for fraud detection" -> Output: "ML fraud detection"
+
+Always focus on the core product/service and keep it concise but clear.
+
+Transform this query: "{user_query}"
 Output:"""
         response = await model.generate_content_async(prompt)
         transformed_query = response.text.strip()
@@ -196,22 +150,22 @@ Output:"""
 
 # --- ADK Tool Definition ---
 
-@tool(description="Generate leads by searching Quora based on a user query, extracting info, and saving to a Google Sheet.")
+@tool(description="Generate leads by searching Quora based on a user query and extracting user info.")
 async def generate_leads_tool(
     user_query: str,
     firecrawl_api_key: str,
-    gemini_api_key: str,
-    composio_api_key: str,
+    gemini_api_key: str, # Still needed for query transformation
     num_links: int = 3
 ) -> Dict[str, Any]:
     """
-    ADK Tool: Generate leads from Quora and save to Google Sheets.
-    Requires Firecrawl, Gemini, and Composio API keys.
+    ADK Tool: Generate leads from Quora.
+    Requires Firecrawl and Gemini API keys.
+    Returns extracted lead data.
     """
     logger.info(f"Tool: Generating leads for query: {user_query}")
     try:
         # Validate inputs
-        if not all([user_query, firecrawl_api_key, gemini_api_key, composio_api_key]):
+        if not all([user_query, firecrawl_api_key, gemini_api_key]):
             missing = [k for k, v in locals().items() if k.endswith('_api_key') and not v]
             raise ValueError(f"Missing required API keys: {', '.join(missing)}")
 
@@ -223,21 +177,15 @@ async def generate_leads_tool(
         if not user_info_list: return {"success": False, "error": "No user information extracted."}
         flattened_data = format_user_info_to_flattened_json(user_info_list)
         if not flattened_data: return {"success": False, "error": "No data available after formatting."}
-        google_sheets_link = write_to_google_sheets(flattened_data, composio_api_key, gemini_api_key)
-        # --- End Workflow Steps ---
+        # Removed Google Sheets writing logic
 
-        if google_sheets_link:
-            logger.info("Tool: Lead generation process completed successfully.")
-            return {
-                "success": True,
-                "message": "Lead generation complete.",
-                "google_sheet_link": google_sheets_link,
-                "leads_generated": len(flattened_data),
-                "urls_processed": urls
-            }
-        else:
-            logger.error("Tool: Failed to write data to Google Sheets.")
-            return {"success": False, "error": "Failed to write data to Google Sheets."}
+        logger.info("Tool: Lead generation process completed successfully (without Sheets writing).")
+        return {
+            "success": True,
+            "message": "Lead generation complete. Data extracted.",
+            "leads_data": flattened_data, # Return the extracted data
+            "urls_processed": urls
+        }
 
     except Exception as e:
         logger.error(f"Tool: Error generating leads: {e}", exc_info=True)
@@ -247,7 +195,7 @@ async def generate_leads_tool(
 # --- Instantiate the ADK Agent ---
 agent = Agent(
     name="lead_generation_adk", # ADK specific name
-    description="Generates leads by searching Quora, extracting user info via Firecrawl, and saving results to Google Sheets via Composio.",
+    description="Generates leads by searching Quora and extracting user info via Firecrawl.",
     tools=[
         generate_leads_tool,
     ],

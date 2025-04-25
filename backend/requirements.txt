@@ -19,8 +19,8 @@ firecrawl-py==2.1.2 # Used by MarketResearchAgent for data extraction
 
 # Cloud & External Services
 google-cloud-secret-manager>=2.16.0 # For freelance agent credentials
-agno-py>=0.1.0 # For LeadGen agent Sheets integration (if still used)
-composio-phidata>=0.1.0 # For LeadGen agent Sheets integration (if still used)
+# agno-py>=0.1.0 # Removed: Dependency not found, removing Google Sheets integration
+# composio-phidata>=0.1.0 # Removed: Dependency not found, removing Google Sheets integration
 
 # Utilities
 

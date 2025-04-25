@@ -9,7 +9,7 @@ import logging
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 
-from google.cloud import secretmanager
+# Removed google.cloud.secretmanager import
 from google.adk.agents import Agent # Use ADK Agent
 from google.adk.tools import tool # Import tool decorator
 
@@ -23,24 +23,17 @@ logger = logging.getLogger(__name__)
 # --- Constants ---
 AGENT_NAME = "freelance_tasker_adk" # ADK specific name
 STATE_KEY = "freelance_state" # Key for storing state in DB
-SECRET_PREFIX = "freelance-credentials-" # Default prefix
+# Removed SECRET_PREFIX constant
 
-# --- Client Initialization (Global or passed to tools if needed) ---
-GCP_PROJECT_ID = settings.GCP_PROJECT_ID
+# --- Global Clients (Consider better dependency injection for production) ---
+# Removed GCP_PROJECT_ID constant
 DB_SERVICE = DatabaseService() # Instantiate DB service
 
-SECRET_MANAGER_CLIENT = None
-if GCP_PROJECT_ID:
-    try:
-        SECRET_MANAGER_CLIENT = secretmanager.SecretManagerServiceClient()
-        logger.info("Secret Manager client initialized globally.")
-    except Exception as e:
-        logger.error(f"Failed to initialize global Secret Manager client: {e}", exc_info=True)
-        logger.warning("Freelance agent functionality requiring credentials will be limited.")
-else:
-    logger.warning("Secret Manager client not initialized globally due to missing GCP_PROJECT_ID.")
+# Removed SECRET_MANAGER_CLIENT initialization
 
 # --- Helper Functions ---
+
+# Removed _get_platform_credentials helper function
 
 async def _get_state(user_identifier: str) -> dict:
     """Retrieves the agent's state for a specific user from PostgreSQL."""
@@ -76,24 +69,6 @@ async def _update_state(user_identifier: str, new_state_value: dict) -> bool:
         logger.error(f"Error updating state for {user_identifier}: {e}", exc_info=True)
         return False # Indicate failure to the tool
 
-def _get_platform_credentials(user_identifier: str, secret_id_suffix: str) -> Optional[str]:
-    """Retrieves platform credentials from Secret Manager."""
-    if not SECRET_MANAGER_CLIENT or not GCP_PROJECT_ID:
-        logger.warning("Secret Manager client or GCP Project ID not available. Cannot retrieve credentials.")
-        return None
-
-    secret_id = f"{SECRET_PREFIX}{user_identifier}-{secret_id_suffix}"
-    try:
-        name = f"projects/{GCP_PROJECT_ID}/secrets/{secret_id}/versions/latest"
-        logger.info(f"Attempting to access secret: {name}")
-        response = SECRET_MANAGER_CLIENT.access_secret_version(request={"name": name})
-        credentials = response.payload.data.decode("UTF-8")
-        logger.info(f"Successfully retrieved credentials for secret suffix {secret_id_suffix} for user {user_identifier}")
-        return credentials
-    except Exception as e:
-        logger.error(f"Error retrieving credentials for secret {secret_id}: {e}", exc_info=True)
-        return None
-
 # --- ADK Tool Definitions ---
 
 @tool(description="Monitor freelance platforms (e.g., Upwork) based on criteria and potentially bid on matching tasks.")
@@ -101,21 +76,28 @@ async def monitor_and_bid_tool(
     user_identifier: str,
     platform: str,
     criteria: Dict[str, Any],
-    secret_id_suffix: str
+    # Removed secret_id_suffix parameter
 ) -> Dict[str, Any]:
     """
     ADK Tool: Monitor freelance platforms and bid on matching tasks.
+    Reads credentials from environment variables via settings.
     """
     logger.info(f"Tool: [{user_identifier}] Monitoring {platform} with criteria: {criteria}")
 
-    if not SECRET_MANAGER_CLIENT:
-        return {"success": False, "error": "Secret Manager client not initialized. Cannot retrieve credentials."}
+    # Read credentials directly from settings (populated by environment variables)
+    # Assuming settings has attributes like UPWORK_API_KEY, FIVERR_API_KEY etc.
+    # This needs to be mapped based on the 'platform' input.
+    credentials = None
+    if platform.lower() == 'upwork':
+        credentials = settings.UPWORK_API_KEY # Assuming this exists in settings
+    elif platform.lower() == 'fiverr':
+        credentials = settings.FIVERR_API_KEY # Assuming this exists in settings
+    # Add other platforms as needed
+
+    if not credentials:
+        return {"success": False, "error": f"Credentials for platform '{platform}' not found in environment variables."}
 
     try:
-        credentials = _get_platform_credentials(user_identifier, secret_id_suffix)
-        if not credentials:
-            return {"success": False, "error": f"Failed to retrieve credentials for platform {platform} (secret suffix: {secret_id_suffix})."}
-
         # TODO: Implement actual platform monitoring and bidding logic using credentials
         logger.warning("Placeholder: Actual platform monitoring and bidding logic not implemented.")
         bids_placed_count = 0 # Placeholder
