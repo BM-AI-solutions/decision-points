@@ -194,7 +194,7 @@ class WorkflowManagerAgent(BaseSpecializedAgent):
     Features:
     - Manages state and asynchronous communication between specialized agents.
     - Includes retry logic for A2A calls.
-    - Uses Firestore for state persistence.
+    - Uses PostgreSQL for state persistence.
     - Emits events via SocketIO for real-time updates.
     """
 
@@ -512,31 +512,37 @@ class WorkflowManagerAgent(BaseSpecializedAgent):
         code_generation_result_data: Optional[Dict] = None # Added
         deployment_result_data: Optional[Dict] = None
         marketing_result_data: Optional[Dict] = None # Added Marketing result
-        state: Dict[str, Any] = {} # To hold the loaded Firestore state
-
-        # --- Firestore Check ---
-        if not self.db:
-             logger.critical(f"[{workflow_run_id or 'NEW'}] FATAL ERROR: Firestore client is not initialized. Aborting workflow.")
-             return Event(type=EventType.ERROR, data={
-                 "error": "Firestore client not available. Workflow cannot proceed or record state.",
-                 "workflow_run_id": workflow_run_id or "N/A",
-                 "stage": None
-             })
+        state: Dict[str, Any] = {} # To hold the loaded database state
 
         try:
             # --- Initialize or Load State ---
             if is_new_workflow:
-                workflow_run_id = uuid.uuid4().hex
+                # Generate a new workflow run ID
+                workflow_run_id = f"workflow_{uuid.uuid4().hex[:8]}_{int(time.time())}"
                 logger.info(f"[{invocation_id}/{workflow_run_id}] New workflow run started.")
+
+                # Extract required parameters
                 initial_topic = input_data.get("initial_topic")
                 target_url = input_data.get("target_url") # Optional
+
                 if not initial_topic or not isinstance(initial_topic, str):
                     raise ValueError("Missing or invalid 'initial_topic' for new workflow.")
+
                 logger.info(f"[{workflow_run_id}] Initial Topic: {initial_topic}, Target URL: {target_url}")
 
-                # Initial state write
+                # Initialize state
                 current_status = WorkflowStatus.STARTING
                 current_step = None # Explicitly null at start
+
+                # Create workflow in database
+                await DatabaseService.create_workflow(
+                    workflow_id=workflow_run_id,
+                    initial_topic=initial_topic,
+                    target_url=target_url,
+                    status=current_status.value
+                )
+
+                # Initial state write
                 state = {
                     "status": current_status.value,
                     "initial_topic": initial_topic,
@@ -546,26 +552,42 @@ class WorkflowManagerAgent(BaseSpecializedAgent):
                 }
                 await self._update_workflow_state(workflow_run_id, state)
             else:
-                # Load existing state from Firestore
+                # Load existing state from database
                 logger.info(f"[{invocation_id}/{workflow_run_id}] Attempting to load existing workflow run.")
-                doc_ref = self.db.collection(self.collection_name).document(workflow_run_id)
-                doc_snapshot = await doc_ref.get()
-                if not doc_snapshot.exists:
-                    raise ValueError(f"Workflow run ID '{workflow_run_id}' not found in Firestore.")
+                workflow = await DatabaseService.get_workflow(workflow_run_id)
+                if not workflow:
+                    raise ValueError(f"Workflow run ID '{workflow_run_id}' not found in database.")
 
-                state = doc_snapshot.to_dict()
-                initial_topic = state.get("initial_topic")
-                target_url = state.get("target_url")
-                market_report_data = state.get("market_research_result")
-                product_spec_data = state.get("improvement_result")
-                brand_package_data = state.get("branding_result")
-                code_generation_result_data = state.get("code_generation_result") # Added
-                deployment_result_data = state.get("deployment_result") # Load deployment result too
-                marketing_result_data = state.get("marketing_result") # Load marketing result
-                current_status = WorkflowStatus(state.get("status", WorkflowStatus.FAILED.value)) # Default to FAILED if missing
-                current_step = WorkflowStep(state["current_step"]) if state.get("current_step") else None
+                # Convert database model to dictionary
+                state = {
+                    "workflow_run_id": workflow.id,
+                    "initial_topic": workflow.initial_topic,
+                    "target_url": workflow.target_url,
+                    "status": workflow.status,
+                    "current_step": workflow.current_step,
+                    "error_message": workflow.error_message,
+                    "market_research_result": workflow.market_research_result,
+                    "improvement_result": workflow.product_spec_data,
+                    "branding_result": workflow.brand_package_data,
+                    "code_generation_result": workflow.code_generation_result,
+                    "deployment_result": workflow.deployment_result,
+                    "marketing_result": workflow.marketing_result,
+                    "created_at": workflow.created_at,
+                    "last_updated": workflow.last_updated
+                }
 
-                logger.info(f"[{workflow_run_id}] State loaded from Firestore. Status: {current_status.value}, Last Step: {current_step.value if current_step else 'None'}")
+                initial_topic = workflow.initial_topic
+                target_url = workflow.target_url
+                market_report_data = workflow.market_research_result
+                product_spec_data = workflow.product_spec_data
+                brand_package_data = workflow.brand_package_data
+                code_generation_result_data = workflow.code_generation_result
+                deployment_result_data = workflow.deployment_result
+                marketing_result_data = workflow.marketing_result
+                current_status = WorkflowStatus(workflow.status or WorkflowStatus.FAILED.value) # Default to FAILED if missing
+                current_step = WorkflowStep(workflow.current_step) if workflow.current_step else None
+
+                logger.info(f"[{workflow_run_id}] State loaded from database. Status: {current_status.value}, Last Step: {current_step.value if current_step else 'None'}")
 
                 # Handle the case where the frontend signals approval
                 # The frontend might trigger a resume call after user clicks 'approve'
@@ -578,17 +600,17 @@ class WorkflowManagerAgent(BaseSpecializedAgent):
 
                 # Validation: Ensure necessary data exists for the expected next step
                 if current_status == WorkflowStatus.APPROVED_RESUMING and not market_report_data:
-                    raise ValueError("Cannot resume from improvement: Market research result missing in Firestore.")
+                    raise ValueError("Cannot resume from improvement: Market research result missing in database.")
                 if current_status == WorkflowStatus.COMPLETED_IMPROVEMENT and not product_spec_data:
-                     raise ValueError("Cannot resume from branding: Improvement result missing in Firestore.")
+                     raise ValueError("Cannot resume from branding: Improvement result missing in database.")
                 if current_status == WorkflowStatus.COMPLETED_BRANDING and (not product_spec_data or not brand_package_data):
-                     raise ValueError("Cannot resume from code generation: Improvement or Branding result missing in Firestore.")
+                     raise ValueError("Cannot resume from code generation: Improvement or Branding result missing in database.")
                 if current_status == WorkflowStatus.COMPLETED_CODE_GENERATION and (not brand_package_data or not code_generation_result_data): # Added check
-                     raise ValueError("Cannot resume from deployment: Branding or Code Generation result missing in Firestore.")
+                     raise ValueError("Cannot resume from deployment: Branding or Code Generation result missing in database.")
                 if current_status == WorkflowStatus.COMPLETED_DEPLOYMENT and (not product_spec_data or not brand_package_data or not deployment_result_data): # Added check
-                     raise ValueError("Cannot resume from marketing: Product Spec, Branding, or Deployment result missing in Firestore.")
+                     raise ValueError("Cannot resume from marketing: Product Spec, Branding, or Deployment result missing in database.")
                 if not initial_topic: # Should always exist if state was loaded
-                     raise ValueError("Cannot resume: Initial topic missing in Firestore state.")
+                     raise ValueError("Cannot resume: Initial topic missing in database state.")
 
 
             # --- Workflow Execution Logic ---

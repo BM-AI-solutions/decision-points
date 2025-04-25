@@ -22,17 +22,42 @@ Decision Points is an AI-powered system designed to assist with various business
     *   Language: Python 3.0
     *   Framework: FastAPI
     *   AI: Google Generative AI (Gemini)
+    *   Database: PostgreSQL (for state persistence)
+    *   ORM: SQLAlchemy with Alembic for migrations
 *   **Frontend:**
     *   Library: React
     *   Build Tool: Vite
 *   **Containerization:** Docker, Docker Compose
-*   **Communication:** REST APIs, WebSockets
+*   **Communication:** REST APIs, WebSockets, A2A Protocol
 
 ## Architecture Overview
 
-The system uses a Client-Server architecture. A React frontend communicates with a FastAPI backend API via REST calls for standard data retrieval and WebSockets for real-time interaction with the Orchestrator agent. The backend leverages Google Gemini for its AI capabilities. Docker Compose is used to manage the local development environment, running the frontend and backend services in separate containers.
+The system uses a Client-Server architecture. A React frontend communicates with a FastAPI backend API via REST calls for standard data retrieval and WebSockets for real-time interaction with the Orchestrator agent. The backend leverages Google Gemini for its AI capabilities and PostgreSQL for state persistence.
 
-## Autonomous Income Generation Workflow
+The system implements a multi-agent workflow using the Agent-to-Agent (A2A) protocol, allowing specialized agents to communicate and collaborate. Each agent maintains its state in the PostgreSQL database, which provides reliable persistence and transaction support.
+
+Docker Compose is used to manage the local development environment, running the frontend, backend, and database services in separate containers. Database migrations are automatically applied during container startup.
+
+## Multi-Agent Architecture
+
+The system implements a multi-agent architecture using the Agent-to-Agent (A2A) protocol and the Agent Development Kit (ADK). Each agent is a specialized service that can be run independently and communicates with other agents through a standardized protocol.
+
+### Agent State Persistence
+
+All agents use PostgreSQL for state persistence, which provides several advantages:
+
+1. **Reliability**: PostgreSQL offers ACID-compliant transactions, ensuring data integrity.
+2. **Scalability**: The database can handle multiple concurrent connections from different agents.
+3. **Durability**: State is persisted even if agents crash or restart.
+4. **Queryability**: SQL queries can be used to analyze agent state and workflow progress.
+
+The database schema includes tables for:
+- `workflows`: Stores workflow metadata and status
+- `workflow_steps`: Tracks individual steps within a workflow
+- `agent_states`: Stores agent-specific state data
+- `agent_tasks`: Tracks tasks assigned to agents
+
+### Autonomous Income Generation Workflow
 
 This system includes an autonomous workflow designed to generate income by identifying a market need, creating/improving a simple digital product or service, branding it, and deploying it. This workflow is orchestrated by the `WorkflowManagerAgent` and involves the following specialized agents:
 
@@ -40,6 +65,9 @@ This system includes an autonomous workflow designed to generate income by ident
 2.  **Improvement Agent:** Takes the initial idea or existing simple product and refines it, potentially adding features, improving code quality, or enhancing its value proposition based on research.
 3.  **Branding Agent:** Develops a simple brand identity, including name suggestions, logos (potentially placeholder/simple generation), and marketing copy for the product.
 4.  **Deployment Agent:** Takes the finalized product and branding assets and deploys them to a suitable platform (e.g., Vercel, Netlify, Cloudflare Pages, simple web hosting).
+5.  **Marketing Agent:** Promotes the product/service through various channels.
+6.  **Lead Generation Agent:** Identifies potential customers and generates leads.
+7.  **Freelance Task Agent:** Monitors freelance platforms for relevant tasks.
 
 The `WorkflowManagerAgent` coordinates the execution of these agents, passing context and results between steps. The user can trigger this workflow via specific prompts to the Orchestrator Panel (e.g., "start income workflow").
 
@@ -60,6 +88,7 @@ This is the primary and recommended method for local development and testing.
     *   **Crucially, edit the new `.env` file and fill in *all* required values.** This includes:
     *   `SECRET_KEY`: Generate a unique secret key.  (see `.env.example` for command).
     *   `GEMINI_API_KEY`: Your API key from Google AI Studio.
+    *   `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`: Database credentials.
 *   **Run:**
     ```bash
     docker compose up -d
@@ -67,15 +96,29 @@ This is the primary and recommended method for local development and testing.
     *   Use `-d` to run in detached mode (background). Omit it to see logs directly.
     *   If you're not using Docker Compose v2, replace `docker compose` with `docker-compose`.
     *   You can use `docker compose up --build --d` to rebuild the images. This is useful after making major code changes.
+    *   Database migrations are automatically applied during container startup.
 *   **Access:**
-    *   Frontend: `http://localhost:5173` 
+    *   Frontend: `http://localhost:5173`
     *   Backend: `http://localhost:8000`
+    *   Database: `localhost:5432` (accessible with the credentials from your `.env` file)
 *   **How it Works:**
-    *   `docker-compose.yml` defines `frontend` and `backend` services.
+    *   `docker-compose.yml` defines `frontend`, `backend`, and `db` services.
+    *   The `db` service runs PostgreSQL and stores all agent state and workflow data.
+    *   The `backend` service depends on the `db` service and waits for it to be healthy before starting.
 *   **Stopping:**
     ```bash
     docker compose down
     ```
+*   **Database Management:**
+    *   Database migrations are managed with Alembic.
+    *   To create a new migration:
+        ```bash
+        docker compose exec backend alembic revision --autogenerate -m "Description of changes"
+        ```
+    *   To apply migrations manually:
+        ```bash
+        docker compose exec backend alembic upgrade head
+        ```
 
 ## Environment Variables
 
@@ -103,7 +146,7 @@ The backend provides several API endpoints, including:
 ## Development Status
 
 *   **Stage:** polishing the docker local testing version
-*   **Core Features:** Dashboard pages to access and observe the agent system 
+*   **Core Features:** Dashboard pages to access and observe the agent system
 *   **Data:** Analytics
 *   **Setup:** Docker Compose is the standard local development environment.
 *   **Known Issues:** decision-points-agent-web-search-1 container is constantly restarting
