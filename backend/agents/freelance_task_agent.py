@@ -8,8 +8,9 @@ It implements the A2A protocol for agent communication.
 import json
 import logging
 from typing import Dict, List, Any, Optional
+from datetime import datetime
 
-from google.cloud import firestore, pubsub_v1, secretmanager
+from google.cloud import secretmanager
 from google.adk.runtime import InvocationContext
 from google.adk.runtime.events import Event
 
@@ -18,6 +19,7 @@ from python_a2a import skill
 
 from agents.base_agent import BaseSpecializedAgent
 from app.config import settings
+from app.services.db_service import DatabaseService
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -37,14 +39,7 @@ class FreelanceTaskAgent(BaseSpecializedAgent):
 
     # Configuration keys
     CONFIG_GCP_PROJECT_ID = "gcp_project_id"
-    CONFIG_FIRESTORE_COLLECTION = "firestore_collection"
-    CONFIG_FIRESTORE_STATE_FIELD = "firestore_state_field"
-    CONFIG_PUBSUB_TOPIC = "pubsub_topic"
     CONFIG_SECRET_PREFIX = "secret_prefix" # e.g., "freelance-credentials-"
-
-    DEFAULT_FIRESTORE_COLLECTION = "agentStates"
-    DEFAULT_FIRESTORE_STATE_FIELD = "freelanceTaskState"
-    DEFAULT_PUBSUB_TOPIC = "freelance-task-events"
 
     def __init__(
         self,
@@ -88,25 +83,19 @@ class FreelanceTaskAgent(BaseSpecializedAgent):
         if not self.gcp_project_id:
             logger.warning("No GCP project ID provided. Some functionality may be limited.")
 
-        self.firestore_collection = resolved_config.get(self.CONFIG_FIRESTORE_COLLECTION, self.DEFAULT_FIRESTORE_COLLECTION)
-        self.firestore_state_field = resolved_config.get(self.CONFIG_FIRESTORE_STATE_FIELD, self.DEFAULT_FIRESTORE_STATE_FIELD)
-        self.pubsub_topic = resolved_config.get(self.CONFIG_PUBSUB_TOPIC, self.DEFAULT_PUBSUB_TOPIC)
         self.secret_prefix = resolved_config.get(self.CONFIG_SECRET_PREFIX, "freelance-credentials-")
 
         # --- Client Initialization ---
         if self.gcp_project_id:
             try:
-                self.db = firestore.Client(project=self.gcp_project_id)
-                self.pubsub_publisher = pubsub_v1.PublisherClient()
                 self.secret_manager_client = secretmanager.SecretManagerServiceClient()
-                logger.info("Firestore, Pub/Sub Publisher, and Secret Manager clients initialized.")
+                logger.info("Secret Manager client initialized.")
             except Exception as e:
-                logger.error(f"Failed to initialize GCP clients: {e}", exc_info=True)
+                logger.error(f"Failed to initialize Secret Manager client: {e}", exc_info=True)
                 logger.warning("Continuing with limited functionality.")
+                self.secret_manager_client = None
         else:
-            logger.warning("GCP clients not initialized due to missing project ID.")
-            self.db = None
-            self.pubsub_publisher = None
+            logger.warning("Secret Manager client not initialized due to missing project ID.")
             self.secret_manager_client = None
 
         logger.info(f"FreelanceTaskAgent initialized with port: {self.port}")
@@ -205,34 +194,37 @@ class FreelanceTaskAgent(BaseSpecializedAgent):
                 data={"error": f"An unexpected error occurred: {str(e)}"}
             )
 
-    def _get_state_ref(self, user_identifier: str):
-        """Gets the Firestore document reference for the user's state."""
-        # Using user_identifier as the document ID within the configured collection
-        return self.db.collection(self.firestore_collection).document(user_identifier)
-
-    def _get_state(self, user_identifier: str) -> dict:
-        """Retrieves the specific freelance state field for the user."""
+    async def _get_state(self, user_identifier: str) -> dict:
+        """Retrieves the agent's state for a specific user from PostgreSQL."""
         try:
-            doc_ref = self._get_state_ref(user_identifier)
-            doc = doc_ref.get()
-            if doc.exists:
-                return doc.to_dict().get(self.firestore_state_field, {})
-            self.logger.info(f"No state document found for {user_identifier} in {self.firestore_collection}.")
-            return {}
+            state_data = await DatabaseService.get_agent_state(
+                agent_id=self.name,
+                user_identifier=user_identifier,
+                state_key="freelance_state"
+            )
+
+            if not state_data:
+                logger.info(f"No state found for {user_identifier}. Returning empty state.")
+                return {}
+
+            return state_data
         except Exception as e:
-            self.logger.error(f"Error fetching state for {user_identifier}: {e}", exc_info=True)
+            logger.error(f"Error retrieving state for {user_identifier}: {e}", exc_info=True)
             # Depending on requirements, might re-raise or return specific error indicator
             return {"error": f"Failed to fetch state: {e}"}
 
-    def _update_state(self, user_identifier: str, new_state_value: dict):
-        """Updates the specific freelance state field for the user."""
+    async def _update_state(self, user_identifier: str, new_state_value: dict):
+        """Updates the agent's state for a specific user in PostgreSQL."""
         try:
-            doc_ref = self._get_state_ref(user_identifier)
-            # Set the specific field within the document, merging with existing document data
-            doc_ref.set({self.firestore_state_field: new_state_value}, merge=True)
-            self.logger.info(f"State updated for {user_identifier} in field {self.firestore_state_field}.")
+            await DatabaseService.update_agent_state(
+                agent_id=self.name,
+                user_identifier=user_identifier,
+                state_key="freelance_state",
+                state_data=new_state_value
+            )
+            logger.info(f"State updated for {user_identifier}.")
         except Exception as e:
-            self.logger.error(f"Error updating state for {user_identifier}: {e}", exc_info=True)
+            logger.error(f"Error updating state for {user_identifier}: {e}", exc_info=True)
             # Re-raise to be caught by the main run_async handler
             raise RuntimeError(f"Failed to update state for {user_identifier}: {e}") from e
 
@@ -283,9 +275,9 @@ class FreelanceTaskAgent(BaseSpecializedAgent):
         self.logger.info(f"Placeholder: Monitoring complete for {platform}.")
 
         # Update state (example)
-        current_state = self._get_state(user_identifier)
-        current_state.setdefault('monitoring', {})[platform] = {'status': 'active', 'last_run': firestore.SERVER_TIMESTAMP}
-        self._update_state(user_identifier, current_state)
+        current_state = await self._get_state(user_identifier)
+        current_state.setdefault('monitoring', {})[platform] = {'status': 'active', 'last_run': datetime.now().isoformat()}
+        await self._update_state(user_identifier, current_state)
 
         return Event(
             invocation_context=context,
@@ -317,9 +309,9 @@ class FreelanceTaskAgent(BaseSpecializedAgent):
         self.logger.info(f"Placeholder: Task execution complete for task {task_details.get('id', 'unknown')}.")
 
         # Update state (example)
-        current_state = self._get_state(user_identifier)
-        current_state.setdefault('tasks', {})[task_details.get('id', 'unknown')] = {'status': 'in_progress', 'last_update': firestore.SERVER_TIMESTAMP}
-        self._update_state(user_identifier, current_state)
+        current_state = await self._get_state(user_identifier)
+        current_state.setdefault('tasks', {})[task_details.get('id', 'unknown')] = {'status': 'in_progress', 'last_update': datetime.now().isoformat()}
+        await self._update_state(user_identifier, current_state)
 
         # Publish event via Pub/Sub (retained from prototype, consider ADK events too)
         self._publish_event(user_identifier, {"event": "task_execution_started", "task_details": task_details})
@@ -397,9 +389,9 @@ class FreelanceTaskAgent(BaseSpecializedAgent):
             # For now, return a placeholder result
 
             # Update state
-            current_state = self._get_state(user_identifier)
-            current_state.setdefault('monitoring', {})[platform] = {'status': 'active', 'last_run': firestore.SERVER_TIMESTAMP}
-            self._update_state(user_identifier, current_state)
+            current_state = await self._get_state(user_identifier)
+            current_state.setdefault('monitoring', {})[platform] = {'status': 'active', 'last_run': datetime.now().isoformat()}
+            await self._update_state(user_identifier, current_state)
 
             # Publish event
             self._publish_event(user_identifier, {"event": "monitoring_started", "platform": platform})
@@ -448,12 +440,12 @@ class FreelanceTaskAgent(BaseSpecializedAgent):
             # For now, return a placeholder result
 
             # Update state
-            current_state = self._get_state(user_identifier)
+            current_state = await self._get_state(user_identifier)
             current_state.setdefault('tasks', {})[task_details.get('id', 'unknown')] = {
                 'status': 'in_progress',
-                'last_update': firestore.SERVER_TIMESTAMP
+                'last_update': datetime.now().isoformat()
             }
-            self._update_state(user_identifier, current_state)
+            await self._update_state(user_identifier, current_state)
 
             # Publish event
             self._publish_event(user_identifier, {"event": "task_execution_started", "task_details": task_details})
@@ -477,7 +469,7 @@ class FreelanceTaskAgent(BaseSpecializedAgent):
         description="Get the state for a user",
         tags=["freelance", "state"]
     )
-    def get_state_skill(self, user_identifier: str) -> Dict[str, Any]:
+    async def get_state_skill(self, user_identifier: str) -> Dict[str, Any]:
         """
         Get the state for a user.
 
@@ -489,14 +481,8 @@ class FreelanceTaskAgent(BaseSpecializedAgent):
         """
         logger.info(f"Getting state for user: {user_identifier}")
 
-        if not self.db:
-            return {
-                "success": False,
-                "error": "Firestore client not initialized. Cannot get state."
-            }
-
         try:
-            state = self._get_state(user_identifier)
+            state = await self._get_state(user_identifier)
             return {
                 "success": True,
                 "message": f"Retrieved state for {user_identifier}.",
@@ -515,7 +501,7 @@ class FreelanceTaskAgent(BaseSpecializedAgent):
         description="Update the state for a user",
         tags=["freelance", "state"]
     )
-    def update_state_skill(self, user_identifier: str, new_state: Dict[str, Any]) -> Dict[str, Any]:
+    async def update_state_skill(self, user_identifier: str, new_state: Dict[str, Any]) -> Dict[str, Any]:
         """
         Update the state for a user.
 
@@ -528,14 +514,8 @@ class FreelanceTaskAgent(BaseSpecializedAgent):
         """
         logger.info(f"Updating state for user: {user_identifier}")
 
-        if not self.db:
-            return {
-                "success": False,
-                "error": "Firestore client not initialized. Cannot update state."
-            }
-
         try:
-            self._update_state(user_identifier, new_state)
+            await self._update_state(user_identifier, new_state)
             return {
                 "success": True,
                 "message": f"State updated successfully for {user_identifier}."

@@ -15,15 +15,14 @@ import logging
 from enum import Enum
 from typing import Dict, Any, Optional, Union, List
 
-# Firestore client
-from google.cloud import firestore
-from google.cloud.firestore_v1.async_client import AsyncClient as FirestoreAsyncClient
-
 # Import SocketIO type hint if needed
 try:
     from flask_socketio import SocketIO
 except ImportError:
     SocketIO = Any # Fallback if flask_socketio is not installed here
+
+# Import database service
+from app.services.db_service import DatabaseService
 
 from pydantic import BaseModel, Field, HttpUrl, ValidationError
 
@@ -206,8 +205,6 @@ class WorkflowManagerAgent(BaseSpecializedAgent):
         model_name: Optional[str] = None,
         port: Optional[int] = None,
         socketio: Optional[SocketIO] = None,
-        firestore_db: Optional[FirestoreAsyncClient] = None,
-        collection_name: Optional[str] = None,
         **kwargs: Any,
     ):
         """
@@ -219,8 +216,6 @@ class WorkflowManagerAgent(BaseSpecializedAgent):
             model_name: The name of the model to use. Defaults to settings.GEMINI_MODEL_NAME.
             port: The port to run the A2A server on. Defaults to settings.WORKFLOW_MANAGER_AGENT_URL port.
             socketio: The SocketIO instance for real-time updates.
-            firestore_db: The Firestore client for state persistence.
-            collection_name: The Firestore collection name for state persistence.
             **kwargs: Additional arguments for BaseSpecializedAgent.
         """
         # Extract port from URL if not provided
@@ -242,19 +237,10 @@ class WorkflowManagerAgent(BaseSpecializedAgent):
         # Initialize SocketIO
         self.socketio = socketio
 
-        # Initialize Firestore
-        self.db = firestore_db
-        self.collection_name = collection_name or settings.FIRESTORE_COLLECTION_NAME
-
         # Configure timeouts and retries
         self.timeout_seconds = settings.AGENT_TIMEOUT_SECONDS
         self.max_retries = settings.A2A_MAX_RETRIES
         self.retry_delay = settings.A2A_RETRY_DELAY_SECONDS
-
-        if not self.db:
-            logger.warning("WorkflowManagerAgent initialized without a valid Firestore client. State persistence will fail.")
-        else:
-            logger.info(f"WorkflowManagerAgent initialized with Firestore collection: {self.collection_name}")
 
         # Async HTTP client for A2A calls
         self._http_client = httpx.AsyncClient(timeout=self.timeout_seconds)
@@ -472,24 +458,22 @@ class WorkflowManagerAgent(BaseSpecializedAgent):
 
 
     async def _update_workflow_state(self, workflow_run_id: str, state_data: Dict[str, Any]):
-        """Helper to update workflow state in Firestore."""
-        if not self.db:
-            logger.error(f"[{workflow_run_id}] Error: Firestore client not available. Cannot update state.")
-            return
-
+        """Helper to update workflow state in PostgreSQL."""
         try:
-            # Add timestamp for tracking
-            state_data['last_updated'] = firestore.SERVER_TIMESTAMP
-            doc_ref = self.db.collection(self.collection_name).document(workflow_run_id)
-            await doc_ref.set(state_data, merge=True)
-            logger.info(f"[{workflow_run_id}] Firestore state updated: Status={state_data.get('status')}, Step={state_data.get('current_step')}")
+            # Update the workflow state in the database
+            updated_workflow = await DatabaseService.update_workflow_state(workflow_run_id, state_data)
+
+            if updated_workflow:
+                logger.info(f"[{workflow_run_id}] Database state updated: Status={state_data.get('status')}, Step={state_data.get('current_step')}")
+            else:
+                logger.error(f"[{workflow_run_id}] Error: Workflow not found in database. Cannot update state.")
         except Exception as e:
-            logger.error(f"[{workflow_run_id}] Error updating Firestore state: {type(e).__name__}: {e}", exc_info=True)
+            logger.error(f"[{workflow_run_id}] Error updating database state: {type(e).__name__}: {e}", exc_info=True)
             # Decide if this error should propagate or just be logged
 
 
     async def _handle_step_failure(self, workflow_run_id: str, current_step: WorkflowStep, error_details: str, agent_name: str) -> Event:
-        """Handles Firestore update, SocketIO emit, and returns final error event for a failed step."""
+        """Handles database update, SocketIO emit, and returns final error event for a failed step."""
         logger.error(f"[{workflow_run_id}] Step {current_step.value} failed. Agent: {agent_name}. Reason: {error_details}")
         current_status = WorkflowStatus.FAILED
         await self._update_workflow_state(workflow_run_id, {
@@ -497,13 +481,17 @@ class WorkflowManagerAgent(BaseSpecializedAgent):
             "current_step": current_step.value,
             "error_message": error_details
         })
-        self.socketio.emit('workflow_failed', {'workflow_run_id': workflow_run_id, 'failed_step': current_step.value, 'error': error_details})
-        return Event(type=EventType.ERROR, data={"error": error_details, "stage": current_step.value, "workflow_run_id": workflow_run_id})
+
+        # Emit SocketIO event
+        if self.socketio:
+            self.socketio.emit('workflow_failed', {'workflow_run_id': workflow_run_id, 'failed_step': current_step.value, 'error': error_details})
+
+        return Event(type="error", data={"error": error_details, "stage": current_step.value, "workflow_run_id": workflow_run_id})
 
     async def run_async(self, context: InvocationContext) -> Event:
         """
-        ADK entry point to orchestrate the 4-step workflow asynchronously using Firestore for state.
-        This method handles both initial invocation and resumption based on Firestore state.
+        ADK entry point to orchestrate the multi-agent workflow asynchronously using PostgreSQL for state.
+        This method handles both initial invocation and resumption based on database state.
         """
         invocation_id = context.invocation_id # ADK's invocation ID
         input_data = context.input.data or {}
@@ -1110,19 +1098,13 @@ async def start_workflow_skill(self, initial_topic: str, target_url: Optional[st
         # Generate a new workflow run ID
         workflow_run_id = f"workflow_{uuid.uuid4().hex[:8]}_{int(time.time())}"
 
-        # Initialize workflow state
-        initial_state = {
-            "workflow_run_id": workflow_run_id,
-            "initial_topic": initial_topic,
-            "target_url": target_url,
-            "status": WorkflowStatus.STARTING.value,
-            "created_at": firestore.SERVER_TIMESTAMP,
-            "last_updated": firestore.SERVER_TIMESTAMP
-        }
-
-        # Save initial state to Firestore
-        if self.db:
-            await self._update_workflow_state(workflow_run_id, initial_state)
+        # Create workflow in database
+        workflow = await DatabaseService.create_workflow(
+            workflow_id=workflow_run_id,
+            initial_topic=initial_topic,
+            target_url=target_url,
+            status=WorkflowStatus.STARTING.value
+        )
 
         # Emit SocketIO event
         if self.socketio:
@@ -1163,34 +1145,37 @@ async def get_workflow_status_skill(self, workflow_run_id: str) -> Dict[str, Any
     logger.info(f"Getting status for workflow: {workflow_run_id}")
 
     try:
-        if not self.db:
-            return {
-                "success": False,
-                "error": "Firestore client not available. Cannot get workflow status."
-            }
+        # Get workflow from database
+        workflow = await DatabaseService.get_workflow(workflow_run_id)
 
-        # Get workflow state from Firestore
-        doc_ref = self.db.collection(self.collection_name).document(workflow_run_id)
-        doc = await doc_ref.get()
-
-        if not doc.exists:
+        if not workflow:
             return {
                 "success": False,
                 "error": f"Workflow with ID {workflow_run_id} not found."
             }
 
-        # Get workflow state
-        state = doc.to_dict()
+        # Convert workflow to dictionary
+        workflow_dict = {
+            "workflow_run_id": workflow.id,
+            "initial_topic": workflow.initial_topic,
+            "target_url": workflow.target_url,
+            "status": workflow.status,
+            "current_step": workflow.current_step,
+            "error_message": workflow.error_message,
+            "created_at": workflow.created_at,
+            "last_updated": workflow.last_updated
+        }
 
         return {
             "success": True,
             "message": f"Retrieved status for workflow {workflow_run_id}.",
             "workflow_run_id": workflow_run_id,
-            "status": state.get("status"),
-            "current_step": state.get("current_step"),
-            "error": state.get("error"),
-            "created_at": state.get("created_at"),
-            "last_updated": state.get("last_updated")
+            "status": workflow.status,
+            "current_step": workflow.current_step,
+            "error": workflow.error_message,
+            "created_at": workflow.created_at,
+            "last_updated": workflow.last_updated,
+            "workflow": workflow_dict
         }
 
     except Exception as e:
@@ -1218,37 +1203,25 @@ async def resume_workflow_skill(self, workflow_run_id: str) -> Dict[str, Any]:
     logger.info(f"Resuming workflow: {workflow_run_id}")
 
     try:
-        if not self.db:
-            return {
-                "success": False,
-                "error": "Firestore client not available. Cannot resume workflow."
-            }
+        # Get workflow from database
+        workflow = await DatabaseService.get_workflow(workflow_run_id)
 
-        # Get workflow state from Firestore
-        doc_ref = self.db.collection(self.collection_name).document(workflow_run_id)
-        doc = await doc_ref.get()
-
-        if not doc.exists:
+        if not workflow:
             return {
                 "success": False,
                 "error": f"Workflow with ID {workflow_run_id} not found."
             }
 
-        # Get workflow state
-        state = doc.to_dict()
-
         # Check if workflow is in a resumable state
-        current_status = state.get("status")
-        if current_status != WorkflowStatus.PENDING_APPROVAL.value:
+        if workflow.status != WorkflowStatus.PENDING_APPROVAL.value:
             return {
                 "success": False,
-                "error": f"Workflow is not in a resumable state. Current status: {current_status}"
+                "error": f"Workflow is not in a resumable state. Current status: {workflow.status}"
             }
 
         # Update workflow state
         await self._update_workflow_state(workflow_run_id, {
-            "status": WorkflowStatus.APPROVED_RESUMING.value,
-            "last_updated": firestore.SERVER_TIMESTAMP
+            "status": WorkflowStatus.APPROVED_RESUMING.value
         })
 
         # Emit SocketIO event
@@ -1258,8 +1231,8 @@ async def resume_workflow_skill(self, workflow_run_id: str) -> Dict[str, Any]:
         # Resume the workflow in a background task
         asyncio.create_task(self._run_workflow(
             workflow_run_id,
-            state.get("initial_topic"),
-            state.get("target_url"),
+            workflow.initial_topic,
+            workflow.target_url,
             resume=True
         ))
 

@@ -17,6 +17,12 @@ class Settings(BaseSettings):
     # Database configuration
     DATABASE_URL: str = "postgresql+asyncpg://user:password@host:port/db"
 
+    # Workflow state persistence
+    WORKFLOW_TABLE_NAME: str = "workflows"
+    WORKFLOW_STEPS_TABLE_NAME: str = "workflow_steps"
+    AGENT_STATE_TABLE_NAME: str = "agent_states"
+    AGENT_TASK_TABLE_NAME: str = "agent_tasks"
+
     # Kafka configuration
     KAFKA_BOOTSTRAP_SERVERS: str = "localhost:9092"
     KAFKA_EXAMPLE_TOPIC: str = "example_topic"
