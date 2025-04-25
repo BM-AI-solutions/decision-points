@@ -2,7 +2,7 @@
 Base Agent Class for Specialized Agents.
 
 This module provides a base class for all specialized agents to inherit from,
-implementing common functionality for A2A protocol and direct Gemini integration.
+implementing common functionality for A2A protocol and ADK integration.
 """
 
 import asyncio
@@ -14,6 +14,11 @@ from typing import Any, Dict, List, Optional, Union
 import google.generativeai as genai
 from pydantic import BaseModel
 
+from google.adk.agents import LlmAgent
+from google.adk.models import Gemini, BaseLlm
+from google.adk.events import Event, Action, Content, Part
+from google.adk.sessions import InvocationContext
+
 from python_a2a import A2AServer, agent, skill, run_server
 from python_a2a import TaskStatus, TaskState, Message, TextContent, MessageRole
 
@@ -21,11 +26,11 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-class BaseSpecializedAgent(A2AServer):
+class BaseSpecializedAgent(A2AServer, LlmAgent):
     """
     Base class for all specialized agents.
 
-    Implements common functionality for A2A protocol and direct Gemini integration.
+    Implements common functionality for A2A protocol and ADK integration.
     """
 
     def __init__(
@@ -46,20 +51,29 @@ class BaseSpecializedAgent(A2AServer):
             model_name: The name of the model to use. Defaults to settings.GEMINI_MODEL_NAME.
             instruction: The instruction for the agent. Defaults to None.
             port: The port to run the A2A server on. Defaults to None.
-            **kwargs: Additional arguments.
+            **kwargs: Additional arguments for LlmAgent.
         """
         # Initialize A2AServer
         A2AServer.__init__(self)
 
-        # Set agent properties
-        self.name = name
-        self.description = description
-        self.instruction = instruction or f"You are {name}, a specialized agent that {description}"
-
         # Determine the model name to use
-        self.model_name = model_name if model_name else settings.GEMINI_MODEL_NAME
+        effective_model_name = model_name if model_name else settings.GEMINI_MODEL_NAME
+        self.model_name = effective_model_name
 
-        # Initialize Gemini
+        # Initialize the ADK Gemini model
+        adk_model = Gemini(model=self.model_name)
+
+        # Initialize LlmAgent
+        LlmAgent.__init__(
+            self,
+            name=name,
+            description=description,
+            model=adk_model,
+            instruction=instruction,
+            **kwargs
+        )
+
+        # Also initialize direct Gemini access for more control
         try:
             genai.configure(api_key=settings.GEMINI_API_KEY)
             self.gemini_model = genai.GenerativeModel(
@@ -68,9 +82,9 @@ class BaseSpecializedAgent(A2AServer):
                     temperature=0.7,
                 )
             )
-            logger.info(f"Gemini model {self.model_name} initialized successfully")
+            logger.info(f"Direct Gemini model {self.model_name} initialized successfully")
         except Exception as e:
-            logger.error(f"Failed to initialize Gemini model: {e}")
+            logger.error(f"Failed to initialize direct Gemini model: {e}")
             self.gemini_model = None
 
         self.port = port
@@ -158,52 +172,48 @@ class BaseSpecializedAgent(A2AServer):
             }]
             task.status = TaskStatus(state=TaskState.FAILED)
 
-    async def run_async(self, context) -> Dict[str, Any]:
+    async def run_async(self, context: InvocationContext) -> Event:
         """
-        Process a task using the input context.
+        Process a task using ADK patterns.
 
         Args:
-            context: The invocation context containing input data.
+            context: The invocation context containing session and input event.
 
         Returns:
-            A dictionary containing the result or error.
+            The final event containing the result or error.
         """
-        # Extract task information
-        task_id = getattr(context, 'id', str(uuid.uuid4()))
-        input_data = getattr(context, 'input', {})
-
-        # Extract prompt from input data
+        task_id = context.session.id
+        input_event = context.input_event
         prompt = "No prompt provided"
-        if isinstance(input_data, dict) and 'prompt' in input_data:
-            prompt = input_data['prompt']
-        elif hasattr(input_data, 'prompt'):
-            prompt = input_data.prompt
+        if input_event.actions and input_event.actions[0].parts:
+            # Assuming the prompt is the first text part of the first action
+            text_parts = [p.text for p in input_event.actions[0].parts if p.type == 'text']
+            if text_parts:
+                prompt = text_parts[0]
 
-        logger.info(f"{self.name} received task {task_id} with prompt: '{prompt}'")
+        logger.info(f"{self.name} received ADK task {task_id} with prompt: '{prompt}'")
 
         try:
-            # Add the instruction to the prompt
-            full_prompt = f"{self.instruction}\n\nUser request: {prompt}"
+            # Create a message for the LLM
+            message = Message(
+                content=TextContent(text=prompt),
+                role=MessageRole.USER
+            )
 
-            # Generate response using Gemini
-            result = await self.generate_response(full_prompt)
+            # Get response from LLM
+            response = await self.handle_message(message)
+            result = response.content.text
 
-            # Return the result
-            return {
-                "success": True,
-                "result": result,
-                "task_id": task_id
-            }
+            # Create an output event
+            output_action = Action(content=Content(parts=[Part(text=result)]))
+            return Event(author=self.name, actions=[output_action], invocation_id=input_event.invocation_id)
         except Exception as e:
             error_message = f"Task processing failed: {str(e)}"
             logger.error(f"Task {task_id} failed: {error_message}", exc_info=True)
 
-            # Return the error
-            return {
-                "success": False,
-                "error": error_message,
-                "task_id": task_id
-            }
+            # Create an error event
+            error_action = Action(content=Content(parts=[Part(text=f"Error: {error_message}")]))
+            return Event(author=self.name, actions=[error_action], invocation_id=input_event.invocation_id)
 
     def run_server(self, host: str = "0.0.0.0", port: Optional[int] = None):
         """

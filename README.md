@@ -136,6 +136,25 @@ This is the primary and recommended method for local development and testing.
         docker compose exec backend python scripts/start_agent.py --agent market_research --port 8004
         ```
 
+    *   **Starting Agents with ADK Web:**
+        ```bash
+        # First, install dependencies
+        docker compose exec backend bash scripts/install_dependencies.sh
+
+        # Then, start an agent with ADK web
+        docker compose exec backend python scripts/start_agent_adk.py --agent <agent_name> --port <port>
+        ```
+
+        Example:
+        ```bash
+        docker compose exec backend python scripts/start_agent_adk.py --agent market_research --port 8004
+        ```
+
+        After starting the agent with ADK web, you can access the ADK web interface at:
+        ```
+        http://localhost:<port>/adk/web
+        ```
+
 ## Environment Variables
 
 The environment variables that need to be configured in your `.env` file (copied from `.env.example`) will be labeled as optional or required in the `.env.example` file. (and therefore your `.env` file)

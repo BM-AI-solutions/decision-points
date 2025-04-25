@@ -9,9 +9,13 @@ httpx==0.28.1
 google-generativeai>=0.3.0 # Google Gemini API
 python-dateutil>=2.8.2 # Required for date parsing
 
+# Agent Development
+google-adk==0.2.0 # Google Agent Development Kit
+python-a2a>=0.1.0 # For Agent-to-Agent protocol implementation
+
+# Search and Data Extraction
 exa-py==1.12.1 # Used by MarketResearchAgent for Exa search
 firecrawl-py==2.1.2 # Used by MarketResearchAgent for data extraction
-python-a2a>=0.1.0 # For Agent-to-Agent protocol implementation
 
 # Utilities
 
