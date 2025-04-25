@@ -1,8 +1,7 @@
 """
-Workflow Manager Agent for Decision Points.
+Workflow Manager Agent for Decision Points (ADK Version).
 
-This agent orchestrates the multi-agent workflow for generating and deploying products.
-It implements the A2A protocol for agent communication.
+This agent orchestrates the multi-agent workflow for generating and deploying products using ADK tools.
 """
 
 import json
@@ -12,6 +11,7 @@ import httpx
 import asyncio
 import uuid
 import logging
+import traceback
 from enum import Enum
 from typing import Dict, Any, Optional, Union, List
 
@@ -19,1295 +19,442 @@ from typing import Dict, Any, Optional, Union, List
 try:
     from flask_socketio import SocketIO
 except ImportError:
-    SocketIO = Any # Fallback if flask_socketio is not installed here
+    SocketIO = Any # Fallback
 
-# Import database service
+# Import database service and Pydantic models
 from app.services.db_service import DatabaseService
-
 from pydantic import BaseModel, Field, HttpUrl, ValidationError
 
 # ADK Imports
-from google.adk.runtime import InvocationContext
-from google.adk.runtime.events import Event
+from google.adk.agents import Agent # Use ADK Agent
+from google.adk.tools import tool, ToolContext # Import tool decorator and context
+from google.adk.events import Event # Import Event for tool return type
 
-# A2A Imports
-from python_a2a import skill
-
-from agents.base_agent import BaseSpecializedAgent
-from agents.agent_network import agent_network
+# Removed BaseSpecializedAgent import
 from app.config import settings
 
 # Configure logging
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# --- Data Models (Input/Output Schemas) ---
-# These should ideally match the actual schemas defined in the respective agent files.
-# Simplified versions are kept here for clarity and potential fallback.
-# NOTE: These models are used for structuring data internally within the workflow manager,
-#       but the actual A2A calls will send/receive data compatible with the target agent's
-#       expected input/output Event schemas.
-# These should ideally match the actual schemas defined in the respective agent files.
-# Simplified versions are kept here for clarity and potential fallback.
+# --- Global Config & Clients ---
+AGENT_ID = "workflow_manager_adk"
+DB_SERVICE = DatabaseService() # Instantiate DB service
+# SocketIO instance needs to be provided/managed externally
+# For this refactor, we'll assume a global SOCKETIO instance exists or is None
+SOCKETIO: Optional[SocketIO] = None # Placeholder: Inject or initialize appropriately
 
-class MarketResearchInput(BaseModel):
-    initial_topic: str
-    target_url: Optional[HttpUrl] = None
-    num_competitors: int = 3
+# --- Pydantic Models (Simplified/Combined for Workflow State) ---
+# Using simplified dicts for state storage, validation happens during step execution
 
-class MarketOpportunityReport(BaseModel):
-    competitors: list = []
-    analysis: dict = {}
-    feature_recommendations: list = []
-    target_audience_suggestions: list = []
-    # Adding fields potentially used by ImprovementAgent based on old code
-    competitor_weaknesses: list = Field(default_factory=list)
-    market_gaps: list = Field(default_factory=list)
-
-    status: str = "completed" # Added for failure check
-    error_message: Optional[str] = None # Added for failure check
-
-class ImprovementAgentInput(BaseModel):
-    product_concept: str
-    competitor_weaknesses: list = []
-    market_gaps: list = []
-    target_audience_suggestions: list = []
-    feature_recommendations_from_market: list = []
-    business_model_type: Optional[str] = None
-
-class ImprovedProductSpec(BaseModel):
-    product_concept: str
-    target_audience: list = []
-    key_features: list = []
-    unique_selling_propositions: list = [] # Renamed from identified_improvements for clarity
-    implementation_difficulty_estimate: Optional[int] = None
-    potential_revenue_impact_estimate: Optional[str] = None
-
-    potential_rating: Optional[str] = None # Existing field used for feasibility
-    feasibility_score: Optional[float] = None # Existing field used for feasibility
-    assessment_rationale: Optional[str] = None # Existing field used for feasibility
-    status: str = "completed" # Added for failure check
-    error_message: Optional[str] = None # Added for failure check
-
-class BrandingAgentInput(BaseModel):
-    product_concept: str
-    target_audience: list = []
-    keywords: Optional[list] = None
-    business_model_type: Optional[str] = None
-
-class BrandPackage(BaseModel):
-    brand_name: str
-    tagline: str
-    color_scheme: dict = {}
-    positioning_statement: str
-    key_messages: list = []
-    voice_tone: list = []
-    alternative_names: list = []
-    target_demographics: list = [] # Assuming this aligns with target_audience
-
-    status: str = "completed" # Added for failure check
-    error_message: Optional[str] = None # Added for failure check
-
-class DeploymentAgentInput(BaseModel):
-    brand_name: str
-    product_concept: str
-    key_features: list = []
-    # Add field to accept generated code structure
-    generated_code_dict: Optional[Dict[str, str]] = None # e.g., {"app.py": "...", "requirements.txt": "..."}
-
-class DeploymentResult(BaseModel):
-    deployment_url: Optional[str] = None # Make optional as it might fail before URL generation
-    status: str # e.g., "ACTIVE", "FAILED"
-    brand_name: Optional[str] = None # Make optional
-    features_deployed: list = []
-    monitoring_url: Optional[str] = None
-    deployment_details: dict = {}
-    domains: list = []
-    dns_settings: dict = {}
-    error_message: Optional[str] = None # Added for failure check
-
-# --- New Models for Code Generation ---
-class CodeGenerationAgentInput(BaseModel):
-    product_spec: ImprovedProductSpec # Pass the whole spec
-    brand_package: BrandPackage # Pass the whole package
-
-class CodeGenerationResult(BaseModel):
-    generated_code_dict: Dict[str, str] = Field(..., description="Dictionary mapping filenames to code content")
-    status: str = "completed" # Or "failed"
-
-    error_message: Optional[str] = None # Added for failure check
-
-# --- Marketing Agent Models ---
-class MarketingAgentInput(BaseModel):
-   product_spec: ImprovedProductSpec
-   brand_package: BrandPackage
-   deployment_url: Optional[str] = None # From DeploymentResult
-
-class MarketingMaterialsPackage(BaseModel):
-   # Define fields based on MarketingAgent's expected output
-   # Example fields:
-   social_media_posts: Optional[Dict[str, list[str]]] = None # e.g., {"twitter": [...], "linkedin": [...]}
-   blog_post_ideas: Optional[list[str]] = None
-   email_campaign_snippets: Optional[list[str]] = None
-   ad_copy_suggestions: Optional[list[str]] = None
-   landing_page_copy: Optional[str] = None
-   # ---
-   status: str = "completed"
-   error_message: Optional[str] = None
-
-
-# --- Workflow State Tracking (Internal) ---
 class WorkflowStatus(str, Enum):
     STARTING = "STARTING"
     RUNNING_MARKET_RESEARCH = "RUNNING_MARKET_RESEARCH"
-    PENDING_APPROVAL = "PENDING_APPROVAL"
-    APPROVED_RESUMING = "APPROVED_RESUMING"
+    PENDING_APPROVAL = "PENDING_APPROVAL" # Paused after market research
+    APPROVED_RESUMING = "APPROVED_RESUMING" # Triggered by resume call
     RUNNING_IMPROVEMENT = "RUNNING_IMPROVEMENT"
     COMPLETED_IMPROVEMENT = "COMPLETED_IMPROVEMENT"
-    STOPPED_LOW_POTENTIAL = "STOPPED_LOW_POTENTIAL"
+    STOPPED_LOW_POTENTIAL = "STOPPED_LOW_POTENTIAL" # Stopped after improvement check
     RUNNING_BRANDING = "RUNNING_BRANDING"
     COMPLETED_BRANDING = "COMPLETED_BRANDING"
-    RUNNING_CODE_GENERATION = "RUNNING_CODE_GENERATION" # New
-    COMPLETED_CODE_GENERATION = "COMPLETED_CODE_GENERATION" # New
+    RUNNING_CODE_GENERATION = "RUNNING_CODE_GENERATION"
+    COMPLETED_CODE_GENERATION = "COMPLETED_CODE_GENERATION"
     RUNNING_DEPLOYMENT = "RUNNING_DEPLOYMENT"
-    COMPLETED_DEPLOYMENT = "COMPLETED_DEPLOYMENT" # Added intermediate state
-    RUNNING_MARKETING = "RUNNING_MARKETING" # New Marketing state
-    COMPLETED_MARKETING = "COMPLETED_MARKETING" # New Marketing state
-    COMPLETED = "COMPLETED" # Final state after marketing
+    COMPLETED_DEPLOYMENT = "COMPLETED_DEPLOYMENT"
+    RUNNING_MARKETING = "RUNNING_MARKETING"
+    COMPLETED_MARKETING = "COMPLETED_MARKETING"
+    COMPLETED = "COMPLETED" # Final success state
     FAILED = "FAILED"
 
 class WorkflowStep(str, Enum):
     MARKET_RESEARCH = "MARKET_RESEARCH"
     IMPROVEMENT = "IMPROVEMENT"
     BRANDING = "BRANDING"
-    CODE_GENERATION = "CODE_GENERATION" # New
+    CODE_GENERATION = "CODE_GENERATION"
     DEPLOYMENT = "DEPLOYMENT"
-    MARKETING = "MARKETING" # New Marketing step
+    MARKETING = "MARKETING"
 
-# --- Workflow Manager Agent ---
+# Mapping from logical step to target ADK agent ID and tool name
+# Ensure these match the names defined in the refactored agent files
+WORKFLOW_STEPS_CONFIG = {
+    WorkflowStep.MARKET_RESEARCH: {"agent_id": "market_research_adk", "tool_name": "research_market_tool"},
+    WorkflowStep.IMPROVEMENT: {"agent_id": "improvement_adk", "tool_name": "improve_product_tool"},
+    WorkflowStep.BRANDING: {"agent_id": "branding_adk", "tool_name": "generate_brand_tool"},
+    WorkflowStep.CODE_GENERATION: {"agent_id": "code_generation_adk", "tool_name": "generate_code_tool"},
+    WorkflowStep.DEPLOYMENT: {"agent_id": "deployment_adk", "tool_name": "deploy_application_tool"},
+    WorkflowStep.MARKETING: {"agent_id": "marketing_adk", "tool_name": "generate_marketing_materials_tool"},
+}
 
-class WorkflowManagerAgent(BaseSpecializedAgent):
+# --- Helper Functions ---
+
+async def _update_workflow_state(workflow_run_id: str, state_data: Dict[str, Any]):
+    """Helper to update workflow state in PostgreSQL."""
+    try:
+        updated = await DB_SERVICE.update_workflow_state(workflow_run_id, state_data)
+        if updated:
+            logger.info(f"[{workflow_run_id}] DB state updated: Status={state_data.get('status')}, Step={state_data.get('current_step')}")
+            # Emit SocketIO update after successful DB update
+            if SOCKETIO:
+                try:
+                    # Ensure data is serializable for SocketIO
+                    emit_data = {'workflow_run_id': workflow_run_id, **state_data}
+                    # Remove potentially large/complex objects before emitting if needed
+                    emit_data.pop('market_research_result', None)
+                    emit_data.pop('improvement_result', None)
+                    emit_data.pop('branding_result', None)
+                    emit_data.pop('code_generation_result', None)
+                    emit_data.pop('deployment_result', None)
+                    emit_data.pop('marketing_result', None)
+                    emit_data.pop('final_result', None)
+                    SOCKETIO.emit('workflow_update', emit_data)
+                    logger.debug(f"[{workflow_run_id}] Emitted SocketIO update: {emit_data}")
+                except Exception as sock_err:
+                    logger.error(f"[{workflow_run_id}] Failed to emit SocketIO update after DB save: {sock_err}", exc_info=True)
+        else:
+            logger.error(f"[{workflow_run_id}] Error: Workflow not found in database. Cannot update state.")
+    except Exception as e:
+        logger.error(f"[{workflow_run_id}] Error updating database state: {type(e).__name__}: {e}", exc_info=True)
+        # Don't re-raise here, allow workflow to potentially continue or fail gracefully
+
+async def _handle_step_failure(workflow_run_id: str, current_step: WorkflowStep, error_details: str, agent_name: str):
+    """Handles database update and SocketIO emit for a failed step."""
+    logger.error(f"[{workflow_run_id}] Step {current_step.value} failed. Agent: {agent_name}. Reason: {error_details}")
+    current_status = WorkflowStatus.FAILED
+    await _update_workflow_state(workflow_run_id, {
+        "status": current_status.value,
+        "current_step": current_step.value,
+        "error_message": error_details
+    })
+    # SocketIO emit happens within _update_workflow_state
+
+async def _execute_workflow_step(context: ToolContext, workflow_run_id: str):
     """
-    Agent responsible for workflow management.
-    Orchestrates the multi-agent workflow for generating and deploying products.
-    Implements A2A protocol for agent communication.
-
-    Features:
-    - Manages state and asynchronous communication between specialized agents.
-    - Includes retry logic for A2A calls.
-    - Uses PostgreSQL for state persistence.
-    - Emits events via SocketIO for real-time updates.
+    Executes the next step of the workflow based on the current state stored in the database.
+    This function is intended to be run asynchronously (e.g., via asyncio.create_task).
     """
-
-    def __init__(
-        self,
-        name: str = "workflow_manager",
-        description: str = "Orchestrates the multi-agent workflow for generating and deploying products",
-        model_name: Optional[str] = None,
-        port: Optional[int] = None,
-        socketio: Optional[SocketIO] = None,
-        **kwargs: Any,
-    ):
-        """
-        Initialize the WorkflowManagerAgent.
-
-        Args:
-            name: The name of the agent.
-            description: The description of the agent.
-            model_name: The name of the model to use. Defaults to settings.GEMINI_MODEL_NAME.
-            port: The port to run the A2A server on. Defaults to settings.WORKFLOW_MANAGER_AGENT_URL port.
-            socketio: The SocketIO instance for real-time updates.
-            **kwargs: Additional arguments for BaseSpecializedAgent.
-        """
-        # Extract port from URL if not provided
-        if port is None and settings.WORKFLOW_MANAGER_AGENT_URL:
-            try:
-                port = int(settings.WORKFLOW_MANAGER_AGENT_URL.split(':')[-1])
-            except (ValueError, IndexError):
-                port = 8000  # Default port
-
-        # Initialize BaseSpecializedAgent
-        super().__init__(
-            name=name,
-            description=description,
-            model_name=model_name,
-            port=port,
-            **kwargs
-        )
-
-        # Initialize SocketIO
-        self.socketio = socketio
-
-        # Configure timeouts and retries
-        self.timeout_seconds = settings.AGENT_TIMEOUT_SECONDS
-        self.max_retries = settings.A2A_MAX_RETRIES
-        self.retry_delay = settings.A2A_RETRY_DELAY_SECONDS
-
-        # Async HTTP client for A2A calls
-        self._http_client = httpx.AsyncClient(timeout=self.timeout_seconds)
-
-        logger.info(f"WorkflowManagerAgent initialized with port: {self.port}")
-
-    async def close(self):
-        """Clean up resources, like the HTTP client."""
-        await self._http_client.aclose()
-        logger.info("WorkflowManagerAgent closed.")
-
-    async def _invoke_agent_skill(
-        self,
-        agent_name: str,
-        skill_name: str,
-        payload: Dict[str, Any],
-        workflow_run_id: str,
-    ) -> Dict[str, Any]:
-        """
-        Helper function to invoke another agent's skill asynchronously using agent_network
-        with retry logic.
-
-        Args:
-            agent_name: User-friendly name of the agent (for logging).
-            skill_name: The name of the skill to invoke on the target agent.
-            payload: The data dictionary for the input event.
-            workflow_run_id: The workflow run ID for logging.
-
-        Returns:
-            A dictionary containing the result or error from the agent skill.
-        """
-        last_exception: Optional[Exception] = None
-
-        logger.info(f"[{workflow_run_id}] Invoking {agent_name} skill '{skill_name}' (Retries: {self.max_retries}, Delay: {self.retry_delay}s)...")
-
-        for attempt in range(self.max_retries):
-            try:
-                # Get the agent from the network
-                agent = agent_network.get_agent(agent_name.lower().replace(" ", "_"))
-                if not agent:
-                    error_msg = f"Agent '{agent_name}' not found in agent network."
-                    logger.error(f"[{workflow_run_id}] Error: {error_msg}")
-                    return {"success": False, "error": error_msg}
-
-                # Invoke the skill
-                result = await agent.invoke_skill(
-                    skill_name=skill_name,
-                    input_data=payload,
-                    timeout=self.timeout_seconds
-                )
-
-                # Log success
-                logger.info(f"[{workflow_run_id}] Agent '{agent_name}' skill '{skill_name}' invocation successful (Attempt {attempt + 1}/{self.max_retries}).")
-
-                # Add success flag if not present
-                if isinstance(result, dict) and "success" not in result:
-                    result["success"] = True
-
-                return result
-
-            except TimeoutError as e:
-                last_exception = e
-                logger.warning(f"[{workflow_run_id}] Skill invocation for {agent_name} timed out (Attempt {attempt + 1}/{self.max_retries}).")
-                # Fall through to retry logic
-
-            except ConnectionError as e:
-                last_exception = e
-                logger.warning(f"[{workflow_run_id}] Skill invocation for {agent_name} failed (Attempt {attempt + 1}/{self.max_retries}): Connection Error ({type(e).__name__}).")
-                # Fall through to retry logic
-
-            except Exception as e:
-                # Catch other potential errors during invoke_skill
-                last_exception = e
-                logger.error(f"[{workflow_run_id}] Unexpected error during {agent_name} skill '{skill_name}' invocation attempt {attempt + 1}/{self.max_retries}: {type(e).__name__}: {e}", exc_info=True)
-                # If it's the last attempt, let it be handled below. Otherwise, retry.
-                if attempt >= self.max_retries - 1:
-                    break # Exit loop to handle final error
-
-            # --- Retry Logic ---
-            if attempt < self.max_retries - 1:
-                wait_time = self.retry_delay * (2 ** attempt) # Exponential backoff
-                logger.info(f"[{workflow_run_id}] Retrying in {wait_time:.2f}s...")
-                await asyncio.sleep(wait_time)
-            else:
-                logger.error(f"[{workflow_run_id}] Skill invocation for {agent_name} failed after {self.max_retries} attempts.")
-                break # Exit loop after last attempt
-
-        # --- Handle Failure After Retries ---
-        error_msg = f"Skill invocation for {agent_name} ('{skill_name}') failed after {self.max_retries} attempts."
-        if last_exception:
-            error_msg += f" Last error: {type(last_exception).__name__}: {last_exception}"
-
-        logger.error(f"[{workflow_run_id}] Final Error: {error_msg}")
-        return {"success": False, "error": error_msg}
-
-    async def _invoke_a2a_agent(
-        self,
-        agent_name: str,
-        agent_url: Optional[str],
-        endpoint_suffix: str,
-        invocation_id: str,
-        payload: Dict[str, Any],
-    ) -> Event:
-        """
-        Helper function to invoke another agent's A2A endpoint asynchronously with retry logic.
-
-        Args:
-            agent_name: User-friendly name of the agent (for logging).
-            agent_url: The specific agent URL.
-            endpoint_suffix: The specific part for the A2A route (e.g., 'market_research').
-            invocation_id: The current workflow invocation ID (for logging).
-            payload: The data dictionary to send as the JSON body.
-
-        Returns:
-            An Event object representing the result or error from the agent.
-        """
-        if not agent_url:
-            error_msg = f"URL for agent '{agent_name}' is not configured."
-            logger.error(f"[{invocation_id}] Error: {error_msg}")
-            return Event(type=EventType.ERROR, data={"error": error_msg})
-
-        endpoint_url = f"{agent_url.rstrip('/')}/a2a/{endpoint_suffix}/invoke"
-        headers = {'Content-Type': 'application/json', 'Accept': 'application/json'}
-        last_exception: Optional[Exception] = None
-
-        logger.info(f"[{invocation_id}] Invoking {agent_name} A2A endpoint at {endpoint_url} (Retries: {self.max_retries}, Delay: {self.retry_delay}s)...")
-
-        for attempt in range(self.max_retries):
-            try:
-                response = await self._http_client.post(
-                    endpoint_url,
-                    json=payload,
-                    headers=headers,
-                    timeout=self.timeout_seconds
-                )
-                response.raise_for_status() # Raise HTTPError for bad responses (4xx or 5xx)
-
-                # --- Success Case ---
-                try:
-                    event_data = response.json()
-                    result_event = Event(**event_data)
-                    if not hasattr(result_event, 'type') or not hasattr(result_event, 'data'):
-                         raise ValidationError("Response is not a valid Event structure.")
-
-                    logger.info(f"[{invocation_id}] Agent '{agent_name}' A2A call successful (Attempt {attempt + 1}/{self.max_retries}). Event Type: {result_event.type}")
-                    return result_event # Success, return immediately
-
-                except (json.JSONDecodeError, ValidationError, TypeError) as e:
-                    # Handle issues with response format *after* successful HTTP call
-                    error_msg = f"Failed to process or validate successful A2A response from {agent_name}: {e}"
-                    logger.error(f"[{invocation_id}] Error: {error_msg}")
-                    # Don't retry format errors, return error event immediately
-                    return Event(type=EventType.ERROR, data={"error": error_msg, "details": "Invalid Response Format"})
-
-            except (httpx.TimeoutException, httpx.ConnectError) as e:
-                last_exception = e
-                logger.warning(f"[{invocation_id}] A2A call to {agent_name} failed (Attempt {attempt + 1}/{self.max_retries}): Timeout or Connection Error ({type(e).__name__}).")
-                # Fall through to retry logic
-
-            except httpx.HTTPStatusError as e:
-                last_exception = e
-                # Retry only on 5xx server errors
-                if e.response.status_code >= 500:
-                    logger.warning(f"[{invocation_id}] A2A call to {agent_name} failed (Attempt {attempt + 1}/{self.max_retries}): Server Error ({e.response.status_code}).")
-                    # Fall through to retry logic
-                else:
-                    # Non-5xx HTTP error (e.g., 4xx), likely not transient. Don't retry.
-                    error_detail = str(e)
-                    try:
-                        error_detail += f" | Status: {e.response.status_code} | Response: {e.response.text[:500]}"
-                    except Exception: pass
-                    error_msg = f"HTTP error calling {agent_name} A2A endpoint (non-retryable): {error_detail}"
-                    logger.error(f"[{invocation_id}] Error: {error_msg}")
-                    return Event(type=EventType.ERROR, data={"error": error_msg, "details": f"HTTP Error {e.response.status_code}"})
-
-            except httpx.RequestError as e:
-                # Catch other potential request errors (less common)
-                last_exception = e
-                logger.warning(f"[{invocation_id}] A2A call to {agent_name} failed (Attempt {attempt + 1}/{self.max_retries}): Request Error ({type(e).__name__}: {e}).")
-                # Fall through to retry logic
-
-            except Exception as e:
-                 # Catch unexpected errors during the call itself (not response processing)
-                 last_exception = e
-                 logger.error(f"[{invocation_id}] Unexpected error during {agent_name} A2A call attempt {attempt + 1}/{self.max_retries}: {type(e).__name__}: {e}", exc_info=True)
-                 # If it's the last attempt, let it be handled below. Otherwise, retry.
-                 if attempt >= self.max_retries - 1:
-                     break # Exit loop to handle final error
-
-            # --- Retry Logic ---
-            if attempt < self.max_retries - 1:
-                logger.info(f"[{invocation_id}] Retrying in {self.retry_delay}s...")
-                await asyncio.sleep(self.retry_delay)
-            else:
-                logger.error(f"[{invocation_id}] A2A call to {agent_name} failed after {self.max_retries} attempts.")
-                break # Exit loop after last attempt
-
-        # --- Handle Failure After Retries ---
-        # If the loop finished without returning a success event
-        error_msg = f"A2A call to {agent_name} failed after {self.max_retries} attempts."
-        error_details = "Max retries exceeded"
-        if last_exception:
-            error_msg += f" Last error: {type(last_exception).__name__}: {last_exception}"
-            if isinstance(last_exception, httpx.TimeoutException):
-                error_details = "Timeout"
-            elif isinstance(last_exception, httpx.ConnectError):
-                error_details = "Connection Error"
-            elif isinstance(last_exception, httpx.HTTPStatusError):
-                 error_details = f"HTTP Error {last_exception.response.status_code}"
-            else:
-                 error_details = f"{type(last_exception).__name__}"
-
-        logger.error(f"[{invocation_id}] Final Error: {error_msg}")
-        return Event(type=EventType.ERROR, data={"error": error_msg, "details": error_details})
-
-
-    async def _update_workflow_state(self, workflow_run_id: str, state_data: Dict[str, Any]):
-        """Helper to update workflow state in PostgreSQL."""
-        try:
-            # Update the workflow state in the database
-            updated_workflow = await DatabaseService.update_workflow_state(workflow_run_id, state_data)
-
-            if updated_workflow:
-                logger.info(f"[{workflow_run_id}] Database state updated: Status={state_data.get('status')}, Step={state_data.get('current_step')}")
-            else:
-                logger.error(f"[{workflow_run_id}] Error: Workflow not found in database. Cannot update state.")
-        except Exception as e:
-            logger.error(f"[{workflow_run_id}] Error updating database state: {type(e).__name__}: {e}", exc_info=True)
-            # Decide if this error should propagate or just be logged
-
-
-    async def _handle_step_failure(self, workflow_run_id: str, current_step: WorkflowStep, error_details: str, agent_name: str) -> Event:
-        """Handles database update, SocketIO emit, and returns final error event for a failed step."""
-        logger.error(f"[{workflow_run_id}] Step {current_step.value} failed. Agent: {agent_name}. Reason: {error_details}")
-        current_status = WorkflowStatus.FAILED
-        await self._update_workflow_state(workflow_run_id, {
-            "status": current_status.value,
-            "current_step": current_step.value,
-            "error_message": error_details
-        })
-
-        # Emit SocketIO event
-        if self.socketio:
-            self.socketio.emit('workflow_failed', {'workflow_run_id': workflow_run_id, 'failed_step': current_step.value, 'error': error_details})
-
-        return Event(type="error", data={"error": error_details, "stage": current_step.value, "workflow_run_id": workflow_run_id})
-
-    async def run_async(self, context: InvocationContext) -> Event:
-        """
-        ADK entry point to orchestrate the multi-agent workflow asynchronously using PostgreSQL for state.
-        This method handles both initial invocation and resumption based on database state.
-        """
-        invocation_id = context.invocation_id # ADK's invocation ID
-        input_data = context.input.data or {}
-
-        # Determine if starting new or potentially resuming
-        workflow_run_id = input_data.get("workflow_run_id")
-        is_new_workflow = not workflow_run_id
-
-        # --- State Variables ---
-        current_status: Optional[WorkflowStatus] = None # Will be loaded or set
-        current_step: Optional[WorkflowStep] = None
-        error_message: Optional[str] = None
-        initial_topic: Optional[str] = None
-        target_url: Optional[str] = None
-        market_report_data: Optional[Dict] = None
-        product_spec_data: Optional[Dict] = None
-        brand_package_data: Optional[Dict] = None
-        code_generation_result_data: Optional[Dict] = None # Added
-        deployment_result_data: Optional[Dict] = None
-        marketing_result_data: Optional[Dict] = None # Added Marketing result
-        state: Dict[str, Any] = {} # To hold the loaded database state
-
-        try:
-            # --- Initialize or Load State ---
-            if is_new_workflow:
-                # Generate a new workflow run ID
-                workflow_run_id = f"workflow_{uuid.uuid4().hex[:8]}_{int(time.time())}"
-                logger.info(f"[{invocation_id}/{workflow_run_id}] New workflow run started.")
-
-                # Extract required parameters
-                initial_topic = input_data.get("initial_topic")
-                target_url = input_data.get("target_url") # Optional
-
-                if not initial_topic or not isinstance(initial_topic, str):
-                    raise ValueError("Missing or invalid 'initial_topic' for new workflow.")
-
-                logger.info(f"[{workflow_run_id}] Initial Topic: {initial_topic}, Target URL: {target_url}")
-
-                # Initialize state
-                current_status = WorkflowStatus.STARTING
-                current_step = None # Explicitly null at start
-
-                # Create workflow in database
-                await DatabaseService.create_workflow(
-                    workflow_id=workflow_run_id,
-                    initial_topic=initial_topic,
-                    target_url=target_url,
-                    status=current_status.value
-                )
-
-                # Initial state write
-                state = {
-                    "status": current_status.value,
-                    "initial_topic": initial_topic,
-                    "target_url": target_url,
-                    "invocation_id": invocation_id,
-                    "current_step": None,
-                }
-                await self._update_workflow_state(workflow_run_id, state)
-            else:
-                # Load existing state from database
-                logger.info(f"[{invocation_id}/{workflow_run_id}] Attempting to load existing workflow run.")
-                workflow = await DatabaseService.get_workflow(workflow_run_id)
-                if not workflow:
-                    raise ValueError(f"Workflow run ID '{workflow_run_id}' not found in database.")
-
-                # Convert database model to dictionary
-                state = {
-                    "workflow_run_id": workflow.id,
-                    "initial_topic": workflow.initial_topic,
-                    "target_url": workflow.target_url,
-                    "status": workflow.status,
-                    "current_step": workflow.current_step,
-                    "error_message": workflow.error_message,
-                    "market_research_result": workflow.market_research_result,
-                    "improvement_result": workflow.product_spec_data,
-                    "branding_result": workflow.brand_package_data,
-                    "code_generation_result": workflow.code_generation_result,
-                    "deployment_result": workflow.deployment_result,
-                    "marketing_result": workflow.marketing_result,
-                    "created_at": workflow.created_at,
-                    "last_updated": workflow.last_updated
-                }
-
-                initial_topic = workflow.initial_topic
-                target_url = workflow.target_url
-                market_report_data = workflow.market_research_result
-                product_spec_data = workflow.product_spec_data
-                brand_package_data = workflow.brand_package_data
-                code_generation_result_data = workflow.code_generation_result
-                deployment_result_data = workflow.deployment_result
-                marketing_result_data = workflow.marketing_result
-                current_status = WorkflowStatus(workflow.status or WorkflowStatus.FAILED.value) # Default to FAILED if missing
-                current_step = WorkflowStep(workflow.current_step) if workflow.current_step else None
-
-                logger.info(f"[{workflow_run_id}] State loaded from database. Status: {current_status.value}, Last Step: {current_step.value if current_step else 'None'}")
-
-                # Handle the case where the frontend signals approval
-                # The frontend might trigger a resume call after user clicks 'approve'
-                # We transition from PENDING_APPROVAL to APPROVED_RESUMING here
-                if current_status == WorkflowStatus.PENDING_APPROVAL:
-                    logger.info(f"[{workflow_run_id}] Workflow was pending approval. Transitioning to APPROVED_RESUMING.")
-                    current_status = WorkflowStatus.APPROVED_RESUMING
-                    await self._update_workflow_state(workflow_run_id, {"status": current_status.value})
-                    # State is now updated, the logic below will pick up from here
-
-                # Validation: Ensure necessary data exists for the expected next step
-                if current_status == WorkflowStatus.APPROVED_RESUMING and not market_report_data:
-                    raise ValueError("Cannot resume from improvement: Market research result missing in database.")
-                if current_status == WorkflowStatus.COMPLETED_IMPROVEMENT and not product_spec_data:
-                     raise ValueError("Cannot resume from branding: Improvement result missing in database.")
-                if current_status == WorkflowStatus.COMPLETED_BRANDING and (not product_spec_data or not brand_package_data):
-                     raise ValueError("Cannot resume from code generation: Improvement or Branding result missing in database.")
-                if current_status == WorkflowStatus.COMPLETED_CODE_GENERATION and (not brand_package_data or not code_generation_result_data): # Added check
-                     raise ValueError("Cannot resume from deployment: Branding or Code Generation result missing in database.")
-                if current_status == WorkflowStatus.COMPLETED_DEPLOYMENT and (not product_spec_data or not brand_package_data or not deployment_result_data): # Added check
-                     raise ValueError("Cannot resume from marketing: Product Spec, Branding, or Deployment result missing in database.")
-                if not initial_topic: # Should always exist if state was loaded
-                     raise ValueError("Cannot resume: Initial topic missing in database state.")
-
-
-            # --- Workflow Execution Logic ---
-            # Determine which steps need to run based on the current status
-
-            # Step 1: Market Research
-            if current_status == WorkflowStatus.STARTING:
-                current_step = WorkflowStep.MARKET_RESEARCH
-                logger.info(f"\n[{workflow_run_id}] --- Running Step: {current_step.value} ---")
-                current_status = WorkflowStatus.RUNNING_MARKET_RESEARCH # Set specific running status
-                await self._update_workflow_state(workflow_run_id, {"status": current_status.value, "current_step": current_step.value})
-
-                market_research_payload = MarketResearchInput(
-                    initial_topic=initial_topic,
-                    target_url=target_url
-                ).model_dump(exclude_none=True)
-
-                market_event = await self._invoke_adk_skill(
-                    context=context,
-                    agent_name="Market Research", target_agent_id=self.market_research_agent_id,
-                    skill_name="market_research",
-                    payload=market_research_payload,
-                )
-
-                if market_event.type == EventType.ERROR:
-                    # A2A call itself failed (handled by _invoke_a2a_agent returning ERROR event)
-                    error_details = market_event.data.get('error', 'Market Research A2A call failed')
-                    return await self._handle_step_failure(workflow_run_id, current_step, error_details, "Market Research")
-                if not market_event.data: raise RuntimeError("Market Research Agent returned no data.")
-
-                try:
-                    market_report = MarketOpportunityReport(**market_event.data)
-                    market_report_data = market_report.model_dump()
-                    # Check if the agent reported failure *within* the successful event
-                    if market_report.status.lower() == 'failed':
-                        error_details = market_report.error_message or "Market Research Agent reported failure without details."
-                        return await self._handle_step_failure(workflow_run_id, current_step, error_details, "Market Research")
-                except ValidationError as ve:
-                    error_details = f"Market Research Agent response validation failed: {ve}"
-                    return await self._handle_step_failure(workflow_run_id, current_step, error_details, "Market Research")
-
-                logger.info(f"[{workflow_run_id}] --- Step {current_step.value} Complete ---")
-
-                # --- Pause for Approval ---
-                logger.info(f"[{workflow_run_id}] Pausing for user approval after Market Research.")
-                try:
-                    # Ensure data is serializable before saving and emitting
-                    serializable_market_data = json.loads(json.dumps(market_report_data))
-                except (TypeError, ValueError) as json_err:
-                    raise RuntimeError(f"Market research result could not be serialized: {json_err}")
-
-                current_status = WorkflowStatus.PENDING_APPROVAL
-                await self._update_workflow_state(workflow_run_id, {
-                    "status": current_status.value,
-                    "current_step": current_step.value, # Keep track of the last completed step
-                    "market_research_result": serializable_market_data
-                })
-
-                logger.info(f"[{workflow_run_id}] Emitting 'workflow_approval_required' via SocketIO.")
-                self.socketio.emit('workflow_approval_required', {
-                    'workflow_run_id': workflow_run_id,
-                    'data_to_approve': serializable_market_data
-                })
-
-                # End execution here; resumption happens in a new invocation triggered by approval
-                return Event(type=EventType.RESULT, data={
-                    "status": current_status.value,
-                    "workflow_run_id": workflow_run_id,
-                    "message": "Workflow paused for approval after market research."
-                })
-
-            # Step 2: Product Improvement
-            # Run if status is APPROVED_RESUMING (meaning market research is done and approved)
-            if current_status == WorkflowStatus.APPROVED_RESUMING:
-                current_step = WorkflowStep.IMPROVEMENT
-                logger.info(f"\n[{workflow_run_id}] --- Running Step: {current_step.value} ---")
-                current_status = WorkflowStatus.RUNNING_IMPROVEMENT # Set specific running status
-                await self._update_workflow_state(workflow_run_id, {"status": current_status.value, "current_step": current_step.value})
-
-                if not market_report_data: raise ValueError("Market research data missing for improvement step.") # Should be loaded
-
-                improvement_payload = ImprovementAgentInput(
-                    product_concept=initial_topic,
-                    competitor_weaknesses=market_report_data.get('competitor_weaknesses', []),
-                    market_gaps=market_report_data.get('market_gaps', []),
-                    target_audience_suggestions=market_report_data.get('target_audience_suggestions', []),
-                    feature_recommendations_from_market=market_report_data.get('feature_recommendations', []),
-                    business_model_type="saas" # Placeholder
-                ).model_dump(exclude_none=True)
-
-                improvement_event = await self._invoke_adk_skill(
-                    context=context,
-                    agent_name="Improvement", target_agent_id=self.improvement_agent_id,
-                    skill_name="improvement",
-                    payload=improvement_payload,
-                )
-
-                if improvement_event.type == EventType.ERROR:
-                    error_details = improvement_event.data.get('error', 'Improvement A2A call failed')
-                    return await self._handle_step_failure(workflow_run_id, current_step, error_details, "Improvement")
-                if not improvement_event.data: raise RuntimeError("Improvement Agent returned no data.")
-
-                try:
-                    product_spec = ImprovedProductSpec(**improvement_event.data)
-                    product_spec_data = product_spec.model_dump()
-                    # Check if the agent reported failure *within* the successful event
-                    if product_spec.status.lower() == 'failed':
-                        error_details = product_spec.error_message or "Improvement Agent reported failure without details."
-                        return await self._handle_step_failure(workflow_run_id, current_step, error_details, "Improvement")
-                except ValidationError as ve:
-                    error_details = f"Improvement Agent response validation failed: {ve}"
-                    return await self._handle_step_failure(workflow_run_id, current_step, error_details, "Improvement")
-
-                logger.info(f"[{workflow_run_id}] --- Step {current_step.value} Complete ---")
-                current_status = WorkflowStatus.COMPLETED_IMPROVEMENT # Set completed status
-                await self._update_workflow_state(workflow_run_id, {
-                    "status": current_status.value,
-                    "current_step": current_step.value,
-                    "improvement_result": product_spec_data # Save the result
-                })
-
-                # --- Feasibility Check ---
-                logger.info(f"[{workflow_run_id}] Performing feasibility check based on Improvement result.")
-                potential_rating = product_spec_data.get('potential_rating', 'Low').capitalize() # Default to Low if missing
-                feasibility_score = product_spec_data.get('feasibility_score') # Optional score
-                assessment_rationale = product_spec_data.get('assessment_rationale', 'Assessment rationale not provided.')
-
-                # Define threshold (e.g., Medium or High potential, or score >= 0.6)
-                proceed_to_branding = False
-                if potential_rating in ['Medium', 'High']:
-                    proceed_to_branding = True
-                    logger.info(f"[{workflow_run_id}] Feasibility check passed (Potential: {potential_rating}). Proceeding to Branding.")
-                elif feasibility_score is not None:
-                    try:
-                        if float(feasibility_score) >= 0.6:
-                             proceed_to_branding = True
-                             logger.info(f"[{workflow_run_id}] Feasibility check passed (Score: {feasibility_score} >= 0.6). Proceeding to Branding.")
-                        else:
-                             logger.warning(f"[{workflow_run_id}] Feasibility check failed (Score: {feasibility_score} < 0.6). Stopping workflow.")
-                    except (ValueError, TypeError):
-                         logger.warning(f"[{workflow_run_id}] Invalid feasibility_score format ('{feasibility_score}'). Treating as low potential.")
-                         # proceed_to_branding remains False
-                else:
-                    logger.warning(f"[{workflow_run_id}] Feasibility check failed (Potential: {potential_rating}). Stopping workflow.")
-
-
-                if not proceed_to_branding:
-                    # Stop the workflow due to low potential
-                    current_status = WorkflowStatus.STOPPED_LOW_POTENTIAL
-                    stop_message = f"Workflow stopped: Potential rated '{potential_rating}'"
-                    if feasibility_score is not None:
-                        stop_message += f" (Score: {feasibility_score})"
-                    stop_message += "."
-
-                    logger.warning(f"[{workflow_run_id}] {stop_message} Rationale: {assessment_rationale}")
-
-                    await self._update_workflow_state(workflow_run_id, {
-                        "status": current_status.value,
-                        "current_step": current_step.value, # Still IMPROVEMENT step technically
-                        "error": stop_message # Use error field for stop reason
-                    })
-
-                    # Emit SocketIO update
-                    self.socketio.emit('task_update', {
-                        'workflow_run_id': workflow_run_id,
-                        'status': current_status.value,
-                        'message': stop_message,
-                        'rationale': assessment_rationale,
-                        'step': current_step.value
-                    })
-
-                    # Return a final event indicating controlled stop
-                    return Event(type=EventType.RESULT, data={
-                        "status": current_status.value,
-                        "workflow_run_id": workflow_run_id,
-                        "message": stop_message,
-                        "rationale": assessment_rationale
-                    })
-                # --- End Feasibility Check ---
-
-                # Fall through to Branding ONLY IF feasibility check passed
-
-            # Step 3: Rebranding
-            # Run if status is COMPLETED_IMPROVEMENT (meaning improvement step finished successfully AND passed feasibility)
-            if current_status == WorkflowStatus.COMPLETED_IMPROVEMENT:
-                current_step = WorkflowStep.BRANDING
-                logger.info(f"\n[{workflow_run_id}] --- Running Step: {current_step.value} ---")
-                current_status = WorkflowStatus.RUNNING_BRANDING # Set specific running status
-                await self._update_workflow_state(workflow_run_id, {"status": current_status.value, "current_step": current_step.value})
-
-                if not product_spec_data: raise ValueError("Product spec data missing for branding step.") # Should be loaded or just generated
-
-                keywords = product_spec_data.get('product_concept', '').lower().split()[:5]
-                branding_payload = BrandingAgentInput(
-                    product_concept=product_spec_data.get('product_concept', initial_topic),
-                    target_audience=product_spec_data.get('target_audience', []),
-                    keywords=keywords,
-                    business_model_type="saas" # Placeholder
-                ).model_dump(exclude_none=True)
-
-                branding_event = await self._invoke_adk_skill(
-                    context=context,
-                    agent_name="Branding", target_agent_id=self.branding_agent_id,
-                    skill_name="branding",
-                    payload=branding_payload,
-                )
-
-                if branding_event.type == EventType.ERROR:
-                    error_details = branding_event.data.get('error', 'Branding A2A call failed')
-                    return await self._handle_step_failure(workflow_run_id, current_step, error_details, "Branding")
-                if not branding_event.data: raise RuntimeError("Branding Agent returned no data.")
-
-                try:
-                    brand_package = BrandPackage(**branding_event.data)
-                    brand_package_data = brand_package.model_dump()
-                    # Check if the agent reported failure *within* the successful event
-                    if brand_package.status.lower() == 'failed':
-                        error_details = brand_package.error_message or "Branding Agent reported failure without details."
-                        return await self._handle_step_failure(workflow_run_id, current_step, error_details, "Branding")
-                except ValidationError as ve:
-                    error_details = f"Branding Agent response validation failed: {ve}"
-                    return await self._handle_step_failure(workflow_run_id, current_step, error_details, "Branding")
-
-                logger.info(f"[{workflow_run_id}] --- Step {current_step.value} Complete ---")
-                current_status = WorkflowStatus.COMPLETED_BRANDING # Set completed status
-                await self._update_workflow_state(workflow_run_id, {
-                    "status": current_status.value,
-                    "current_step": current_step.value,
-                    "branding_result": brand_package_data # Save the result
-                })
-                # Fall through to Code Generation
-
-            # Step 4: Code Generation
-            # Run if status is COMPLETED_BRANDING
-            if current_status == WorkflowStatus.COMPLETED_BRANDING:
-                current_step = WorkflowStep.CODE_GENERATION
-                logger.info(f"\n[{workflow_run_id}] --- Running Step: {current_step.value} ---")
-                current_status = WorkflowStatus.RUNNING_CODE_GENERATION
-                await self._update_workflow_state(workflow_run_id, {"status": current_status.value, "current_step": current_step.value})
-
-                if not product_spec_data or not brand_package_data:
-                    raise ValueError("Product spec or brand package data missing for code generation step.")
-
-                # Re-validate/parse data into expected Pydantic models for the input
-                try:
-                    product_spec_model = ImprovedProductSpec(**product_spec_data)
-                    brand_package_model = BrandPackage(**brand_package_data)
-                except ValidationError as ve:
-                    raise RuntimeError(f"Failed to validate data for Code Generation input: {ve}")
-
-                code_gen_payload = CodeGenerationAgentInput(
-                    product_spec=product_spec_model,
-                    brand_package=brand_package_model
-                ).model_dump(exclude_none=True)
-
-                code_gen_event = await self._invoke_adk_skill(
-                    context=context,
-                    agent_name="Code Generation", target_agent_id=self.code_generation_agent_id,
-                    skill_name="code_generation",
-                    payload=code_gen_payload,
-                )
-
-                if code_gen_event.type == EventType.ERROR:
-                    error_details = code_gen_event.data.get('error', 'Code Generation A2A call failed')
-                    return await self._handle_step_failure(workflow_run_id, current_step, error_details, "Code Generation")
-                if not code_gen_event.data: raise RuntimeError("Code Generation Agent returned no data.")
-
-                try:
-                    code_gen_result = CodeGenerationResult(**code_gen_event.data)
-                    code_generation_result_data = code_gen_result.model_dump()
-                    # Check if the agent reported failure *within* the successful event
-                    if code_gen_result.status.lower() == 'failed':
-                        error_details = code_gen_result.error_message or "Code Generation Agent reported failure without details."
-                        return await self._handle_step_failure(workflow_run_id, current_step, error_details, "Code Generation")
-
-                    if not code_generation_result_data.get('generated_code_dict'):
-                         raise ValueError("Code Generation Agent response missing 'generated_code_dict'.")
-                except (ValidationError, ValueError) as ve:
-                    error_details = f"Code Generation Agent response validation failed or missing data: {ve}"
-                    return await self._handle_step_failure(workflow_run_id, current_step, error_details, "Code Generation")
-
-                logger.info(f"[{workflow_run_id}] --- Step {current_step.value} Complete ---")
-                current_status = WorkflowStatus.COMPLETED_CODE_GENERATION
-                await self._update_workflow_state(workflow_run_id, {
-                    "status": current_status.value,
-                    "current_step": current_step.value,
-                    "code_generation_result": code_generation_result_data # Save the result
-                })
-                # Fall through to Deployment
-
-            # Step 5: Deployment (was Step 4)
-            # Run if status is COMPLETED_CODE_GENERATION
-            if current_status == WorkflowStatus.COMPLETED_CODE_GENERATION:
-                current_step = WorkflowStep.DEPLOYMENT
-                logger.info(f"\n[{workflow_run_id}] --- Running Step: {current_step.value} ---")
-                current_status = WorkflowStatus.RUNNING_DEPLOYMENT # Set specific running status
-                await self._update_workflow_state(workflow_run_id, {"status": current_status.value, "current_step": current_step.value})
-
-                # Need brand package for brand name, code generation result for the code
-                if not brand_package_data or not code_generation_result_data:
-                    raise ValueError("Brand package or code generation data missing for deployment step.")
-                # Also need product spec for concept/features (load from state if not already loaded)
-                if not product_spec_data:
-                    product_spec_data = state.get("improvement_result")
-                    if not product_spec_data:
-                         raise ValueError("Product spec data missing for deployment step (failed to load from state).")
-
-
-                deployment_payload = DeploymentAgentInput(
-                    brand_name=brand_package_data.get('brand_name', 'Unnamed Brand'),
-                    product_concept=product_spec_data.get('product_concept', initial_topic), # Use spec data
-                    key_features=product_spec_data.get('key_features', []), # Use spec data
-                    generated_code_dict=code_generation_result_data.get('generated_code_dict') # Pass the generated code
-                ).model_dump(exclude_none=True)
-
-                deployment_event = await self._invoke_adk_skill(
-                    context=context,
-                    agent_name="Deployment", target_agent_id=self.deployment_agent_id,
-                    skill_name="deployment",
-                    payload=deployment_payload,
-                )
-
-                if deployment_event.type == EventType.ERROR:
-                    error_details = deployment_event.data.get('error', 'Deployment A2A call failed')
-                    return await self._handle_step_failure(workflow_run_id, current_step, error_details, "Deployment")
-                if not deployment_event.data: raise RuntimeError("Deployment Agent returned no data.")
-
-                try:
-                    deployment_result = DeploymentResult(**deployment_event.data)
-                    deployment_result_data = deployment_result.model_dump()
-                    # Check if the agent reported failure *within* the successful event
-                    # Treat 'failed' or non-'active' status as failure
-                    agent_reported_status = deployment_result.status.lower()
-                    if agent_reported_status == 'failed' or agent_reported_status != 'active':
-                        error_details = deployment_result.error_message or f"Deployment Agent reported status '{deployment_result.status}'."
-                        return await self._handle_step_failure(workflow_run_id, current_step, error_details, "Deployment")
-
-                except ValidationError as ve:
-                    error_details = f"Deployment Agent response validation failed: {ve}"
-                    return await self._handle_step_failure(workflow_run_id, current_step, error_details, "Deployment")
-
-                logger.info(f"[{workflow_run_id}] --- Step {current_step.value} Complete ---")
-                current_status = WorkflowStatus.COMPLETED_DEPLOYMENT # Set intermediate status
-                await self._update_workflow_state(workflow_run_id, {
-                    "status": current_status.value,
-                    "current_step": current_step.value,
-                    "deployment_result": deployment_result_data # Save the result
-                })
-                # Fall through to Marketing
-
-            # Step 6: Marketing (New)
-            # Run if status is COMPLETED_DEPLOYMENT
-            if current_status == WorkflowStatus.COMPLETED_DEPLOYMENT:
-                current_step = WorkflowStep.MARKETING
-                logger.info(f"\n[{workflow_run_id}] --- Running Step: {current_step.value} ---")
-                current_status = WorkflowStatus.RUNNING_MARKETING
-                await self._update_workflow_state(workflow_run_id, {"status": current_status.value, "current_step": current_step.value})
-
-                # Need product spec, brand package, and deployment result
-                if not product_spec_data or not brand_package_data or not deployment_result_data:
-                    raise ValueError("Product spec, brand package, or deployment data missing for marketing step.")
-
-                # Re-validate/parse data into expected Pydantic models for the input
-                try:
-                    product_spec_model = ImprovedProductSpec(**product_spec_data)
-                    brand_package_model = BrandPackage(**brand_package_data)
-                    # Deployment URL is optional in the result model
-                    deployment_url = deployment_result_data.get('deployment_url')
-                except ValidationError as ve:
-                    raise RuntimeError(f"Failed to validate data for Marketing input: {ve}")
-
-                marketing_payload = MarketingAgentInput(
-                    product_spec=product_spec_model,
-                    brand_package=brand_package_model,
-                    deployment_url=deployment_url
-                ).model_dump(exclude_none=True)
-
-                marketing_event = await self._invoke_adk_skill(
-                    context=context,
-                    agent_name="Marketing", target_agent_id=self.marketing_agent_id,
-                    skill_name="marketing",
-                    payload=marketing_payload,
-                )
-
-                if marketing_event.type == EventType.ERROR:
-                    error_details = marketing_event.data.get('error', 'Marketing A2A call failed')
-                    return await self._handle_step_failure(workflow_run_id, current_step, error_details, "Marketing")
-                if not marketing_event.data: raise RuntimeError("Marketing Agent returned no data.")
-
-                try:
-                    marketing_result = MarketingMaterialsPackage(**marketing_event.data)
-                    marketing_result_data = marketing_result.model_dump()
-                    # Check if the agent reported failure *within* the successful event
-                    if marketing_result.status.lower() == 'failed':
-                        error_details = marketing_result.error_message or "Marketing Agent reported failure without details."
-                        return await self._handle_step_failure(workflow_run_id, current_step, error_details, "Marketing")
-
-                except ValidationError as ve:
-                    error_details = f"Marketing Agent response validation failed: {ve}"
-                    return await self._handle_step_failure(workflow_run_id, current_step, error_details, "Marketing")
-
-                logger.info(f"[{workflow_run_id}] --- Step {current_step.value} Complete ---")
-                current_status = WorkflowStatus.COMPLETED_MARKETING
-                await self._update_workflow_state(workflow_run_id, {
-                    "status": current_status.value,
-                    "current_step": current_step.value,
-                    "marketing_result": marketing_result_data # Save the result
-                })
-                # Fall through to final completion
-
-            # --- Workflow Completion ---
-            # Run if status is COMPLETED_MARKETING
-            if current_status == WorkflowStatus.COMPLETED_MARKETING:
-                current_status = WorkflowStatus.COMPLETED # Final status
-                logger.info(f"\n[{workflow_run_id}] --- Workflow COMPLETED Successfully (including Marketing) ---")
-                final_result = {
-                    "workflow_run_id": workflow_run_id,
-                    "status": current_status.value,
-                    "initial_topic": initial_topic,
-                    "deployment_details": deployment_result_data,
-                    "marketing_materials": marketing_result_data, # Include marketing materials
-                    # Optionally include other results if needed for the final output
-                    # "market_research_result": market_report_data, # Already in state
-                    # "improvement_result": product_spec_data,
-                    # "branding_result": brand_package_data,
-                    # "code_generation_result": code_generation_result_data, # Already in state
-                }
-                await self._update_workflow_state(workflow_run_id, {
-                    "status": current_status.value,
-                    "current_step": current_step.value, # Mark final step completed
-                    # marketing_result already saved in the previous step
-                    "final_result": final_result # Store final summary result
-                })
-                # Emit final success event
-                self.socketio.emit('workflow_completed', {'workflow_run_id': workflow_run_id, 'result': final_result})
-                return Event(type=EventType.RESULT, data=final_result)
-
-            # Handle unexpected states (e.g., if status is already COMPLETED or FAILED when invoked)
-            if current_status in [WorkflowStatus.COMPLETED, WorkflowStatus.FAILED]:
-                 logger.warning(f"[{workflow_run_id}] Workflow is already in a terminal state ({current_status.value}). No further action taken.")
-                 # Return the final result if completed, or an error if failed
-                 final_data = state.get("final_result") if current_status == WorkflowStatus.COMPLETED else state.get("error", "Workflow previously failed.")
-                 event_type = EventType.RESULT if current_status == WorkflowStatus.COMPLETED else EventType.ERROR
-                 return Event(type=event_type, data=final_data)
-
-            # If execution reaches here without returning, it means the status didn't match any step logic
-            # This might happen if the status is RUNNING_... but the process restarts unexpectedly
-            # Or if the status is somehow invalid.
-            raise RuntimeError(f"Invalid state or logic error: Reached end of workflow execution checks with status '{current_status.value}'")
-
-
-        except (ValueError, TypeError, ConnectionError, TimeoutError, RuntimeError, ValidationError, json.JSONDecodeError) as e:
-            error_message = f"Workflow failed at Step '{current_step.value if current_step else 'UNKNOWN'}': {type(e).__name__}: {e}"
-            # Ensure status is updated to FAILED in Firestore even if it was already FAILED
-            # Use workflow_run_id directly as it's guaranteed to be set by this point
-            # Determine the step where the error occurred
-            failed_step_value = current_step.value if current_step else state.get("current_step", "UNKNOWN")
-
-            current_status = WorkflowStatus.FAILED
-            logger.error(f"[{workflow_run_id}] Error: {error_message}", exc_info=True) # Log traceback for context
-            # Use workflow_run_id directly as it's guaranteed to be set by this point
-            await self._update_workflow_state(workflow_run_id, {
-                "status": current_status.value,
-                "current_step": current_step.value if current_step else state.get("current_step"), # Use last known step
-                "error": error_message
-            })
-            # Emit SocketIO event for general exceptions caught here
-            self.socketio.emit('workflow_failed', {'workflow_run_id': workflow_run_id, 'failed_step': failed_step_value, 'error': error_message})
-            return Event(type=EventType.ERROR, data={"error": error_message, "stage": failed_step_value, "workflow_run_id": workflow_run_id})
-        except Exception as e:
-            error_message = f"Unexpected workflow error at Step '{current_step.value if current_step else 'UNKNOWN'}': {type(e).__name__}: {e}"
-            # Ensure status is updated to FAILED in Firestore
-            # Determine the step where the error occurred
-            failed_step_value = current_step.value if current_step else state.get("current_step", "UNKNOWN")
-
-            current_status = WorkflowStatus.FAILED
-            logger.error(f"[{workflow_run_id}] Error: {error_message}", exc_info=True) # Log traceback
-            await self._update_workflow_state(workflow_run_id, {
-                "status": current_status.value,
-                "current_step": current_step.value if current_step else state.get("current_step"), # Use last known step
-                "error": "An unexpected internal error occurred."
-            })
-            # Emit SocketIO event for unexpected exceptions
-            self.socketio.emit('workflow_failed', {'workflow_run_id': workflow_run_id, 'failed_step': failed_step_value, 'error': "An unexpected internal error occurred."})
-            return Event(type=EventType.ERROR, data={"error": "An unexpected internal error occurred.", "stage": failed_step_value, "workflow_run_id": workflow_run_id})
-
-# --- A2A Skills ---
-@skill(
-    name="start_workflow",
-    description="Start a new workflow",
-    tags=["workflow", "orchestration"]
-)
-async def start_workflow_skill(self, initial_topic: str, target_url: Optional[str] = None) -> Dict[str, Any]:
-    """
-    Start a new workflow.
-
-    Args:
-        initial_topic: The initial topic for the workflow.
-        target_url: Optional target URL for market research.
-
-    Returns:
-        A dictionary containing the workflow run ID and status.
-    """
-    logger.info(f"Starting new workflow for topic: {initial_topic}")
+    logger.info(f"[{workflow_run_id}] Executing next workflow step...")
+    current_step: Optional[WorkflowStep] = None # Track step where failure occurs
+    agent_name_for_error: str = "WorkflowManager" # Default agent name for errors
 
     try:
-        # Generate a new workflow run ID
-        workflow_run_id = f"workflow_{uuid.uuid4().hex[:8]}_{int(time.time())}"
+        # 1. Load current state from DB
+        workflow = await DB_SERVICE.get_workflow(workflow_run_id)
+        if not workflow:
+            raise ValueError(f"Workflow run ID '{workflow_run_id}' not found.")
 
+        current_status = WorkflowStatus(workflow.status)
+        last_completed_step = WorkflowStep(workflow.current_step) if workflow.current_step else None
+        logger.info(f"[{workflow_run_id}] Loaded state: Status={current_status.value}, Last Completed Step={last_completed_step.value if last_completed_step else 'None'}")
+
+        # --- Determine Next Step ---
+        next_step: Optional[WorkflowStep] = None
+        if current_status == WorkflowStatus.STARTING:
+            next_step = WorkflowStep.MARKET_RESEARCH
+        elif current_status == WorkflowStatus.APPROVED_RESUMING: # Resuming after approval
+            next_step = WorkflowStep.IMPROVEMENT
+        elif current_status == WorkflowStatus.COMPLETED_IMPROVEMENT:
+            next_step = WorkflowStep.BRANDING
+        elif current_status == WorkflowStatus.COMPLETED_BRANDING:
+            next_step = WorkflowStep.CODE_GENERATION
+        elif current_status == WorkflowStatus.COMPLETED_CODE_GENERATION:
+            next_step = WorkflowStep.DEPLOYMENT
+        elif current_status == WorkflowStatus.COMPLETED_DEPLOYMENT:
+            next_step = WorkflowStep.MARKETING
+        elif current_status == WorkflowStatus.COMPLETED_MARKETING:
+             next_step = None # Workflow finished previously
+             current_status = WorkflowStatus.COMPLETED
+        elif current_status in [WorkflowStatus.COMPLETED, WorkflowStatus.FAILED, WorkflowStatus.STOPPED_LOW_POTENTIAL, WorkflowStatus.PENDING_APPROVAL]:
+            logger.info(f"[{workflow_run_id}] Workflow is in a terminal or paused state ({current_status.value}). No action taken by _execute_workflow_step.")
+            return # Nothing more to do
+        else:
+            # Should not happen if state transitions are correct
+            raise RuntimeError(f"Workflow in unexpected status for step execution: {current_status.value}")
+
+        if not next_step:
+             logger.info(f"[{workflow_run_id}] No further steps to execute (Current Status: {current_status.value}).")
+             # Ensure final status is saved if it reached COMPLETED_MARKETING
+             if current_status == WorkflowStatus.COMPLETED:
+                  await _update_workflow_state(workflow_run_id, {"status": WorkflowStatus.COMPLETED.value, "current_step": WorkflowStep.MARKETING.value})
+             return
+
+        current_step = next_step # Set current step for error handling
+        step_config = WORKFLOW_STEPS_CONFIG[current_step]
+        target_agent_id = step_config["agent_id"]
+        target_tool_name = step_config["tool_name"] # Assuming one primary tool per agent step for now
+        agent_name_for_error = target_agent_id # Update for specific agent errors
+
+        logger.info(f"\n[{workflow_run_id}] --- Running Step: {current_step.value} (Agent: {target_agent_id}, Tool: {target_tool_name}) ---")
+        await _update_workflow_state(workflow_run_id, {"status": f"RUNNING_{current_step.name}", "current_step": current_step.value})
+
+        # 2. Prepare Input Payload for the Target Tool
+        payload = {}
+        if current_step == WorkflowStep.MARKET_RESEARCH:
+            payload = {"initial_topic": workflow.initial_topic, "target_url": workflow.target_url}
+        elif current_step == WorkflowStep.IMPROVEMENT:
+            if not workflow.market_research_result: raise ValueError("Market research result missing.")
+            # Map MarketOpportunityReport fields to ImprovementAgentInput fields
+            payload = {
+                "product_concept": workflow.initial_topic, # Start with initial topic
+                "competitor_weaknesses": workflow.market_research_result.get('analysis', {}).get('competitor_weaknesses', []),
+                "market_gaps": workflow.market_research_result.get('analysis', {}).get('market_gaps', []),
+                "target_audience_suggestions": workflow.market_research_result.get('target_audience_suggestions', []),
+                "feature_recommendations_from_market": workflow.market_research_result.get('feature_recommendations', [])
+                # business_model_type could be added if needed
+            }
+        elif current_step == WorkflowStep.BRANDING:
+            if not workflow.product_spec_data: raise ValueError("Improvement result (product spec) missing.")
+            payload = {
+                "product_concept": workflow.product_spec_data.get('product_concept', workflow.initial_topic),
+                "target_audience": workflow.product_spec_data.get('target_audience', [])
+                # keywords, business_model_type could be added
+            }
+        elif current_step == WorkflowStep.CODE_GENERATION:
+             if not workflow.product_spec_data or not workflow.brand_package_data: raise ValueError("Product spec or brand package missing.")
+             # Pass the full structures
+             payload = {"product_spec": workflow.product_spec_data, "brand_package": workflow.brand_package_data}
+        elif current_step == WorkflowStep.DEPLOYMENT:
+             if not workflow.brand_package_data or not workflow.code_generation_result or not workflow.product_spec_data:
+                 raise ValueError("Brand package, code generation result, or product spec missing.")
+             payload = {
+                 "brand_name": workflow.brand_package_data.get('brand_name', 'Unnamed Brand'),
+                 "product_concept": workflow.product_spec_data.get('product_concept', workflow.initial_topic),
+                 "key_features": workflow.product_spec_data.get('key_features', []),
+                 "generated_code_dict": workflow.code_generation_result.get('generated_code_dict')
+             }
+             if not payload["generated_code_dict"]: raise ValueError("Generated code dictionary missing in code generation result.")
+        elif current_step == WorkflowStep.MARKETING:
+             if not workflow.product_spec_data or not workflow.brand_package_data or not workflow.deployment_result:
+                 raise ValueError("Product spec, brand package, or deployment result missing.")
+             payload = {
+                 "product_spec": workflow.product_spec_data,
+                 "brand_package": workflow.brand_package_data,
+                 "deployment_url": workflow.deployment_result.get('deployment_url')
+             }
+
+        # 3. Invoke Target Agent Tool via ADK
+        input_event = Event(data=payload)
+        logger.debug(f"[{workflow_run_id}] Invoking agent '{target_agent_id}' with payload: {json.dumps(payload, default=str)[:500]}...") # Log truncated payload
+
+        response_event = await context.invoke_agent(
+            target_agent_id=target_agent_id,
+            input=input_event,
+            timeout_seconds=settings.AGENT_TIMEOUT_SECONDS * 2 # Allow longer timeout for complex steps
+        )
+
+        # 4. Process Result
+        result_data = None
+        step_succeeded = False
+        error_details = f"Agent '{target_agent_id}' did not return a valid response."
+
+        if response_event and response_event.actions:
+             action = response_event.actions[0]
+             part_data = None
+             # Try extracting from content parts first
+             if action.content and action.content.parts:
+                 part_data = action.content.parts[0].data
+             # Fallback to action parts
+             elif action.parts:
+                 part_data = action.parts[0].data
+
+             if isinstance(part_data, dict):
+                 result_data = part_data # Store the entire result dict
+                 if result_data.get("success"):
+                     step_succeeded = True
+                     error_details = None # Clear error on success
+                     logger.info(f"[{workflow_run_id}] Step {current_step.value} successful.")
+                 else:
+                     error_details = result_data.get("error", f"Agent '{target_agent_id}' reported failure.")
+                     logger.error(f"[{workflow_run_id}] Step {current_step.value} failed: {error_details}")
+             else:
+                 # Handle cases where the tool might return non-dict data unexpectedly
+                 error_details = f"Agent '{target_agent_id}' returned unexpected data type: {type(part_data)}"
+                 logger.error(f"[{workflow_run_id}] Step {current_step.value} failed: {error_details}")
+                 result_data = {"raw_output": str(part_data)} # Store raw output on error
+
+        else:
+            logger.error(f"[{workflow_run_id}] Step {current_step.value} failed: No valid response event actions from '{target_agent_id}'. Response: {response_event}")
+            error_details = f"No valid response event from '{target_agent_id}'."
+            # result_data remains None
+
+        # 5. Update State and Handle Next Action
+        if step_succeeded and result_data:
+            next_status = None
+            db_update_payload = {"current_step": current_step.value} # Always update the completed step
+
+            # Store result in the correct DB field based on the step
+            if current_step == WorkflowStep.MARKET_RESEARCH:
+                db_update_payload["market_research_result"] = result_data.get("report") # Store the 'report' part
+                next_status = WorkflowStatus.PENDING_APPROVAL
+            elif current_step == WorkflowStep.IMPROVEMENT:
+                db_update_payload["product_spec_data"] = result_data.get("improved_spec") # Store the 'improved_spec' part
+                # Feasibility Check
+                potential = result_data.get("improved_spec", {}).get("potential_rating", "Low").capitalize()
+                score = result_data.get("improved_spec", {}).get("feasibility_score")
+                rationale = result_data.get("improved_spec", {}).get("assessment_rationale", "N/A")
+                if potential in ['Medium', 'High'] or (isinstance(score, (int, float)) and score >= 0.6):
+                    logger.info(f"[{workflow_run_id}] Feasibility check passed (Potential: {potential}, Score: {score}).")
+                    next_status = WorkflowStatus.COMPLETED_IMPROVEMENT
+                else:
+                    logger.warning(f"[{workflow_run_id}] Feasibility check failed (Potential: {potential}, Score: {score}). Stopping workflow.")
+                    next_status = WorkflowStatus.STOPPED_LOW_POTENTIAL
+                    db_update_payload["error_message"] = f"Workflow stopped due to low potential/feasibility. Rating: {potential}, Score: {score}. Rationale: {rationale}"
+            elif current_step == WorkflowStep.BRANDING:
+                db_update_payload["brand_package_data"] = result_data.get("brand_package") # Store the 'brand_package' part
+                next_status = WorkflowStatus.COMPLETED_BRANDING
+            elif current_step == WorkflowStep.CODE_GENERATION:
+                 db_update_payload["code_generation_result"] = result_data # Store the whole result dict including 'generated_code_dict'
+                 next_status = WorkflowStatus.COMPLETED_CODE_GENERATION
+            elif current_step == WorkflowStep.DEPLOYMENT:
+                 db_update_payload["deployment_result"] = result_data # Store the whole result dict
+                 next_status = WorkflowStatus.COMPLETED_DEPLOYMENT
+            elif current_step == WorkflowStep.MARKETING:
+                 db_update_payload["marketing_result"] = result_data.get("marketing_materials") # Store the 'marketing_materials' part
+                 next_status = WorkflowStatus.COMPLETED_MARKETING # Penultimate step
+                 # This will lead to the final COMPLETED state check
+
+            if next_status:
+                db_update_payload["status"] = next_status.value
+                await _update_workflow_state(workflow_run_id, db_update_payload)
+
+                # If workflow is not in a terminal/paused state, trigger the next step
+                if next_status not in [WorkflowStatus.COMPLETED, WorkflowStatus.FAILED, WorkflowStatus.STOPPED_LOW_POTENTIAL, WorkflowStatus.PENDING_APPROVAL]:
+                    logger.info(f"[{workflow_run_id}] Step {current_step.value} successful. Triggering next step.")
+                    asyncio.create_task(_execute_workflow_step(context, workflow_run_id))
+                elif next_status == WorkflowStatus.PENDING_APPROVAL:
+                     logger.info(f"[{workflow_run_id}] Workflow paused for approval after {current_step.value}.")
+                     # SocketIO emit happens in _update_workflow_state
+                elif next_status == WorkflowStatus.COMPLETED_MARKETING:
+                     logger.info(f"[{workflow_run_id}] Marketing step complete. Finalizing workflow.")
+                     # Trigger one last execution to transition to COMPLETED
+                     asyncio.create_task(_execute_workflow_step(context, workflow_run_id))
+                else:
+                     logger.info(f"[{workflow_run_id}] Workflow reached terminal state: {next_status.value}")
+                     # SocketIO emit happens in _update_workflow_state if status changed
+
+            else:
+                 # Should not happen if logic is correct
+                 raise RuntimeError(f"Could not determine next status after successful step {current_step.value}")
+
+        else:
+            # Handle step failure
+            await _handle_step_failure(workflow_run_id, current_step, error_details or "Unknown error", agent_name_for_error)
+
+    except Exception as e:
+        # Catch errors during state loading or step execution logic itself
+        error_msg = f"Workflow execution error at step '{current_step.value if current_step else 'UNKNOWN'}': {type(e).__name__}: {e}"
+        logger.critical(f"[{workflow_run_id}] CRITICAL ERROR: {error_msg}", exc_info=True)
+        # Ensure state is marked as FAILED
+        await _update_workflow_state(workflow_run_id, {
+            "status": WorkflowStatus.FAILED.value,
+            "current_step": current_step.value if current_step else None,
+            "error_message": error_msg
+        })
+        # SocketIO emit happens within _update_workflow_state
+
+# --- ADK Tool Definitions ---
+
+@tool(description="Start a new multi-agent workflow to research, design, build, deploy, and market a product based on an initial topic.")
+async def start_workflow_tool(context: ToolContext, initial_topic: str, target_url: Optional[str] = None) -> Dict[str, Any]:
+    """
+    ADK Tool: Start a new workflow.
+    """
+    logger.info(f"Tool: Starting new workflow for topic: {initial_topic}")
+    workflow_run_id = f"wf_{uuid.uuid4().hex[:8]}" # Shorter ID
+    try:
         # Create workflow in database
-        workflow = await DatabaseService.create_workflow(
+        await DB_SERVICE.create_workflow(
             workflow_id=workflow_run_id,
             initial_topic=initial_topic,
             target_url=target_url,
             status=WorkflowStatus.STARTING.value
         )
+        logger.info(f"[{workflow_run_id}] Workflow created in database.")
 
-        # Emit SocketIO event
-        if self.socketio:
-            self.socketio.emit('workflow_started', {'workflow_run_id': workflow_run_id, 'initial_topic': initial_topic})
-
-        # Start the workflow in a background task
-        asyncio.create_task(self._run_workflow(workflow_run_id, initial_topic, target_url))
+        # Start the workflow execution in the background
+        # Pass the ToolContext so the background task can invoke other agents
+        asyncio.create_task(_execute_workflow_step(context, workflow_run_id))
 
         return {
             "success": True,
-            "message": f"Workflow started with ID: {workflow_run_id}",
+            "message": f"Workflow started successfully.",
             "workflow_run_id": workflow_run_id,
             "status": WorkflowStatus.STARTING.value
         }
-
     except Exception as e:
-        logger.error(f"Error starting workflow: {e}", exc_info=True)
-        return {
-            "success": False,
-            "error": f"Error starting workflow: {str(e)}"
-        }
+        logger.error(f"Tool: Error starting workflow: {e}", exc_info=True)
+        return {"success": False, "error": f"Error starting workflow: {str(e)}"}
 
-@skill(
-    name="get_workflow_status",
-    description="Get the status of a workflow",
-    tags=["workflow", "status"]
-)
-async def get_workflow_status_skill(self, workflow_run_id: str) -> Dict[str, Any]:
+@tool(description="Get the current status and stored data for a specific workflow run.")
+async def get_workflow_status_tool(workflow_run_id: str) -> Dict[str, Any]:
     """
-    Get the status of a workflow.
-
-    Args:
-        workflow_run_id: The workflow run ID.
-
-    Returns:
-        A dictionary containing the workflow status.
+    ADK Tool: Get the status of a workflow.
     """
-    logger.info(f"Getting status for workflow: {workflow_run_id}")
-
+    logger.info(f"Tool: Getting status for workflow: {workflow_run_id}")
     try:
-        # Get workflow from database
-        workflow = await DatabaseService.get_workflow(workflow_run_id)
-
+        workflow = await DB_SERVICE.get_workflow(workflow_run_id)
         if not workflow:
-            return {
-                "success": False,
-                "error": f"Workflow with ID {workflow_run_id} not found."
-            }
+            return {"success": False, "error": f"Workflow '{workflow_run_id}' not found."}
 
-        # Convert workflow to dictionary
-        workflow_dict = {
+        # Return relevant fields from the workflow model
+        return {
+            "success": True,
             "workflow_run_id": workflow.id,
-            "initial_topic": workflow.initial_topic,
-            "target_url": workflow.target_url,
             "status": workflow.status,
             "current_step": workflow.current_step,
             "error_message": workflow.error_message,
-            "created_at": workflow.created_at,
-            "last_updated": workflow.last_updated
+            "initial_topic": workflow.initial_topic,
+            "target_url": workflow.target_url,
+            "created_at": workflow.created_at.isoformat() if workflow.created_at else None,
+            "last_updated": workflow.last_updated.isoformat() if workflow.last_updated else None,
+            # Optionally include results if needed, be mindful of size
+            # "market_research_result": workflow.market_research_result,
+            # "improvement_result": workflow.product_spec_data,
+            # ...
         }
-
-        return {
-            "success": True,
-            "message": f"Retrieved status for workflow {workflow_run_id}.",
-            "workflow_run_id": workflow_run_id,
-            "status": workflow.status,
-            "current_step": workflow.current_step,
-            "error": workflow.error_message,
-            "created_at": workflow.created_at,
-            "last_updated": workflow.last_updated,
-            "workflow": workflow_dict
-        }
-
     except Exception as e:
-        logger.error(f"Error getting workflow status: {e}", exc_info=True)
-        return {
-            "success": False,
-            "error": f"Error getting workflow status: {str(e)}"
-        }
+        logger.error(f"Tool: Error getting workflow status for {workflow_run_id}: {e}", exc_info=True)
+        return {"success": False, "error": f"Error getting workflow status: {str(e)}"}
 
-@skill(
-    name="resume_workflow",
-    description="Resume a paused workflow",
-    tags=["workflow", "orchestration"]
-)
-async def resume_workflow_skill(self, workflow_run_id: str) -> Dict[str, Any]:
+@tool(description="Resume a workflow that is paused waiting for user approval (status PENDING_APPROVAL).")
+async def resume_workflow_tool(context: ToolContext, workflow_run_id: str) -> Dict[str, Any]:
     """
-    Resume a paused workflow.
-
-    Args:
-        workflow_run_id: The workflow run ID.
-
-    Returns:
-        A dictionary containing the workflow status.
+    ADK Tool: Resume a paused workflow after user approval.
     """
-    logger.info(f"Resuming workflow: {workflow_run_id}")
-
+    logger.info(f"Tool: Attempting to resume workflow: {workflow_run_id}")
     try:
-        # Get workflow from database
-        workflow = await DatabaseService.get_workflow(workflow_run_id)
-
+        workflow = await DB_SERVICE.get_workflow(workflow_run_id)
         if not workflow:
-            return {
-                "success": False,
-                "error": f"Workflow with ID {workflow_run_id} not found."
-            }
+            return {"success": False, "error": f"Workflow '{workflow_run_id}' not found."}
 
-        # Check if workflow is in a resumable state
         if workflow.status != WorkflowStatus.PENDING_APPROVAL.value:
-            return {
-                "success": False,
-                "error": f"Workflow is not in a resumable state. Current status: {workflow.status}"
-            }
+            return {"success": False, "error": f"Workflow not in PENDING_APPROVAL state (Current: {workflow.status}). Cannot resume."}
 
-        # Update workflow state
-        await self._update_workflow_state(workflow_run_id, {
-            "status": WorkflowStatus.APPROVED_RESUMING.value
-        })
+        # Update status to trigger resumption
+        await _update_workflow_state(workflow_run_id, {"status": WorkflowStatus.APPROVED_RESUMING.value})
 
-        # Emit SocketIO event
-        if self.socketio:
-            self.socketio.emit('workflow_resumed', {'workflow_run_id': workflow_run_id})
-
-        # Resume the workflow in a background task
-        asyncio.create_task(self._run_workflow(
-            workflow_run_id,
-            workflow.initial_topic,
-            workflow.target_url,
-            resume=True
-        ))
+        # Trigger the next step execution in the background
+        asyncio.create_task(_execute_workflow_step(context, workflow_run_id))
 
         return {
             "success": True,
-            "message": f"Workflow {workflow_run_id} resumed.",
+            "message": f"Workflow {workflow_run_id} resumption triggered.",
             "workflow_run_id": workflow_run_id,
             "status": WorkflowStatus.APPROVED_RESUMING.value
         }
-
     except Exception as e:
-        logger.error(f"Error resuming workflow: {e}", exc_info=True)
-        return {
-            "success": False,
-            "error": f"Error resuming workflow: {str(e)}"
-        }
+        logger.error(f"Tool: Error resuming workflow {workflow_run_id}: {e}", exc_info=True)
+        return {"success": False, "error": f"Error resuming workflow: {str(e)}"}
 
-async def _run_workflow(self, workflow_run_id: str, initial_topic: str, target_url: Optional[str] = None, resume: bool = False) -> None:
-    """
-    Run the workflow asynchronously.
 
-    Args:
-        workflow_run_id: The workflow run ID.
-        initial_topic: The initial topic for the workflow.
-        target_url: Optional target URL for market research.
-        resume: Whether this is a resumed workflow.
-    """
-    logger.info(f"Running workflow {workflow_run_id} for topic: {initial_topic}")
+# --- Instantiate the ADK Agent ---
+agent = Agent(
+    name=AGENT_ID,
+    description="Orchestrates the multi-agent workflow (Market Research -> Improvement -> Branding -> Code Gen -> Deploy -> Marketing) using ADK tools and database state.",
+    tools=[
+        start_workflow_tool,
+        get_workflow_status_tool,
+        resume_workflow_tool,
+    ],
+)
 
-    try:
-        # TODO: Implement the workflow logic using _invoke_agent_skill
-        # This would be similar to the run_async method but using the new _invoke_agent_skill method
-        pass
-
-    except Exception as e:
-        logger.error(f"Error running workflow: {e}", exc_info=True)
-        # Update workflow state to FAILED
-        await self._update_workflow_state(workflow_run_id, {
-            "status": WorkflowStatus.FAILED.value,
-            "error": f"Error running workflow: {str(e)}",
-            "last_updated": firestore.SERVER_TIMESTAMP
-        })
-        # Emit SocketIO event
-        if self.socketio:
-            self.socketio.emit('workflow_failed', {
-                'workflow_run_id': workflow_run_id,
-                'error': f"Error running workflow: {str(e)}"
-            })
-
-# Example of how to run this agent as a standalone A2A server
-if __name__ == "__main__":
-    # Create the agent
-    agent = WorkflowManagerAgent()
-
-    # Run the A2A server
-    agent.run_server(host="0.0.0.0", port=agent.port or 8000)
+# Removed A2A server specific code and old class structure

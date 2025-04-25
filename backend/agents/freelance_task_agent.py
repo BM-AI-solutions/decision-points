@@ -1,8 +1,7 @@
 """
-Freelance Task Agent for Decision Points.
+Freelance Task Agent for Decision Points (ADK Version).
 
-This agent monitors freelance platforms, analyzes tasks, and potentially bids or executes them.
-It implements the A2A protocol for agent communication.
+This agent monitors freelance platforms, analyzes tasks, and potentially bids or executes them using ADK tools.
 """
 
 import json
@@ -11,527 +10,244 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime
 
 from google.cloud import secretmanager
-from google.adk.runtime import InvocationContext
-from google.adk.runtime.events import Event
+from google.adk.agents import Agent # Use ADK Agent
+from google.adk.tools import tool # Import tool decorator
 
-# A2A Imports
-from python_a2a import skill
-
-from agents.base_agent import BaseSpecializedAgent
+# Removed A2A and BaseSpecializedAgent imports
 from app.config import settings
-from app.services.db_service import DatabaseService
+from app.services.db_service import DatabaseService # Keep DB service for state
 
 # Configure logging
 logger = logging.getLogger(__name__)
 
-class FreelanceTaskAgent(BaseSpecializedAgent):
-    """
-    Agent responsible for freelance tasks.
-    Monitors freelance platforms, analyzes tasks, and potentially bids or executes them.
-    Implements A2A protocol for agent communication.
+# --- Constants ---
+AGENT_NAME = "freelance_tasker_adk" # ADK specific name
+STATE_KEY = "freelance_state" # Key for storing state in DB
+SECRET_PREFIX = "freelance-credentials-" # Default prefix
 
-    Features:
-    - Interacts with freelance platform APIs (e.g., Upwork, Fiverr).
-    - Manages state related to freelance activities.
-    - Uses Secret Manager for platform credentials.
-    - Communicates results and events using A2A protocol.
-    """
+# --- Client Initialization (Global or passed to tools if needed) ---
+GCP_PROJECT_ID = settings.GCP_PROJECT_ID
+DB_SERVICE = DatabaseService() # Instantiate DB service
 
-    # Configuration keys
-    CONFIG_GCP_PROJECT_ID = "gcp_project_id"
-    CONFIG_SECRET_PREFIX = "secret_prefix" # e.g., "freelance-credentials-"
+SECRET_MANAGER_CLIENT = None
+if GCP_PROJECT_ID:
+    try:
+        SECRET_MANAGER_CLIENT = secretmanager.SecretManagerServiceClient()
+        logger.info("Secret Manager client initialized globally.")
+    except Exception as e:
+        logger.error(f"Failed to initialize global Secret Manager client: {e}", exc_info=True)
+        logger.warning("Freelance agent functionality requiring credentials will be limited.")
+else:
+    logger.warning("Secret Manager client not initialized globally due to missing GCP_PROJECT_ID.")
 
-    def __init__(
-        self,
-        name: str = "freelance_tasker",
-        description: str = "Monitors freelance platforms, analyzes tasks, and potentially bids or executes them",
-        model_name: Optional[str] = None,
-        port: Optional[int] = None,
-        config: Dict[str, Any] = None,
-        **kwargs: Any,
-    ):
-        """
-        Initialize the FreelanceTaskAgent.
+# --- Helper Functions ---
 
-        Args:
-            name: The name of the agent.
-            description: The description of the agent.
-            model_name: The name of the model to use. Defaults to settings.GEMINI_MODEL_NAME.
-            port: The port to run the A2A server on. Defaults to settings.FREELANCE_TASKER_AGENT_URL port.
-            config: Additional configuration for the agent.
-            **kwargs: Additional arguments for BaseSpecializedAgent.
-        """
-        # Extract port from URL if not provided
-        if port is None and settings.FREELANCE_TASKER_AGENT_URL:
-            try:
-                port = int(settings.FREELANCE_TASKER_AGENT_URL.split(':')[-1])
-            except (ValueError, IndexError):
-                port = 8011  # Default port
-
-        # Initialize BaseSpecializedAgent
-        super().__init__(
-            name=name,
-            description=description,
-            model_name=model_name,
-            port=port,
-            **kwargs
+async def _get_state(user_identifier: str) -> dict:
+    """Retrieves the agent's state for a specific user from PostgreSQL."""
+    try:
+        # Use the global DB_SERVICE instance
+        state_data = await DB_SERVICE.get_agent_state(
+            agent_id=AGENT_NAME, # Use the ADK agent name
+            user_identifier=user_identifier,
+            state_key=STATE_KEY
         )
+        if not state_data:
+            logger.info(f"No state found for {user_identifier}. Returning empty state.")
+            return {}
+        return state_data
+    except Exception as e:
+        logger.error(f"Error retrieving state for {user_identifier}: {e}", exc_info=True)
+        # Return error dict to be handled by the tool
+        return {"error": f"Failed to fetch state: {e}"}
 
-        # --- Configuration ---
-        resolved_config = config or {}
-        self.gcp_project_id = resolved_config.get(self.CONFIG_GCP_PROJECT_ID, settings.GCP_PROJECT_ID)
-        if not self.gcp_project_id:
-            logger.warning("No GCP project ID provided. Some functionality may be limited.")
+async def _update_state(user_identifier: str, new_state_value: dict) -> bool:
+    """Updates the agent's state for a specific user in PostgreSQL."""
+    try:
+        # Use the global DB_SERVICE instance
+        await DB_SERVICE.update_agent_state(
+            agent_id=AGENT_NAME, # Use the ADK agent name
+            user_identifier=user_identifier,
+            state_key=STATE_KEY,
+            state_data=new_state_value
+        )
+        logger.info(f"State updated for {user_identifier}.")
+        return True
+    except Exception as e:
+        logger.error(f"Error updating state for {user_identifier}: {e}", exc_info=True)
+        return False # Indicate failure to the tool
 
-        self.secret_prefix = resolved_config.get(self.CONFIG_SECRET_PREFIX, "freelance-credentials-")
+def _get_platform_credentials(user_identifier: str, secret_id_suffix: str) -> Optional[str]:
+    """Retrieves platform credentials from Secret Manager."""
+    if not SECRET_MANAGER_CLIENT or not GCP_PROJECT_ID:
+        logger.warning("Secret Manager client or GCP Project ID not available. Cannot retrieve credentials.")
+        return None
 
-        # --- Client Initialization ---
-        if self.gcp_project_id:
-            try:
-                self.secret_manager_client = secretmanager.SecretManagerServiceClient()
-                logger.info("Secret Manager client initialized.")
-            except Exception as e:
-                logger.error(f"Failed to initialize Secret Manager client: {e}", exc_info=True)
-                logger.warning("Continuing with limited functionality.")
-                self.secret_manager_client = None
-        else:
-            logger.warning("Secret Manager client not initialized due to missing project ID.")
-            self.secret_manager_client = None
+    secret_id = f"{SECRET_PREFIX}{user_identifier}-{secret_id_suffix}"
+    try:
+        name = f"projects/{GCP_PROJECT_ID}/secrets/{secret_id}/versions/latest"
+        logger.info(f"Attempting to access secret: {name}")
+        response = SECRET_MANAGER_CLIENT.access_secret_version(request={"name": name})
+        credentials = response.payload.data.decode("UTF-8")
+        logger.info(f"Successfully retrieved credentials for secret suffix {secret_id_suffix} for user {user_identifier}")
+        return credentials
+    except Exception as e:
+        logger.error(f"Error retrieving credentials for secret {secret_id}: {e}", exc_info=True)
+        return None
 
-        logger.info(f"FreelanceTaskAgent initialized with port: {self.port}")
+# --- ADK Tool Definitions ---
 
-    async def run_async(self, context: InvocationContext) -> Event:
-        """
-        Main execution logic for the FreelanceTaskAgent asynchronously according to ADK spec.
-        Maintained for backward compatibility with ADK.
+@tool(description="Monitor freelance platforms (e.g., Upwork) based on criteria and potentially bid on matching tasks.")
+async def monitor_and_bid_tool(
+    user_identifier: str,
+    platform: str,
+    criteria: Dict[str, Any],
+    secret_id_suffix: str
+) -> Dict[str, Any]:
+    """
+    ADK Tool: Monitor freelance platforms and bid on matching tasks.
+    """
+    logger.info(f"Tool: [{user_identifier}] Monitoring {platform} with criteria: {criteria}")
 
-        Args:
-            context: The invocation context containing the input data.
+    if not SECRET_MANAGER_CLIENT:
+        return {"success": False, "error": "Secret Manager client not initialized. Cannot retrieve credentials."}
 
-        Returns:
-            An Event containing the results or an error.
-        """
-        logger.info(f"Received invocation for FreelanceTaskAgent (ID: {context.invocation_id})")
-
-        try:
-            # Extract parameters from context
-            if not hasattr(context, 'params') or not context.params:
-                logger.error("Input parameters are missing in the invocation context.")
-                return Event(
-                    type="error",
-                    data={"error": "Input parameters are missing."}
-                )
-
-            action = context.params.get("action")
-            user_identifier = context.params.get("user_identifier")
-
-            if not user_identifier:
-                return self._create_error_event(context, "Missing 'user_identifier' in invocation parameters.")
-            if not action:
-                return self._create_error_event(context, "Missing 'action' in invocation parameters.")
-
-            # Use the A2A skills
-            if action == "monitor_and_bid":
-                platform = context.params.get("platform")
-                criteria = context.params.get("criteria")
-                secret_id_suffix = context.params.get("secret_id_suffix")
-
-                if not platform or not criteria or not secret_id_suffix:
-                    return self._create_error_event(context, "Missing parameters for 'monitor_and_bid' action.")
-
-                result = await self.monitor_and_bid_skill(
-                    user_identifier=user_identifier,
-                    platform=platform,
-                    criteria=criteria,
-                    secret_id_suffix=secret_id_suffix
-                )
-
-            elif action == "execute_task":
-                task_details = context.params.get("task_details")
-
-                if not task_details:
-                    return self._create_error_event(context, "Missing 'task_details' for 'execute_task' action.")
-
-                result = await self.execute_task_skill(
-                    user_identifier=user_identifier,
-                    task_details=task_details
-                )
-
-            elif action == "get_state":
-                result = self.get_state_skill(user_identifier=user_identifier)
-
-            elif action == "update_state":
-                new_state = context.params.get("new_state")
-
-                if new_state is None:
-                    return self._create_error_event(context, "Missing 'new_state' for 'update_state' action.")
-
-                result = self.update_state_skill(
-                    user_identifier=user_identifier,
-                    new_state=new_state
-                )
-
-            else:
-                return self._create_error_event(context, f"Unsupported action: {action}")
-
-            # Create an event from the result
-            if result.get("success", False):
-                return Event(
-                    type=f"{action}_succeeded",
-                    data={k: v for k, v in result.items() if k != "success" and k != "message"}
-                )
-            else:
-                return Event(
-                    type=f"{action}_failed",
-                    data={"error": result.get("error", f"{action} failed.")}
-                )
-
-        except Exception as e:
-            # Catch-all for unexpected errors
-            logger.error(f"Unexpected error in FreelanceTaskAgent: {e}", exc_info=True)
-            return Event(
-                type="error",
-                data={"error": f"An unexpected error occurred: {str(e)}"}
-            )
-
-    async def _get_state(self, user_identifier: str) -> dict:
-        """Retrieves the agent's state for a specific user from PostgreSQL."""
-        try:
-            state_data = await DatabaseService.get_agent_state(
-                agent_id=self.name,
-                user_identifier=user_identifier,
-                state_key="freelance_state"
-            )
-
-            if not state_data:
-                logger.info(f"No state found for {user_identifier}. Returning empty state.")
-                return {}
-
-            return state_data
-        except Exception as e:
-            logger.error(f"Error retrieving state for {user_identifier}: {e}", exc_info=True)
-            # Depending on requirements, might re-raise or return specific error indicator
-            return {"error": f"Failed to fetch state: {e}"}
-
-    async def _update_state(self, user_identifier: str, new_state_value: dict):
-        """Updates the agent's state for a specific user in PostgreSQL."""
-        try:
-            await DatabaseService.update_agent_state(
-                agent_id=self.name,
-                user_identifier=user_identifier,
-                state_key="freelance_state",
-                state_data=new_state_value
-            )
-            logger.info(f"State updated for {user_identifier}.")
-        except Exception as e:
-            logger.error(f"Error updating state for {user_identifier}: {e}", exc_info=True)
-            # Re-raise to be caught by the main run_async handler
-            raise RuntimeError(f"Failed to update state for {user_identifier}: {e}") from e
-
-    def _get_platform_credentials(self, user_identifier: str, secret_id_suffix: str) -> str | None:
-        """Retrieves platform credentials from Secret Manager."""
-        # Construct secret ID using prefix and user-specific suffix
-        secret_id = f"{self.secret_prefix}{user_identifier}-{secret_id_suffix}"
-        try:
-            name = f"projects/{self.gcp_project_id}/secrets/{secret_id}/versions/latest"
-            self.logger.info(f"Attempting to access secret: {name}")
-            response = self.secret_manager_client.access_secret_version(request={"name": name})
-            credentials = response.payload.data.decode("UTF-8")
-            self.logger.info(f"Successfully retrieved credentials for secret suffix {secret_id_suffix} for user {user_identifier}")
-            return credentials
-        except Exception as e:
-            self.logger.error(f"Error retrieving credentials for secret {secret_id}: {e}", exc_info=True)
-            # Return None, let the calling function handle the missing credentials
-            return None
-
-    async def _handle_monitor_and_bid(self, context: InvocationContext, user_identifier: str, platform: str, criteria: dict, secret_id_suffix: str) -> Event:
-        """Placeholder for monitoring and bidding logic."""
-        self.logger.info(f"[{user_identifier}] Monitoring {platform} with criteria: {criteria}")
-
-        credentials = self._get_platform_credentials(user_identifier, secret_id_suffix)
+    try:
+        credentials = _get_platform_credentials(user_identifier, secret_id_suffix)
         if not credentials:
-            return self._create_error_event(context, f"Failed to retrieve credentials for platform {platform} (secret suffix: {secret_id_suffix}).")
+            return {"success": False, "error": f"Failed to retrieve credentials for platform {platform} (secret suffix: {secret_id_suffix})."}
 
         # TODO: Implement actual platform monitoring and bidding logic using credentials
-        # Example: platform_client = initialize_platform_client(platform, credentials)
-        #          jobs = platform_client.search_jobs(criteria)
-        #          bids_placed = []
-        #          for job in jobs:
-        #              if should_bid(job):
-        #                  bid_result = platform_client.place_bid(job['id'], ...)
-        #                  bids_placed.append(bid_result)
-        #                  # Update state or emit events about bids
-        #                  self._publish_event(user_identifier, {"event": "bid_placed", "job_id": job['id'], ...})
+        logger.warning("Placeholder: Actual platform monitoring and bidding logic not implemented.")
+        bids_placed_count = 0 # Placeholder
 
+        # Update state (example)
+        current_state = await _get_state(user_identifier)
+        if "error" in current_state: # Handle state retrieval error
+             return {"success": False, "error": f"Failed to get current state: {current_state['error']}"}
 
-        # Placeholder result
-        result_payload = {
+        current_state.setdefault('monitoring', {})[platform] = {'status': 'active', 'last_run': datetime.now().isoformat()}
+        if not await _update_state(user_identifier, current_state):
+             # Log warning but proceed, state update isn't critical for the *result* here
+             logger.warning(f"Failed to update state for {user_identifier} after monitoring.")
+
+        # TODO: Consider replacing Pub/Sub with ADK event emission if appropriate for the workflow
+
+        return {
+            "success": True,
+            "message": f"Placeholder: Monitoring and bidding initiated for {platform}. Bids placed (placeholder): {bids_placed_count}",
             "status": "monitoring_started",
             "platform": platform,
             "criteria": criteria,
-            "message": "Placeholder: Monitoring and bidding logic initiated."
-            # "bids_placed": bids_placed # Include actual results later
+            "bids_placed_count": bids_placed_count
         }
-        self.logger.info(f"Placeholder: Monitoring complete for {platform}.")
+
+    except Exception as e:
+        logger.error(f"Tool: Error monitoring and bidding on {platform}: {e}", exc_info=True)
+        return {"success": False, "error": f"Error monitoring/bidding on {platform}: {str(e)}"}
+
+@tool(description="Execute a freelance task based on provided details.")
+async def execute_task_tool(
+    user_identifier: str,
+    task_details: Dict[str, Any]
+) -> Dict[str, Any]:
+    """
+    ADK Tool: Execute a freelance task.
+    """
+    task_id = task_details.get("id", "unknown")
+    logger.info(f"Tool: [{user_identifier}] Executing task: {task_id} - {task_details.get('description', 'No description')}")
+
+    try:
+        # TODO: Implement actual task execution logic.
+        # This might involve LLMs, other agents (via context.invoke_agent), platform APIs.
+        logger.warning("Placeholder: Actual task execution logic not implemented.")
+        task_result_summary = "Placeholder: Task completed successfully." # Placeholder
 
         # Update state (example)
-        current_state = await self._get_state(user_identifier)
-        current_state.setdefault('monitoring', {})[platform] = {'status': 'active', 'last_run': datetime.now().isoformat()}
-        await self._update_state(user_identifier, current_state)
+        current_state = await _get_state(user_identifier)
+        if "error" in current_state:
+             return {"success": False, "error": f"Failed to get current state before task update: {current_state['error']}"}
 
-        return Event(
-            invocation_context=context,
-            payload=result_payload,
-            severity=EventSeverity.INFO,
-            message=f"Monitoring and bidding initiated for {platform}."
-        )
-
-    async def _handle_execute_task(self, context: InvocationContext, user_identifier: str, task_details: dict) -> Event:
-        """Placeholder for executing a freelance task."""
-        self.logger.info(f"[{user_identifier}] Executing task: {task_details}")
-
-        # TODO: Implement actual task execution logic
-        # This might involve:
-        # 1. Analyzing task_details to understand requirements.
-        # 2. Retrieving necessary credentials if platform interaction is needed.
-        # 3. Using LLMs for content generation, analysis, etc. (consider inheriting LlmAgent).
-        # 4. Delegating sub-tasks to other agents via A2A calls (e.g., ContentGenerationAgent).
-        #    - This would require adding A2A capabilities (e.g., using AgentServiceClient).
-        # 5. Interacting with platform APIs to deliver work or update status.
-        # 6. Updating state upon completion or progress.
-
-        # Placeholder result
-        result_payload = {
-            "status": "execution_initiated",
-            "task_id": task_details.get("id", "unknown"),
-            "message": "Placeholder: Task execution logic initiated."
+        current_state.setdefault('tasks', {})[task_id] = {
+            'status': 'completed', # Assuming completion for placeholder
+            'last_update': datetime.now().isoformat(),
+            'result_summary': task_result_summary
         }
-        self.logger.info(f"Placeholder: Task execution complete for task {task_details.get('id', 'unknown')}.")
+        if not await _update_state(user_identifier, current_state):
+             logger.warning(f"Failed to update state for {user_identifier} after task execution.")
 
-        # Update state (example)
-        current_state = await self._get_state(user_identifier)
-        current_state.setdefault('tasks', {})[task_details.get('id', 'unknown')] = {'status': 'in_progress', 'last_update': datetime.now().isoformat()}
-        await self._update_state(user_identifier, current_state)
+        # TODO: Consider replacing Pub/Sub with ADK event emission
 
-        # Publish event via Pub/Sub (retained from prototype, consider ADK events too)
-        self._publish_event(user_identifier, {"event": "task_execution_started", "task_details": task_details})
+        return {
+            "success": True,
+            "message": f"Placeholder: Task execution completed for task {task_id}.",
+            "status": "execution_completed",
+            "task_id": task_id,
+            "result_summary": task_result_summary
+        }
 
-        return Event(
-            invocation_context=context,
-            payload=result_payload,
-            severity=EventSeverity.INFO,
-            message=f"Task execution initiated for task {task_details.get('id', 'unknown')}."
-        )
-
-    def _publish_event(self, user_identifier: str, event_data: dict):
-        """Publishes an event to the configured Pub/Sub topic."""
-        # This replicates prototype behavior. Consider if self.emit_event is more suitable for ADK integration.
+    except Exception as e:
+        logger.error(f"Tool: Error executing task {task_id}: {e}", exc_info=True)
+        # Attempt to update state to failed
         try:
-            topic_path = self.pubsub_publisher.topic_path(self.gcp_project_id, self.pubsub_topic)
-            # Add user identifier to attributes for potential filtering on subscriber side
-            future = self.pubsub_publisher.publish(
-                topic_path,
-                data=json.dumps(event_data).encode("utf-8"),
-                user_identifier=user_identifier # Custom attribute
-            )
-            future.result() # Wait for publish confirmation (optional, adds latency)
-            self.logger.info(f"Published event to {self.pubsub_topic} for user {user_identifier}: {event_data.get('event')}")
-        except Exception as e:
-            self.logger.error(f"Error publishing event to {self.pubsub_topic} for {user_identifier}: {e}", exc_info=True)
-            # Decide how to handle publish failures
+            current_state = await _get_state(user_identifier)
+            if "error" not in current_state:
+                 current_state.setdefault('tasks', {})[task_id] = {
+                     'status': 'failed',
+                     'last_update': datetime.now().isoformat(),
+                     'error': str(e)
+                 }
+                 await _update_state(user_identifier, current_state)
+        except Exception as state_e:
+             logger.error(f"Tool: Failed to update state to FAILED for task {task_id}: {state_e}")
 
-    def _create_error_event(self, context: InvocationContext, message: str) -> Event:
-        """Helper to create a standardized error Event."""
-        logger.error(f"Error for invocation {context.invocation_id}: {message}")
-        return Event(
-            type="error",
-            data={"error": message}
-        )
+        return {"success": False, "error": f"Error executing task {task_id}: {str(e)}"}
 
-    # --- A2A Skills ---
-    @skill(
-        name="monitor_and_bid",
-        description="Monitor freelance platforms and bid on matching tasks",
-        tags=["freelance", "bidding"]
-    )
-    async def monitor_and_bid_skill(self, user_identifier: str, platform: str,
-                                   criteria: Dict[str, Any], secret_id_suffix: str) -> Dict[str, Any]:
-        """
-        Monitor freelance platforms and bid on matching tasks.
+@tool(description="Get the stored state for a specific user.")
+async def get_state_tool(user_identifier: str) -> Dict[str, Any]:
+    """
+    ADK Tool: Get the state for a user.
+    """
+    logger.info(f"Tool: Getting state for user: {user_identifier}")
+    try:
+        state = await _get_state(user_identifier)
+        if "error" in state:
+             return {"success": False, "error": state["error"]}
+        else:
+             return {"success": True, "message": f"Retrieved state for {user_identifier}.", "state": state}
+    except Exception as e:
+        logger.error(f"Tool: Error getting state for {user_identifier}: {e}", exc_info=True)
+        return {"success": False, "error": f"Error getting state: {str(e)}"}
 
-        Args:
-            user_identifier: Unique ID for the user/tenant.
-            platform: The freelance platform to monitor (e.g., 'Upwork', 'Fiverr').
-            criteria: Criteria for matching tasks (e.g., keywords, budget).
-            secret_id_suffix: Suffix for the secret ID containing platform credentials.
+@tool(description="Update the stored state for a specific user.")
+async def update_state_tool(user_identifier: str, new_state: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    ADK Tool: Update the state for a user.
+    """
+    logger.info(f"Tool: Updating state for user: {user_identifier}")
+    try:
+        if not isinstance(new_state, dict):
+             return {"success": False, "error": "Invalid 'new_state' provided. Must be a dictionary."}
 
-        Returns:
-            A dictionary containing the monitoring and bidding results.
-        """
-        logger.info(f"[{user_identifier}] Monitoring {platform} with criteria: {criteria}")
+        success = await _update_state(user_identifier, new_state)
+        if success:
+            return {"success": True, "message": f"State updated successfully for {user_identifier}."}
+        else:
+            return {"success": False, "error": f"Failed to update state for {user_identifier} (database error)."}
+    except Exception as e:
+        logger.error(f"Tool: Error updating state for {user_identifier}: {e}", exc_info=True)
+        return {"success": False, "error": f"Error updating state: {str(e)}"}
 
-        if not self.db or not self.secret_manager_client or not self.pubsub_publisher:
-            return {
-                "success": False,
-                "error": "GCP clients not initialized. Cannot monitor platforms."
-            }
 
-        try:
-            # Get platform credentials
-            credentials = self._get_platform_credentials(user_identifier, secret_id_suffix)
-            if not credentials:
-                return {
-                    "success": False,
-                    "error": f"Failed to retrieve credentials for platform {platform} (secret suffix: {secret_id_suffix})."
-                }
+# --- Instantiate the ADK Agent ---
+agent = Agent(
+    name=AGENT_NAME,
+    description="Monitors freelance platforms, analyzes tasks, manages state, and potentially bids or executes tasks.",
+    tools=[
+        monitor_and_bid_tool,
+        execute_task_tool,
+        get_state_tool,
+        update_state_tool,
+    ],
+)
 
-            # TODO: Implement actual platform monitoring and bidding logic using credentials
-            # For now, return a placeholder result
-
-            # Update state
-            current_state = await self._get_state(user_identifier)
-            current_state.setdefault('monitoring', {})[platform] = {'status': 'active', 'last_run': datetime.now().isoformat()}
-            await self._update_state(user_identifier, current_state)
-
-            # Publish event
-            self._publish_event(user_identifier, {"event": "monitoring_started", "platform": platform})
-
-            return {
-                "success": True,
-                "message": f"Monitoring and bidding initiated for {platform}.",
-                "status": "monitoring_started",
-                "platform": platform,
-                "criteria": criteria
-            }
-
-        except Exception as e:
-            logger.error(f"Error monitoring and bidding on {platform}: {e}", exc_info=True)
-            return {
-                "success": False,
-                "error": f"Error monitoring and bidding on {platform}: {str(e)}"
-            }
-
-    @skill(
-        name="execute_task",
-        description="Execute a freelance task",
-        tags=["freelance", "task"]
-    )
-    async def execute_task_skill(self, user_identifier: str, task_details: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Execute a freelance task.
-
-        Args:
-            user_identifier: Unique ID for the user/tenant.
-            task_details: Details of the task to execute.
-
-        Returns:
-            A dictionary containing the task execution results.
-        """
-        logger.info(f"[{user_identifier}] Executing task: {task_details}")
-
-        if not self.db or not self.pubsub_publisher:
-            return {
-                "success": False,
-                "error": "GCP clients not initialized. Cannot execute tasks."
-            }
-
-        try:
-            # TODO: Implement actual task execution logic
-            # For now, return a placeholder result
-
-            # Update state
-            current_state = await self._get_state(user_identifier)
-            current_state.setdefault('tasks', {})[task_details.get('id', 'unknown')] = {
-                'status': 'in_progress',
-                'last_update': datetime.now().isoformat()
-            }
-            await self._update_state(user_identifier, current_state)
-
-            # Publish event
-            self._publish_event(user_identifier, {"event": "task_execution_started", "task_details": task_details})
-
-            return {
-                "success": True,
-                "message": f"Task execution initiated for task {task_details.get('id', 'unknown')}.",
-                "status": "execution_initiated",
-                "task_id": task_details.get("id", "unknown")
-            }
-
-        except Exception as e:
-            logger.error(f"Error executing task: {e}", exc_info=True)
-            return {
-                "success": False,
-                "error": f"Error executing task: {str(e)}"
-            }
-
-    @skill(
-        name="get_state",
-        description="Get the state for a user",
-        tags=["freelance", "state"]
-    )
-    async def get_state_skill(self, user_identifier: str) -> Dict[str, Any]:
-        """
-        Get the state for a user.
-
-        Args:
-            user_identifier: Unique ID for the user/tenant.
-
-        Returns:
-            A dictionary containing the user's state.
-        """
-        logger.info(f"Getting state for user: {user_identifier}")
-
-        try:
-            state = await self._get_state(user_identifier)
-            return {
-                "success": True,
-                "message": f"Retrieved state for {user_identifier}.",
-                "state": state
-            }
-
-        except Exception as e:
-            logger.error(f"Error getting state for {user_identifier}: {e}", exc_info=True)
-            return {
-                "success": False,
-                "error": f"Error getting state for {user_identifier}: {str(e)}"
-            }
-
-    @skill(
-        name="update_state",
-        description="Update the state for a user",
-        tags=["freelance", "state"]
-    )
-    async def update_state_skill(self, user_identifier: str, new_state: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Update the state for a user.
-
-        Args:
-            user_identifier: Unique ID for the user/tenant.
-            new_state: The new state to set.
-
-        Returns:
-            A dictionary indicating success or failure.
-        """
-        logger.info(f"Updating state for user: {user_identifier}")
-
-        try:
-            await self._update_state(user_identifier, new_state)
-            return {
-                "success": True,
-                "message": f"State updated successfully for {user_identifier}."
-            }
-
-        except Exception as e:
-            logger.error(f"Error updating state for {user_identifier}: {e}", exc_info=True)
-            return {
-                "success": False,
-                "error": f"Error updating state for {user_identifier}: {str(e)}"
-            }
-
-# Example of how to run this agent as a standalone A2A server
-if __name__ == "__main__":
-    # Create the agent
-    agent = FreelanceTaskAgent()
-
-    # Run the A2A server
-    agent.run_server(host="0.0.0.0", port=agent.port or 8011)
+# Removed A2A server specific code and old class structure
