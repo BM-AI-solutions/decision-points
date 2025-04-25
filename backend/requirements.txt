@@ -5,7 +5,7 @@ pydantic[dotenv,email]>=2.0.0 # Includes pydantic-settings for .env loading and 
 # API clients
 httpx==0.28.1
 
-AI and NLP
+# AI and NLP
 python-dateutil>=2.8.2 # Required for date parsing
 
 # Agent Development
