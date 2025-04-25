@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request
 from pydantic import BaseModel
 
 # Import necessary components from ADK and A2A
-from google.adk.events import Event, Action, Content, Part
+from google.adk.events import Event, Content, Part
 from google.adk.sessions import InvocationContext
 
 # Removed A2A imports

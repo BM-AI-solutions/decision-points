@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field, HttpUrl, ValidationError
 
 # ADK Imports
 from google.adk.agents import Agent # Use ADK Agent
-from google.adk.tools import tool # Import tool decorator
+
 
 # Tooling Imports
 from exa_py import Exa

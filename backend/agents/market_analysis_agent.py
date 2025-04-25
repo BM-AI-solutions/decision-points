@@ -12,7 +12,7 @@ from typing import Dict, List, Any, Optional, Tuple
 
 from google.adk.agents import Agent, AgentConfig, AgentError
 from google.adk.runtime import InvocationContext, Event
-from google.adk.tools import tool # Import tool decorator
+
 
 # Assuming backend.config and backend.utils.api_client are accessible
 # Adjust imports if the structure changed during refactoring elsewhere

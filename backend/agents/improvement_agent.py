@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 # ADK Imports
 from google.adk.agents import Agent # Use ADK Agent
-from google.adk.tools import tool, ToolContext # Import tool decorator and context
+
 from google.adk.events import Event # Import Event for tool return type
 
 # Removed A2A and BaseSpecializedAgent imports
@@ -109,7 +109,6 @@ Generate the JSON object now.
 
 # --- ADK Tool Definitions ---
 
-@tool(description="Analyze market research and suggest product improvements, potentially using web search for context.")
 async def improve_product_tool(
     context: ToolContext, # Add context for invoking web search
     product_concept: str,
@@ -202,7 +201,6 @@ async def improve_product_tool(
         logger.error(f"Tool: Error improving product: {e}", exc_info=True)
         return {"success": False, "error": f"Error improving product: {str(e)}"}
 
-@tool(description="Assess the market and technical feasibility of a product concept.")
 async def assess_product_feasibility_tool(product_concept: str) -> Dict[str, Any]:
     """
     ADK Tool: Assess the feasibility of a product concept.
@@ -257,3 +255,37 @@ agent = Agent(
 )
 
 # Removed A2A server specific code and old class structure
+<environment_details>
+# VSCode Visible Files
+backend/agents/improvement_agent.py
+
+# VSCode Open Tabs
+backend/agents/agent_web_search.py
+backend/agents/orchestrator_agent.py
+backend/agents/content_generation_agent.py
+backend/agents/branding_agent.py
+backend/agents/deployment_agent.py
+backend/agents/market_analysis_agent.py
+backend/agents/market_research_agent.py
+backend/agents/marketing_agent.py
+backend/app/api/v1/endpoints/agents.py
+backend/agents/workflow_manager_agent.py
+.env
+backend/requirements.txt
+.env.example
+docker-compose.yml
+backend/agents/__init__.py
+backend/agents/freelance_task_agent.py
+backend/agents/code_generation_agent.py
+backend/agents/improvement_agent.py
+backend/agents/lead_generation_agent.py
+
+# Current Time
+4/25/2025, 6:30:22 AM (America/Los_Angeles, UTC-7:00)
+
+# Context Window Usage
+201,546 / 1,048.576K tokens used (19%)
+
+# Current Mode
+ACT MODE
+</environment_details>

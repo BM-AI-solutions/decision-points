@@ -39,6 +39,7 @@ AGENT_CLASSES = {
     "freelance_tasker": "FreelanceTaskAgent",
     "workflow_manager": "WorkflowManagerAgent",
     "content_generation": "ContentGenerationAgent",
+    "orchestrator": "OrchestratorAgentADK", # Add orchestrator agent
 }
 
 # Agent module mapping
@@ -53,6 +54,7 @@ AGENT_MODULES = {
     "freelance_tasker": "agents.freelance_task_agent",
     "workflow_manager": "agents.workflow_manager_agent",
     "content_generation": "agents.content_generation_agent",
+    "orchestrator": "agents.orchestrator_agent", # Add orchestrator agent module
 }
 
 def parse_args():

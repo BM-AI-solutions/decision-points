@@ -17,7 +17,6 @@ from app.core.messaging import (
     stop_kafka_consumer,
 )
 from app.core.socketio import sio  # Import the Socket.IO server from the core module
-from app.core.security import get_password_hash  # Import for creating test user
 
 # Apply logging configuration
 setup_logging()
@@ -41,33 +40,6 @@ async def lifespan(app: FastAPI):
         # Create tables if they don't exist (for local development)
         await conn.run_sync(Base.metadata.create_all)
     logger.info("Lifespan: Database tables checked/created.")
-
-    # Create a default test user for local development
-    if os.environ.get('APP_ENV') == 'development':
-        logger.info("Creating default test user for local development...")
-        try:
-            # Create a session
-            async with SessionLocal() as session:
-                # Check if test user already exists
-                from sqlalchemy.future import select
-                result = await session.execute(select(User).filter(User.email == "test@example.com"))
-                test_user = result.scalars().first()
-
-                if not test_user:
-                    # Create test user
-                    test_user = User(
-                        email="test@example.com",
-                        name="Test User",
-                        hashed_password=get_password_hash("password123"),
-                        is_active=True
-                    )
-                    session.add(test_user)
-                    await session.commit()
-                    logger.info("Default test user created successfully.")
-                else:
-                    logger.info("Default test user already exists.")
-        except Exception as e:
-            logger.error(f"Error creating default test user: {e}")
 
     # Check if Kafka is disabled
     kafka_disabled = os.environ.get('DISABLE_KAFKA', '').lower() in ('true', '1', 'yes')

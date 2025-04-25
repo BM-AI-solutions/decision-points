@@ -11,7 +11,7 @@ from typing import List, Dict, Any, Optional
 
 # ADK Imports
 from google.adk.agents import Agent # Use ADK Agent
-from google.adk.tools import tool # Import tool decorator
+
 
 from firecrawl import FirecrawlApp
 from pydantic import BaseModel, Field

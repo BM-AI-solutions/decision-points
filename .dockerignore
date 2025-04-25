@@ -51,6 +51,7 @@ venv/
 .pytest_cache/
 .coverage
 htmlcov/
+.venv/*
 
 # Node.js
 node_modules/

@@ -5,7 +5,7 @@ from typing import Dict, List, Any, Optional
 
 import google.generativeai as genai
 from google.adk.agents import Agent # Use ADK Agent
-from google.adk.tools import tool # Import tool decorator
+
 from google.adk.events import Event # Import Event for tool return type
 
 from app.config import settings

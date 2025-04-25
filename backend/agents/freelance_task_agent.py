@@ -11,7 +11,7 @@ from datetime import datetime
 
 # Removed google.cloud.secretmanager import
 from google.adk.agents import Agent # Use ADK Agent
-from google.adk.tools import tool # Import tool decorator
+
 
 # Removed A2A and BaseSpecializedAgent imports
 from app.config import settings
