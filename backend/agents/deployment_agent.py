@@ -1,3 +1,10 @@
+"""
+Deployment Agent for Decision Points.
+
+This agent deploys applications to Vercel or Netlify based on generated code.
+It implements the A2A protocol for agent communication.
+"""
+
 import os
 import random
 import string
@@ -7,18 +14,26 @@ import json
 import time
 import tempfile
 import hashlib
-import zipfile # Added for Netlify deployment
+import zipfile
+import logging
 from pathlib import Path
-from typing import Dict, List, Any, Optional
-from typing import Union # Added for Union type
+from typing import Dict, List, Any, Optional, Union
 
-import httpx # For Vercel API calls
+import httpx
 from pydantic import BaseModel, Field, HttpUrl, ValidationError
 
 # ADK Imports
-from google.adk.agents import Agent
 from google.adk.runtime import InvocationContext
 from google.adk.runtime.events import Event
+
+# A2A Imports
+from python_a2a import skill
+
+from agents.base_agent import BaseSpecializedAgent
+from app.config import settings
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 
 # --- Data Models (Input structure expected in context.input.data) ---
@@ -72,13 +87,11 @@ class DeploymentFailedPayload(BaseModel):
 
 # --- Agent Class ---
 
-class DeploymentAgent(Agent):
+class DeploymentAgent(BaseSpecializedAgent):
     """
-    ADK Agent responsible for Stage 4: Deployment.
-    Deploys a simple placeholder application to Vercel or Netlify based on branding info.
-    Reads input from context, interacts with Vercel or Netlify API, emits 'deployment.succeeded' or 'deployment.failed'.
-    Requires VERCEL_API_TOKEN (and optionally VERCEL_TEAM_ID) for Vercel deployments.
-    Requires NETLIFY_AUTH_TOKEN (and optionally NETLIFY_SITE_ID) for Netlify deployments.
+    Agent responsible for deployment.
+    Deploys applications to Vercel or Netlify based on generated code.
+    Implements A2A protocol for agent communication.
     """
     VERCEL_API_BASE_URL = "https://api.vercel.com"
     NETLIFY_API_BASE_URL = "https://api.netlify.com/api/v1"
@@ -86,14 +99,45 @@ class DeploymentAgent(Agent):
     POLL_INTERVAL_SECONDS = 5
     MAX_POLL_ATTEMPTS = 24 # 2 minutes total
 
-    def __init__(self):
-        """Initialize the Deployment Agent and load Vercel & Netlify credentials."""
-        super().__init__()
-        print("DeploymentAgent initialized.")
-        self.vercel_api_token = os.environ.get("VERCEL_API_TOKEN")
-        self.vercel_team_id = os.environ.get("VERCEL_TEAM_ID") # Optional team context
-        self.netlify_auth_token = os.environ.get("NETLIFY_AUTH_TOKEN")
-        self.netlify_site_id = os.environ.get("NETLIFY_SITE_ID") # Optional site context
+    def __init__(
+        self,
+        name: str = "deployment",
+        description: str = "Deploys applications to Vercel or Netlify based on generated code",
+        model_name: Optional[str] = None,
+        port: Optional[int] = None,
+        **kwargs: Any,
+    ):
+        """
+        Initialize the DeploymentAgent.
+
+        Args:
+            name: The name of the agent.
+            description: The description of the agent.
+            model_name: The name of the model to use. Defaults to settings.GEMINI_MODEL_NAME.
+            port: The port to run the A2A server on. Defaults to settings.DEPLOYMENT_AGENT_URL port.
+            **kwargs: Additional arguments for BaseSpecializedAgent.
+        """
+        # Extract port from URL if not provided
+        if port is None and settings.DEPLOYMENT_AGENT_URL:
+            try:
+                port = int(settings.DEPLOYMENT_AGENT_URL.split(':')[-1])
+            except (ValueError, IndexError):
+                port = 8008  # Default port
+
+        # Initialize BaseSpecializedAgent
+        super().__init__(
+            name=name,
+            description=description,
+            model_name=model_name,
+            port=port,
+            **kwargs
+        )
+
+        logger.info("DeploymentAgent initialized.")
+        self.vercel_api_token = os.environ.get("VERCEL_API_TOKEN") or settings.VERCEL_API_TOKEN
+        self.vercel_team_id = os.environ.get("VERCEL_TEAM_ID") or settings.VERCEL_TEAM_ID
+        self.netlify_auth_token = os.environ.get("NETLIFY_AUTH_TOKEN") or settings.NETLIFY_AUTH_TOKEN
+        self.netlify_site_id = os.environ.get("NETLIFY_SITE_ID") or settings.NETLIFY_SITE_ID
 
         # Client for Vercel
         self.vercel_client = httpx.AsyncClient(
@@ -115,9 +159,11 @@ class DeploymentAgent(Agent):
         )
 
         if not self.vercel_api_token:
-            print("WARNING: VERCEL_API_TOKEN environment variable not set. Vercel deployment will fail.")
+            logger.warning("VERCEL_API_TOKEN not configured. Vercel deployment will fail.")
         if not self.netlify_auth_token:
-            print("WARNING: NETLIFY_AUTH_TOKEN environment variable not set. Netlify deployment will fail.")
+            logger.warning("NETLIFY_AUTH_TOKEN not configured. Netlify deployment will fail.")
+
+        logger.info(f"DeploymentAgent initialized with port: {self.port}")
 
     def _generate_vercel_project_name(self, brand_name: str) -> str:
         """Generates a Vercel-compatible project name."""
@@ -953,19 +999,19 @@ async def run_agent_locally():
              print("Ensured Netlify httpx client closed after local run.")
 
 
+# Example of how to run this agent as a standalone A2A server
 if __name__ == "__main__":
-    # ... (dotenv loading remains the same) ...
     try:
         from dotenv import load_dotenv
         if load_dotenv():
-             print("Loaded .env file for local run.")
+            logger.info("Loaded .env file for local run.")
         else:
-             print("No .env file found or it was empty.")
+            logger.info("No .env file found or it was empty.")
     except ImportError:
-        print("dotenv library not found, skipping .env load for local run.")
+        logger.info("dotenv library not found, skipping .env load for local run.")
 
-    try:
-        asyncio.run(run_agent_locally())
-    except ImportError as e:
-        print(f"\nNote: Cannot run local async test. Required library not found: {e}")
-        print("Ensure 'google-adk', 'httpx', and 'python-dotenv' are installed.")
+    # Create the agent
+    agent = DeploymentAgent()
+
+    # Run the A2A server
+    agent.run_server(host="0.0.0.0", port=agent.port or 8008)

@@ -1,13 +1,22 @@
+"""
+Lead Generation Agent for Decision Points.
+
+This agent generates leads by searching Quora, extracting user info, and saving it to a Google Sheet.
+It implements the A2A protocol for agent communication.
+"""
+
 import json
 import logging
 import httpx
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
-from google.adk.agents import Agent
+# ADK Imports
 from google.adk.runtime import InvocationContext
 from google.adk.runtime.events import Event
-# Assuming ADK provides LLM integration, replace if needed
-# from google.adk.llm import LlmClient
+
+# A2A Imports
+from python_a2a import skill
+
 from firecrawl import FirecrawlApp
 from pydantic import BaseModel, Field
 # Keep agno/composio for Sheets writing as per prototype logic transfer
@@ -16,8 +25,10 @@ from agno.tools.firecrawl import FirecrawlTools # Might not be needed if using S
 from agno.models.google import Gemini as AgnoGeminiChat
 from composio_phidata import Action, ComposioToolSet
 
+from agents.base_agent import BaseSpecializedAgent
+from app.config import settings
+
 # Configure logging
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # --- Pydantic Schemas (from prototype) ---
@@ -219,18 +230,48 @@ def write_to_google_sheets(flattened_data: List[dict], composio_api_key: str, ge
 
 # --- ADK Agent Definition ---
 
-class LeadGenerationAgent(Agent):
+class LeadGenerationAgent(BaseSpecializedAgent):
     """
-    An ADK agent that generates leads by searching Quora, extracting user info,
-    and saving it to a Google Sheet.
+    Agent responsible for lead generation.
+    Generates leads by searching Quora, extracting user info, and saving it to a Google Sheet.
+    Implements A2A protocol for agent communication.
     """
 
-    def __init__(self, llm_client=None): # Accept optional LLM client if needed
-        super().__init__()
-        # Placeholder for ADK LLM Client initialization if needed for transformation
-        # self.llm = llm_client or LlmClient() # Example
-        # Or initialize Gemini client directly if ADK doesn't provide one easily
-        # self.gemini_client = Gemini(api_key=...) # Needs API key source
+    def __init__(
+        self,
+        name: str = "lead_generator",
+        description: str = "Generates leads by searching Quora, extracting user info, and saving it to a Google Sheet",
+        model_name: Optional[str] = None,
+        port: Optional[int] = None,
+        **kwargs: Any,
+    ):
+        """
+        Initialize the LeadGenerationAgent.
+
+        Args:
+            name: The name of the agent.
+            description: The description of the agent.
+            model_name: The name of the model to use. Defaults to settings.GEMINI_MODEL_NAME.
+            port: The port to run the A2A server on. Defaults to settings.LEAD_GENERATION_AGENT_URL port.
+            **kwargs: Additional arguments for BaseSpecializedAgent.
+        """
+        # Extract port from URL if not provided
+        if port is None and settings.LEAD_GENERATION_AGENT_URL:
+            try:
+                port = int(settings.LEAD_GENERATION_AGENT_URL.split(':')[-1])
+            except (ValueError, IndexError):
+                port = 8010  # Default port
+
+        # Initialize BaseSpecializedAgent
+        super().__init__(
+            name=name,
+            description=description,
+            model_name=model_name,
+            port=port,
+            **kwargs
+        )
+
+        logger.info(f"LeadGenerationAgent initialized with port: {self.port}")
 
     async def transform_query_async(self, user_query: str, gemini_api_key: str) -> str:
         """Transforms the user query into a concise company description using an LLM."""
@@ -277,27 +318,32 @@ Transform this query: "{user_query}"
             raise ValueError(f"Failed to transform query: {e}")
 
 
-    async def run_async(self, context: InvocationContext) -> Event:
+    # --- A2A Skills ---
+    @skill(
+        name="generate_leads",
+        description="Generate leads by searching Quora, extracting user info, and saving it to a Google Sheet",
+        tags=["leads", "quora"]
+    )
+    async def generate_leads_skill(self, user_query: str, firecrawl_api_key: str,
+                                  gemini_api_key: str, composio_api_key: str,
+                                  num_links: int = 3) -> Dict[str, Any]:
         """
-        Executes the lead generation workflow.
+        Generate leads by searching Quora, extracting user info, and saving it to a Google Sheet.
 
-        Expected context.data keys:
-        - user_query: str - Description of leads to find.
-        - firecrawl_api_key: str - Firecrawl API key.
-        - gemini_api_key: str - Gemini API key.
-        - composio_api_key: str - Composio API key.
-        - num_links: int (optional, default 3) - Number of links to search.
+        Args:
+            user_query: Description of leads to find.
+            firecrawl_api_key: Firecrawl API key.
+            gemini_api_key: Gemini API key.
+            composio_api_key: Composio API key.
+            num_links: Number of links to search. Defaults to 3.
+
+        Returns:
+            A dictionary containing the generated leads and Google Sheet link.
         """
-        logger.info(f"LeadGenerationAgent invoked with context ID: {context.invocation_id}")
+        logger.info(f"Generating leads for query: {user_query}")
 
         try:
-            # 1. Get inputs from context
-            user_query = context.data.get("user_query")
-            firecrawl_api_key = context.data.get("firecrawl_api_key")
-            gemini_api_key = context.data.get("gemini_api_key")
-            composio_api_key = context.data.get("composio_api_key")
-            num_links = context.data.get("num_links", 3) # Default to 3 links
-
+            # Validate inputs
             if not all([user_query, firecrawl_api_key, gemini_api_key, composio_api_key]):
                 missing_keys = [k for k, v in {
                     "user_query": user_query,
@@ -305,66 +351,128 @@ Transform this query: "{user_query}"
                     "gemini_api_key": gemini_api_key,
                     "composio_api_key": composio_api_key
                 }.items() if not v]
-                error_msg = f"Missing required context data: {', '.join(missing_keys)}"
+                error_msg = f"Missing required parameters: {', '.join(missing_keys)}"
                 logger.error(error_msg)
-                return Event(
-                    type="lead_generation_failed",
-                    data={"error": error_msg}
-                )
+                return {
+                    "success": False,
+                    "error": error_msg
+                }
 
-            # 2. Transform user query
-            # Note: Using await for async function
+            # Transform user query
             company_description = await self.transform_query_async(user_query, gemini_api_key)
-            await context.post_event_async(Event(type="query_transformed", data={"description": company_description}))
+            logger.info(f"Transformed query to: {company_description}")
 
-            # 3. Search for URLs (Synchronous function, run in executor if needed)
-            # For simplicity, calling sync function directly in async context (consider thread pool)
+            # Search for URLs
             urls = search_for_urls(company_description, firecrawl_api_key, num_links)
             if not urls:
                 logger.warning("No relevant URLs found.")
-                return Event(type="lead_generation_complete", data={"status": "No URLs found", "google_sheet_link": None})
-            await context.post_event_async(Event(type="urls_found", data={"count": len(urls), "urls": urls}))
+                return {
+                    "success": False,
+                    "error": "No relevant URLs found."
+                }
+            logger.info(f"Found {len(urls)} relevant URLs.")
 
-            # 4. Extract user info (Synchronous function)
+            # Extract user info
             user_info_list = extract_user_info_from_urls(urls, firecrawl_api_key)
             if not user_info_list:
-                 logger.warning("No user information extracted from found URLs.")
-                 # Proceed to formatting, it will handle empty list
-            await context.post_event_async(Event(type="info_extracted", data={"records_found": len(user_info_list)}))
+                logger.warning("No user information extracted from found URLs.")
+                return {
+                    "success": False,
+                    "error": "No user information extracted from found URLs."
+                }
+            logger.info(f"Extracted information from {len(user_info_list)} URLs.")
 
-
-            # 5. Format data (Synchronous function)
+            # Format data
             flattened_data = format_user_info_to_flattened_json(user_info_list)
             if not flattened_data:
-                 logger.warning("No data available after formatting.")
-                 # Decide if this is an error or just completion with no results
-                 return Event(type="lead_generation_complete", data={"status": "No leads generated after formatting", "google_sheet_link": None})
-            await context.post_event_async(Event(type="data_formatted", data={"records_formatted": len(flattened_data)}))
+                logger.warning("No data available after formatting.")
+                return {
+                    "success": False,
+                    "error": "No data available after formatting."
+                }
+            logger.info(f"Formatted {len(flattened_data)} records.")
 
-
-            # 6. Write to Google Sheets (Synchronous function using Agno/Composio)
+            # Write to Google Sheets
             google_sheets_link = write_to_google_sheets(flattened_data, composio_api_key, gemini_api_key)
 
             if google_sheets_link:
                 logger.info("Lead generation process completed successfully.")
-                return Event(
-                    type="lead_generation_complete",
-                    data={
-                        "status": "Success",
-                        "google_sheet_link": google_sheets_link,
-                        "leads_generated": len(flattened_data)
-                    }
-                )
+                return {
+                    "success": True,
+                    "message": "Lead generation process completed successfully.",
+                    "google_sheet_link": google_sheets_link,
+                    "leads_generated": len(flattened_data),
+                    "urls": urls
+                }
             else:
                 logger.error("Failed to write data to Google Sheets.")
+                return {
+                    "success": False,
+                    "error": "Failed to write data to Google Sheets."
+                }
+
+        except Exception as e:
+            logger.error(f"Error generating leads: {e}", exc_info=True)
+            return {
+                "success": False,
+                "error": f"Error generating leads: {str(e)}"
+            }
+
+    async def run_async(self, context: InvocationContext) -> Event:
+        """
+        Executes the lead generation workflow asynchronously according to ADK spec.
+        Maintained for backward compatibility with ADK.
+
+        Args:
+            context: The invocation context containing the input data.
+
+        Returns:
+            An Event containing the lead generation results or an error.
+        """
+        logger.info(f"Received invocation for LeadGenerationAgent (ID: {context.invocation_id})")
+
+        try:
+            # Extract input from context
+            if not hasattr(context, 'data') or not context.data:
+                logger.error("Input data is missing in the invocation context.")
                 return Event(
                     type="lead_generation_failed",
-                    data={"error": "Failed to write data to Google Sheets."}
+                    data={"error": "Input data is missing."}
+                )
+
+            # Use the A2A skill
+            result = await self.generate_leads_skill(
+                user_query=context.data.get("user_query"),
+                firecrawl_api_key=context.data.get("firecrawl_api_key"),
+                gemini_api_key=context.data.get("gemini_api_key"),
+                composio_api_key=context.data.get("composio_api_key"),
+                num_links=context.data.get("num_links", 3)
+            )
+
+            # Create an event from the result
+            if result.get("success", False):
+                return Event(
+                    type="lead_generation_complete",
+                    data={k: v for k, v in result.items() if k != "success" and k != "message"}
+                )
+            else:
+                return Event(
+                    type="lead_generation_failed",
+                    data={"error": result.get("error", "Lead generation failed.")}
                 )
 
         except Exception as e:
-            logger.exception(f"An unexpected error occurred during lead generation: {e}")
+            # Catch-all for unexpected errors
+            logger.error(f"Unexpected error in LeadGenerationAgent: {e}", exc_info=True)
             return Event(
                 type="lead_generation_failed",
                 data={"error": f"An unexpected error occurred: {str(e)}"}
             )
+
+# Example of how to run this agent as a standalone A2A server
+if __name__ == "__main__":
+    # Create the agent
+    agent = LeadGenerationAgent()
+
+    # Run the A2A server
+    agent.run_server(host="0.0.0.0", port=agent.port or 8010)

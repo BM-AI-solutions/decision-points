@@ -1,20 +1,25 @@
+"""
+Workflow Manager Agent for Decision Points.
+
+This agent orchestrates the multi-agent workflow for generating and deploying products.
+It implements the A2A protocol for agent communication.
+"""
+
 import json
 import time
 import random
 import httpx
-import asyncio # Already imported
+import asyncio
 import uuid
+import logging
 from enum import Enum
-from typing import Dict, Any, Optional, Union
-import logging # Import logging
-
-from app.config import settings # Import centralized settings
+from typing import Dict, Any, Optional, Union, List
 
 # Firestore client
 from google.cloud import firestore
 from google.cloud.firestore_v1.async_client import AsyncClient as FirestoreAsyncClient
 
-# Import SocketIO type hint if needed (optional but good practice)
+# Import SocketIO type hint if needed
 try:
     from flask_socketio import SocketIO
 except ImportError:
@@ -22,12 +27,18 @@ except ImportError:
 
 from pydantic import BaseModel, Field, HttpUrl, ValidationError
 
-from google.adk.agents import Agent
+# ADK Imports
 from google.adk.runtime import InvocationContext
-from google.adk.runtime.event import Event, EventType
+from google.adk.runtime.events import Event
 
-# Setup basic logging
-logging.basicConfig(level=logging.INFO)
+# A2A Imports
+from python_a2a import skill
+
+from agents.base_agent import BaseSpecializedAgent
+from agents.agent_network import agent_network
+from app.config import settings
+
+# Configure logging
 logger = logging.getLogger(__name__)
 
 # --- Data Models (Input/Output Schemas) ---
@@ -175,147 +186,169 @@ class WorkflowStep(str, Enum):
 
 # --- Workflow Manager Agent ---
 
-class WorkflowManagerAgent(Agent):
+class WorkflowManagerAgent(BaseSpecializedAgent):
     """
-    Orchestrates the 4-step autonomous income generation workflow using ADK.
-    Manages state and asynchronous communication between specialized agents via REST APIs.
-    Includes retry logic for A2A calls.
+    Agent responsible for workflow management.
+    Orchestrates the multi-agent workflow for generating and deploying products.
+    Implements A2A protocol for agent communication.
+
+    Features:
+    - Manages state and asynchronous communication between specialized agents.
+    - Includes retry logic for A2A calls.
+    - Uses Firestore for state persistence.
+    - Emits events via SocketIO for real-time updates.
     """
 
     def __init__(
         self,
-        socketio: SocketIO,
-        firestore_db: Optional[FirestoreAsyncClient], # Accept Firestore client
-        collection_name: str, # Firestore collection name
-        market_research_agent_id: Optional[str],
-        improvement_agent_id: Optional[str],
-        branding_agent_id: Optional[str],
-        code_generation_agent_id: Optional[str], # Added
-        deployment_agent_id: Optional[str],
-        marketing_agent_id: Optional[str], # Added Marketing Agent ID
-        # timeout_seconds parameter removed, will use settings directly
+        name: str = "workflow_manager",
+        description: str = "Orchestrates the multi-agent workflow for generating and deploying products",
+        model_name: Optional[str] = None,
+        port: Optional[int] = None,
+        socketio: Optional[SocketIO] = None,
+        firestore_db: Optional[FirestoreAsyncClient] = None,
+        collection_name: Optional[str] = None,
+        **kwargs: Any,
     ):
-        super().__init__(agent_id="workflow_manager_agent")
+        """
+        Initialize the WorkflowManagerAgent.
+
+        Args:
+            name: The name of the agent.
+            description: The description of the agent.
+            model_name: The name of the model to use. Defaults to settings.GEMINI_MODEL_NAME.
+            port: The port to run the A2A server on. Defaults to settings.WORKFLOW_MANAGER_AGENT_URL port.
+            socketio: The SocketIO instance for real-time updates.
+            firestore_db: The Firestore client for state persistence.
+            collection_name: The Firestore collection name for state persistence.
+            **kwargs: Additional arguments for BaseSpecializedAgent.
+        """
+        # Extract port from URL if not provided
+        if port is None and settings.WORKFLOW_MANAGER_AGENT_URL:
+            try:
+                port = int(settings.WORKFLOW_MANAGER_AGENT_URL.split(':')[-1])
+            except (ValueError, IndexError):
+                port = 8000  # Default port
+
+        # Initialize BaseSpecializedAgent
+        super().__init__(
+            name=name,
+            description=description,
+            model_name=model_name,
+            port=port,
+            **kwargs
+        )
+
+        # Initialize SocketIO
         self.socketio = socketio
+
+        # Initialize Firestore
         self.db = firestore_db
-        self.collection_name = collection_name
-        self.market_research_agent_id = market_research_agent_id
-        self.improvement_agent_id = improvement_agent_id
-        self.branding_agent_id = branding_agent_id
-        self.code_generation_agent_id = code_generation_agent_id # Added
-        self.deployment_agent_id = deployment_agent_id
-        self.marketing_agent_id = marketing_agent_id # Added Marketing Agent ID
-        self.timeout_seconds = settings.AGENT_TIMEOUT_SECONDS # Use settings
-        self.max_retries = settings.A2A_MAX_RETRIES # Use settings
-        self.retry_delay = settings.A2A_RETRY_DELAY_SECONDS # Use settings
+        self.collection_name = collection_name or settings.FIRESTORE_COLLECTION_NAME
+
+        # Configure timeouts and retries
+        self.timeout_seconds = settings.AGENT_TIMEOUT_SECONDS
+        self.max_retries = settings.A2A_MAX_RETRIES
+        self.retry_delay = settings.A2A_RETRY_DELAY_SECONDS
 
         if not self.db:
             logger.warning("WorkflowManagerAgent initialized without a valid Firestore client. State persistence will fail.")
         else:
-             logger.info(f"WorkflowManagerAgent initialized with Firestore collection: {self.collection_name}")
+            logger.info(f"WorkflowManagerAgent initialized with Firestore collection: {self.collection_name}")
 
         # Async HTTP client for A2A calls
         self._http_client = httpx.AsyncClient(timeout=self.timeout_seconds)
+
+        logger.info(f"WorkflowManagerAgent initialized with port: {self.port}")
 
     async def close(self):
         """Clean up resources, like the HTTP client."""
         await self._http_client.aclose()
         logger.info("WorkflowManagerAgent closed.")
 
-    async def _invoke_adk_skill(
+    async def _invoke_agent_skill(
         self,
-        context: InvocationContext, # Pass the context
-        agent_name: str, # For logging
-        target_agent_id: Optional[str],
+        agent_name: str,
         skill_name: str,
         payload: Dict[str, Any],
-    ) -> Event:
+        workflow_run_id: str,
+    ) -> Dict[str, Any]:
         """
-        Helper function to invoke another agent's skill asynchronously using ADK
+        Helper function to invoke another agent's skill asynchronously using agent_network
         with retry logic.
 
         Args:
-            context: The current InvocationContext.
             agent_name: User-friendly name of the agent (for logging).
-            target_agent_id: The ID of the agent to invoke.
             skill_name: The name of the skill to invoke on the target agent.
             payload: The data dictionary for the input event.
+            workflow_run_id: The workflow run ID for logging.
 
         Returns:
-            An Event object representing the result or error from the agent skill.
+            A dictionary containing the result or error from the agent skill.
         """
-        invocation_id = context.invocation_id # Get invocation ID from context
-
-        if not target_agent_id:
-            error_msg = f"Agent ID for '{agent_name}' is not configured."
-            logger.error(f"[{invocation_id}] Error: {error_msg}")
-            return Event(type=EventType.ERROR, data={"error": error_msg})
-
-        input_event = Event(type=EventType.INPUT, data=payload)
         last_exception: Optional[Exception] = None
 
-        logger.info(f"[{invocation_id}] Invoking {agent_name} skill '{skill_name}' on agent '{target_agent_id}' (Retries: {self.max_retries}, Delay: {self.retry_delay}s)...")
+        logger.info(f"[{workflow_run_id}] Invoking {agent_name} skill '{skill_name}' (Retries: {self.max_retries}, Delay: {self.retry_delay}s)...")
 
         for attempt in range(self.max_retries):
             try:
-                # Use context.invoke_skill for ADK A2A communication
-                result_event = await context.invoke_skill(
-                    target_agent_id=target_agent_id,
+                # Get the agent from the network
+                agent = agent_network.get_agent(agent_name.lower().replace(" ", "_"))
+                if not agent:
+                    error_msg = f"Agent '{agent_name}' not found in agent network."
+                    logger.error(f"[{workflow_run_id}] Error: {error_msg}")
+                    return {"success": False, "error": error_msg}
+
+                # Invoke the skill
+                result = await agent.invoke_skill(
                     skill_name=skill_name,
-                    input=input_event,
-                    timeout_seconds=self.timeout_seconds # Use configured timeout
+                    input_data=payload,
+                    timeout=self.timeout_seconds
                 )
 
-                # Check if the result is a valid Event (basic check)
-                if not isinstance(result_event, Event) or not hasattr(result_event, 'type') or not hasattr(result_event, 'data'):
-                     # This case might indicate an ADK internal issue or unexpected return type
-                     raise TypeError(f"Invalid response type received from {agent_name} skill '{skill_name}'. Expected Event, got {type(result_event)}.")
+                # Log success
+                logger.info(f"[{workflow_run_id}] Agent '{agent_name}' skill '{skill_name}' invocation successful (Attempt {attempt + 1}/{self.max_retries}).")
 
-                # Log success (even if the event type is ERROR, the call itself succeeded)
-                logger.info(f"[{invocation_id}] Agent '{agent_name}' skill '{skill_name}' invocation successful (Attempt {attempt + 1}/{self.max_retries}). Result Event Type: {result_event.type}")
-                return result_event # Return the received event (could be RESULT or ERROR)
+                # Add success flag if not present
+                if isinstance(result, dict) and "success" not in result:
+                    result["success"] = True
 
-            except TimeoutError as e: # Catch specific timeout error if ADK raises it
+                return result
+
+            except TimeoutError as e:
                 last_exception = e
-                logger.warning(f"[{invocation_id}] Skill invocation for {agent_name} timed out (Attempt {attempt + 1}/{self.max_retries}).")
+                logger.warning(f"[{workflow_run_id}] Skill invocation for {agent_name} timed out (Attempt {attempt + 1}/{self.max_retries}).")
                 # Fall through to retry logic
 
-            except ConnectionError as e: # Catch connection errors if ADK raises them
-                 last_exception = e
-                 logger.warning(f"[{invocation_id}] Skill invocation for {agent_name} failed (Attempt {attempt + 1}/{self.max_retries}): Connection Error ({type(e).__name__}).")
-                 # Fall through to retry logic
+            except ConnectionError as e:
+                last_exception = e
+                logger.warning(f"[{workflow_run_id}] Skill invocation for {agent_name} failed (Attempt {attempt + 1}/{self.max_retries}): Connection Error ({type(e).__name__}).")
+                # Fall through to retry logic
 
             except Exception as e:
-                 # Catch other potential errors during invoke_skill
-                 last_exception = e
-                 logger.error(f"[{invocation_id}] Unexpected error during {agent_name} skill '{skill_name}' invocation attempt {attempt + 1}/{self.max_retries}: {type(e).__name__}: {e}", exc_info=True)
-                 # If it's the last attempt, let it be handled below. Otherwise, retry.
-                 if attempt >= self.max_retries - 1:
-                     break # Exit loop to handle final error
+                # Catch other potential errors during invoke_skill
+                last_exception = e
+                logger.error(f"[{workflow_run_id}] Unexpected error during {agent_name} skill '{skill_name}' invocation attempt {attempt + 1}/{self.max_retries}: {type(e).__name__}: {e}", exc_info=True)
+                # If it's the last attempt, let it be handled below. Otherwise, retry.
+                if attempt >= self.max_retries - 1:
+                    break # Exit loop to handle final error
 
             # --- Retry Logic ---
             if attempt < self.max_retries - 1:
                 wait_time = self.retry_delay * (2 ** attempt) # Exponential backoff
-                logger.info(f"[{invocation_id}] Retrying in {wait_time:.2f}s...")
+                logger.info(f"[{workflow_run_id}] Retrying in {wait_time:.2f}s...")
                 await asyncio.sleep(wait_time)
             else:
-                logger.error(f"[{invocation_id}] Skill invocation for {agent_name} failed after {self.max_retries} attempts.")
+                logger.error(f"[{workflow_run_id}] Skill invocation for {agent_name} failed after {self.max_retries} attempts.")
                 break # Exit loop after last attempt
 
         # --- Handle Failure After Retries ---
         error_msg = f"Skill invocation for {agent_name} ('{skill_name}') failed after {self.max_retries} attempts."
-        error_details = "Max retries exceeded"
         if last_exception:
             error_msg += f" Last error: {type(last_exception).__name__}: {last_exception}"
-            if isinstance(last_exception, TimeoutError):
-                error_details = "Timeout"
-            elif isinstance(last_exception, ConnectionError):
-                error_details = "Connection Error"
-            else:
-                 error_details = f"{type(last_exception).__name__}"
 
-        logger.error(f"[{invocation_id}] Final Error: {error_msg}")
-        return Event(type=EventType.ERROR, data={"error": error_msg, "details": error_details})
+        logger.error(f"[{workflow_run_id}] Final Error: {error_msg}")
+        return {"success": False, "error": error_msg}
 
     async def _invoke_a2a_agent(
         self,
@@ -1054,5 +1087,232 @@ class WorkflowManagerAgent(Agent):
             self.socketio.emit('workflow_failed', {'workflow_run_id': workflow_run_id, 'failed_step': failed_step_value, 'error': "An unexpected internal error occurred."})
             return Event(type=EventType.ERROR, data={"error": "An unexpected internal error occurred.", "stage": failed_step_value, "workflow_run_id": workflow_run_id})
 
-# Note: The `if __name__ == "__main__":` block is removed as agent execution
-# is handled by the ADK runtime.
+# --- A2A Skills ---
+@skill(
+    name="start_workflow",
+    description="Start a new workflow",
+    tags=["workflow", "orchestration"]
+)
+async def start_workflow_skill(self, initial_topic: str, target_url: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Start a new workflow.
+
+    Args:
+        initial_topic: The initial topic for the workflow.
+        target_url: Optional target URL for market research.
+
+    Returns:
+        A dictionary containing the workflow run ID and status.
+    """
+    logger.info(f"Starting new workflow for topic: {initial_topic}")
+
+    try:
+        # Generate a new workflow run ID
+        workflow_run_id = f"workflow_{uuid.uuid4().hex[:8]}_{int(time.time())}"
+
+        # Initialize workflow state
+        initial_state = {
+            "workflow_run_id": workflow_run_id,
+            "initial_topic": initial_topic,
+            "target_url": target_url,
+            "status": WorkflowStatus.STARTING.value,
+            "created_at": firestore.SERVER_TIMESTAMP,
+            "last_updated": firestore.SERVER_TIMESTAMP
+        }
+
+        # Save initial state to Firestore
+        if self.db:
+            await self._update_workflow_state(workflow_run_id, initial_state)
+
+        # Emit SocketIO event
+        if self.socketio:
+            self.socketio.emit('workflow_started', {'workflow_run_id': workflow_run_id, 'initial_topic': initial_topic})
+
+        # Start the workflow in a background task
+        asyncio.create_task(self._run_workflow(workflow_run_id, initial_topic, target_url))
+
+        return {
+            "success": True,
+            "message": f"Workflow started with ID: {workflow_run_id}",
+            "workflow_run_id": workflow_run_id,
+            "status": WorkflowStatus.STARTING.value
+        }
+
+    except Exception as e:
+        logger.error(f"Error starting workflow: {e}", exc_info=True)
+        return {
+            "success": False,
+            "error": f"Error starting workflow: {str(e)}"
+        }
+
+@skill(
+    name="get_workflow_status",
+    description="Get the status of a workflow",
+    tags=["workflow", "status"]
+)
+async def get_workflow_status_skill(self, workflow_run_id: str) -> Dict[str, Any]:
+    """
+    Get the status of a workflow.
+
+    Args:
+        workflow_run_id: The workflow run ID.
+
+    Returns:
+        A dictionary containing the workflow status.
+    """
+    logger.info(f"Getting status for workflow: {workflow_run_id}")
+
+    try:
+        if not self.db:
+            return {
+                "success": False,
+                "error": "Firestore client not available. Cannot get workflow status."
+            }
+
+        # Get workflow state from Firestore
+        doc_ref = self.db.collection(self.collection_name).document(workflow_run_id)
+        doc = await doc_ref.get()
+
+        if not doc.exists:
+            return {
+                "success": False,
+                "error": f"Workflow with ID {workflow_run_id} not found."
+            }
+
+        # Get workflow state
+        state = doc.to_dict()
+
+        return {
+            "success": True,
+            "message": f"Retrieved status for workflow {workflow_run_id}.",
+            "workflow_run_id": workflow_run_id,
+            "status": state.get("status"),
+            "current_step": state.get("current_step"),
+            "error": state.get("error"),
+            "created_at": state.get("created_at"),
+            "last_updated": state.get("last_updated")
+        }
+
+    except Exception as e:
+        logger.error(f"Error getting workflow status: {e}", exc_info=True)
+        return {
+            "success": False,
+            "error": f"Error getting workflow status: {str(e)}"
+        }
+
+@skill(
+    name="resume_workflow",
+    description="Resume a paused workflow",
+    tags=["workflow", "orchestration"]
+)
+async def resume_workflow_skill(self, workflow_run_id: str) -> Dict[str, Any]:
+    """
+    Resume a paused workflow.
+
+    Args:
+        workflow_run_id: The workflow run ID.
+
+    Returns:
+        A dictionary containing the workflow status.
+    """
+    logger.info(f"Resuming workflow: {workflow_run_id}")
+
+    try:
+        if not self.db:
+            return {
+                "success": False,
+                "error": "Firestore client not available. Cannot resume workflow."
+            }
+
+        # Get workflow state from Firestore
+        doc_ref = self.db.collection(self.collection_name).document(workflow_run_id)
+        doc = await doc_ref.get()
+
+        if not doc.exists:
+            return {
+                "success": False,
+                "error": f"Workflow with ID {workflow_run_id} not found."
+            }
+
+        # Get workflow state
+        state = doc.to_dict()
+
+        # Check if workflow is in a resumable state
+        current_status = state.get("status")
+        if current_status != WorkflowStatus.PENDING_APPROVAL.value:
+            return {
+                "success": False,
+                "error": f"Workflow is not in a resumable state. Current status: {current_status}"
+            }
+
+        # Update workflow state
+        await self._update_workflow_state(workflow_run_id, {
+            "status": WorkflowStatus.APPROVED_RESUMING.value,
+            "last_updated": firestore.SERVER_TIMESTAMP
+        })
+
+        # Emit SocketIO event
+        if self.socketio:
+            self.socketio.emit('workflow_resumed', {'workflow_run_id': workflow_run_id})
+
+        # Resume the workflow in a background task
+        asyncio.create_task(self._run_workflow(
+            workflow_run_id,
+            state.get("initial_topic"),
+            state.get("target_url"),
+            resume=True
+        ))
+
+        return {
+            "success": True,
+            "message": f"Workflow {workflow_run_id} resumed.",
+            "workflow_run_id": workflow_run_id,
+            "status": WorkflowStatus.APPROVED_RESUMING.value
+        }
+
+    except Exception as e:
+        logger.error(f"Error resuming workflow: {e}", exc_info=True)
+        return {
+            "success": False,
+            "error": f"Error resuming workflow: {str(e)}"
+        }
+
+async def _run_workflow(self, workflow_run_id: str, initial_topic: str, target_url: Optional[str] = None, resume: bool = False) -> None:
+    """
+    Run the workflow asynchronously.
+
+    Args:
+        workflow_run_id: The workflow run ID.
+        initial_topic: The initial topic for the workflow.
+        target_url: Optional target URL for market research.
+        resume: Whether this is a resumed workflow.
+    """
+    logger.info(f"Running workflow {workflow_run_id} for topic: {initial_topic}")
+
+    try:
+        # TODO: Implement the workflow logic using _invoke_agent_skill
+        # This would be similar to the run_async method but using the new _invoke_agent_skill method
+        pass
+
+    except Exception as e:
+        logger.error(f"Error running workflow: {e}", exc_info=True)
+        # Update workflow state to FAILED
+        await self._update_workflow_state(workflow_run_id, {
+            "status": WorkflowStatus.FAILED.value,
+            "error": f"Error running workflow: {str(e)}",
+            "last_updated": firestore.SERVER_TIMESTAMP
+        })
+        # Emit SocketIO event
+        if self.socketio:
+            self.socketio.emit('workflow_failed', {
+                'workflow_run_id': workflow_run_id,
+                'error': f"Error running workflow: {str(e)}"
+            })
+
+# Example of how to run this agent as a standalone A2A server
+if __name__ == "__main__":
+    # Create the agent
+    agent = WorkflowManagerAgent()
+
+    # Run the A2A server
+    agent.run_server(host="0.0.0.0", port=agent.port or 8000)
