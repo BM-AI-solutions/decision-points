@@ -1,0 +1,245 @@
+/* Agent Updates and Task Monitor Component Styles */
+
+/* Agent Task Monitor */
+.agent-task-monitor {
+  background-color: #0A0A0A;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(255, 84, 0, 0.1);
+  margin-bottom: 20px;
+  overflow: hidden;
+}
+
+.task-header {
+  background-color: #1A1A1A;
+  color: white;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px 20px;
+  border-bottom: 1px solid rgba(255, 84, 0, 0.1);
+}
+
+.task-header h3 {
+  margin: 0;
+  font-size: 18px;
+  color: #FFFFFF;
+}
+
+.task-status {
+  font-size: 14px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.task-status.idle {
+  background-color: #2D3748;
+  color: #CBD5E0;
+}
+
+.task-status.loading {
+  background-color: #3182CE;
+  color: #EBF8FF;
+}
+
+.task-status.complete {
+  background-color: #38A169;
+  color: #F0FFF4;
+}
+
+.task-status.error {
+  background-color: #E53E3E;
+  color: #FFF5F5;
+}
+
+.task-content {
+  padding: 20px;
+}
+
+.task-info {
+  margin-bottom: 20px;
+  padding: 15px;
+  background-color: rgba(26, 26, 26, 0.5);
+  border-radius: 6px;
+  border: 1px solid rgba(255, 84, 0, 0.05);
+}
+
+.task-id {
+  font-family: monospace;
+  font-size: 14px;
+  color: #B3B3B3;
+  margin-bottom: 8px;
+}
+
+.task-prompt {
+  font-size: 16px;
+  color: #F8F0E3;
+  line-height: 1.5;
+}
+
+.task-error {
+  padding: 20px;
+  background-color: rgba(229, 62, 62, 0.1);
+  border-left: 4px solid #E53E3E;
+  margin-bottom: 20px;
+}
+
+.task-error p {
+  color: #FEB2B2;
+  margin-bottom: 15px;
+}
+
+.task-start {
+  padding: 30px;
+  text-align: center;
+}
+
+.task-start p {
+  margin-bottom: 20px;
+  color: #B3B3B3;
+}
+
+.task-result {
+  margin-top: 20px;
+  padding: 15px;
+  background-color: rgba(56, 161, 105, 0.1);
+  border-left: 4px solid #38A169;
+  border-radius: 4px;
+}
+
+.task-result h4 {
+  color: #9AE6B4;
+  margin-bottom: 10px;
+  font-size: 16px;
+}
+
+.task-result pre {
+  background-color: rgba(26, 26, 26, 0.7);
+  padding: 15px;
+  border-radius: 4px;
+  overflow-x: auto;
+  color: #F8F0E3;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.agent-updates {
+  background-color: #f8f9fa;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  margin-bottom: 20px;
+  overflow: hidden;
+}
+
+.agent-updates-header {
+  background-color: #343a40;
+  color: white;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 15px;
+}
+
+.agent-updates-header h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.connection-status {
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.connection-status.connected {
+  background-color: #28a745;
+}
+
+.connection-status.disconnected {
+  background-color: #dc3545;
+}
+
+.no-updates {
+  padding: 20px;
+  text-align: center;
+  color: #6c757d;
+  font-style: italic;
+}
+
+.updates-list {
+  max-height: 400px;
+  overflow-y: auto;
+  padding: 10px;
+}
+
+.update-item {
+  background-color: white;
+  border-radius: 4px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  margin-bottom: 10px;
+  padding: 10px;
+}
+
+.update-item.error {
+  border-left: 4px solid #dc3545;
+}
+
+.update-item.warning {
+  border-left: 4px solid #ffc107;
+}
+
+.update-item.success {
+  border-left: 4px solid #28a745;
+}
+
+.update-item.info {
+  border-left: 4px solid #17a2b8;
+}
+
+.update-item.working, .update-item.progress {
+  border-left: 4px solid #007bff;
+}
+
+.update-item.delegating {
+  border-left: 4px solid #6f42c1;
+}
+
+.update-item.completed {
+  border-left: 4px solid #28a745;
+}
+
+.update-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 5px;
+}
+
+.agent-name {
+  font-weight: bold;
+  color: #343a40;
+}
+
+.update-time {
+  color: #6c757d;
+  font-size: 12px;
+}
+
+.update-message {
+  margin-bottom: 10px;
+}
+
+.update-result {
+  background-color: #f8f9fa;
+  border-radius: 4px;
+  padding: 10px;
+  margin-top: 10px;
+  overflow-x: auto;
+}
+
+.update-result pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  color: #212529;
+}

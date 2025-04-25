@@ -2,48 +2,121 @@ import logging
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 
-from google.adk.agents import LlmAgent
 from google.adk.runtime import InvocationContext, Event
+from python_a2a import skill
+
+from agents.base_agent import BaseSpecializedAgent
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-class ContentGenerationAgent(LlmAgent):
+class ContentGenerationAgent(BaseSpecializedAgent):
     """
-    ADK-based agent for generating various types of content using an LLM.
+    Agent for generating various types of content using an LLM.
+    Implements A2A protocol for agent communication.
 
     Handles tasks like creating affiliate marketing content, digital course outlines,
     and marketing copy based on instructions provided in the InvocationContext.
     """
 
-    def __init__(self,
-                 agent_id: str = "content-generation-agent",
-                 model_name: Optional[str] = None): # Added model_name parameter
+    def __init__(
+        self,
+        name: str = "content_generator",
+        description: str = "Generates various types of content using an LLM",
+        model_name: Optional[str] = None,
+        port: Optional[int] = None,
+        **kwargs: Any,
+    ):
         """
-        Initializes the ContentGenerationAgent.
+        Initialize the ContentGenerationAgent.
 
         Args:
-            agent_id: The unique identifier for this agent instance.
-            model_name: The name of the Gemini model to use (e.g., 'gemini-2.5-flash-preview-04-17').
-                        Defaults to a suitable model if None.
+            name: The name of the agent.
+            description: The description of the agent.
+            model_name: The name of the model to use. Defaults to settings.GEMINI_MODEL_NAME.
+            port: The port to run the A2A server on. Defaults to settings.CONTENT_GENERATION_AGENT_URL port.
+            **kwargs: Additional arguments for BaseSpecializedAgent.
         """
-        # Determine the model name to use
-        effective_model_name = model_name if model_name else 'gemini-2.5-flash-preview-04-17' # Default for specialized agent
-        self.model_name = effective_model_name # Store the actual model name used
+        # Extract port from URL if not provided
+        if port is None and settings.CONTENT_GENERATION_AGENT_URL:
+            try:
+                port = int(settings.CONTENT_GENERATION_AGENT_URL.split(':')[-1])
+            except (ValueError, IndexError):
+                port = 8003  # Default port
 
-        # Initialize the ADK Gemini model
-        adk_model = Gemini(model=self.model_name)
-
-        # Call super().__init__ from LlmAgent, passing the model
         super().__init__(
-            agent_id=agent_id,
-            model=adk_model # Pass the initialized ADK model object
-            # instruction can be set here if needed, or rely on default/prompt
+            name=name,
+            description=description,
+            model_name=model_name,
+            port=port,
+            **kwargs
         )
-        logger.info(f"Content Generation Agent ({self.agent_id}) initialized with model: {self.model_name}.")
+
+        logger.info(f"ContentGenerationAgent initialized with port: {self.port}")
+
+    @skill(
+        name="create_affiliate_content",
+        description="Generate affiliate marketing content",
+        tags=["content", "affiliate", "marketing"]
+    )
+    async def create_affiliate_content(self, niche: str, quantity: int = 3, focus: str = "value") -> List[Dict[str, Any]]:
+        """
+        Generate affiliate marketing content.
+
+        Args:
+            niche: The niche for the content.
+            quantity: The number of content pieces to generate.
+            focus: The focus of the content (value or conversion).
+
+        Returns:
+            A list of content pieces.
+        """
+        logger.info(f"Generating {quantity} affiliate content pieces for '{niche}' (focus: {focus})")
+        return await self._generate_affiliate_content(niche, quantity, focus)
+
+    @skill(
+        name="create_course_outline",
+        description="Generate a digital course outline",
+        tags=["content", "course", "outline"]
+    )
+    async def create_course_outline(self, niche: str, modules: int = 5) -> Dict[str, Any]:
+        """
+        Generate a digital course outline.
+
+        Args:
+            niche: The niche for the course.
+            modules: The number of modules in the course.
+
+        Returns:
+            A course outline.
+        """
+        logger.info(f"Generating course outline for '{niche}' ({modules} modules)")
+        return self._generate_course_outline(niche, modules)
+
+    @skill(
+        name="generate_marketing_copy",
+        description="Generate marketing copy",
+        tags=["content", "marketing", "copy"]
+    )
+    async def generate_marketing_copy(self, product_name: str, niche: str, style: str = "persuasive") -> Dict[str, str]:
+        """
+        Generate marketing copy.
+
+        Args:
+            product_name: The name of the product.
+            niche: The niche for the marketing copy.
+            style: The style of the marketing copy.
+
+        Returns:
+            Marketing copy.
+        """
+        logger.info(f"Generating {style} marketing copy for '{product_name}' in '{niche}'")
+        return self._generate_marketing_copy(product_name, niche, style)
 
     async def run_async(self, context: InvocationContext) -> Optional[Event]:
         """
         Executes a content generation task based on the invocation context.
+        Maintained for backward compatibility with ADK.
 
         The context should contain an 'action' key specifying the type of content
         to generate (e.g., 'create_affiliate_content', 'create_course_outline',
@@ -56,42 +129,96 @@ class ContentGenerationAgent(LlmAgent):
             An Event containing the generated content or an error, or None if no
             specific action is requested or an error occurs before event creation.
         """
-        action = context.get_input("action")
-        task_id = context.invocation_id # Use invocation_id as task identifier
+        # Extract action and parameters from context
+        action = None
+        if hasattr(context, 'get_input'):
+            action = context.get_input("action")
+            task_id = context.invocation_id
+        elif hasattr(context, 'data') and isinstance(context.data, dict):
+            action = context.data.get("action")
+            task_id = getattr(context, 'invocation_id', str(id(context)))
+        elif hasattr(context, 'input_event') and hasattr(context.input_event, 'data'):
+            action = context.input_event.data.get("action")
+            task_id = getattr(context.input_event, 'invocation_id', str(id(context)))
+        else:
+            logger.warning(f"Could not extract action from context: {context}")
+            return Event(data={"error": "Could not extract action from context"})
+
         results = None
         error_message = None
 
-        logger.info(f"[{self.agent_id}] Received task: {action} (ID: {task_id})")
+        logger.info(f"[{self.name}] Received task: {action} (ID: {task_id})")
 
         try:
             if action == "create_affiliate_content":
-                niche = context.get_input("niche", "technology")
-                quantity = context.get_input("quantity", 3)
-                focus = context.get_input("focus", "value")
-                results = await self._generate_affiliate_content(niche, quantity, focus)
+                # Extract parameters
+                niche = "technology"
+                quantity = 3
+                focus = "value"
+
+                if hasattr(context, 'get_input'):
+                    niche = context.get_input("niche", niche)
+                    quantity = context.get_input("quantity", quantity)
+                    focus = context.get_input("focus", focus)
+                elif hasattr(context, 'data') and isinstance(context.data, dict):
+                    niche = context.data.get("niche", niche)
+                    quantity = context.data.get("quantity", quantity)
+                    focus = context.data.get("focus", focus)
+                elif hasattr(context, 'input_event') and hasattr(context.input_event, 'data'):
+                    niche = context.input_event.data.get("niche", niche)
+                    quantity = context.input_event.data.get("quantity", quantity)
+                    focus = context.input_event.data.get("focus", focus)
+
+                # Use the A2A skill
+                results = await self.create_affiliate_content(niche, quantity, focus)
 
             elif action == "create_course_outline":
-                niche = context.get_input("niche", "technology")
-                modules = context.get_input("modules", 5)
-                # Note: Course outline generation in prototype was synchronous, adapting.
-                # If LLM is needed here in future, make helper async.
-                results = self._generate_course_outline(niche, modules)
+                # Extract parameters
+                niche = "technology"
+                modules = 5
+
+                if hasattr(context, 'get_input'):
+                    niche = context.get_input("niche", niche)
+                    modules = context.get_input("modules", modules)
+                elif hasattr(context, 'data') and isinstance(context.data, dict):
+                    niche = context.data.get("niche", niche)
+                    modules = context.data.get("modules", modules)
+                elif hasattr(context, 'input_event') and hasattr(context.input_event, 'data'):
+                    niche = context.input_event.data.get("niche", niche)
+                    modules = context.input_event.data.get("modules", modules)
+
+                # Use the A2A skill
+                results = await self.create_course_outline(niche, modules)
 
             elif action == "generate_marketing_copy":
-                product_name = context.get_input("product_name", "Product")
-                niche = context.get_input("niche", "technology")
-                style = context.get_input("style", "persuasive")
-                # Note: Marketing copy generation in prototype was synchronous, adapting.
-                # If LLM is needed here in future, make helper async.
-                results = self._generate_marketing_copy(product_name, niche, style)
+                # Extract parameters
+                product_name = "Product"
+                niche = "technology"
+                style = "persuasive"
+
+                if hasattr(context, 'get_input'):
+                    product_name = context.get_input("product_name", product_name)
+                    niche = context.get_input("niche", niche)
+                    style = context.get_input("style", style)
+                elif hasattr(context, 'data') and isinstance(context.data, dict):
+                    product_name = context.data.get("product_name", product_name)
+                    niche = context.data.get("niche", niche)
+                    style = context.data.get("style", style)
+                elif hasattr(context, 'input_event') and hasattr(context.input_event, 'data'):
+                    product_name = context.input_event.data.get("product_name", product_name)
+                    niche = context.input_event.data.get("niche", niche)
+                    style = context.input_event.data.get("style", style)
+
+                # Use the A2A skill
+                results = await self.generate_marketing_copy(product_name, niche, style)
 
             else:
                 error_message = f"Unknown action requested: {action}"
-                logger.warning(f"[{self.agent_id}] {error_message} (ID: {task_id})")
+                logger.warning(f"[{self.name}] {error_message} (ID: {task_id})")
 
         except Exception as e:
             error_message = f"Error executing task '{action}': {e}"
-            logger.exception(f"[{self.agent_id}] {error_message} (ID: {task_id})", exc_info=True)
+            logger.exception(f"[{self.name}] {error_message} (ID: {task_id})", exc_info=True)
 
         # Create and return the event
         event_data = {
@@ -109,7 +236,7 @@ class ContentGenerationAgent(LlmAgent):
             # Should not happen if action is known and no exception occurred, but handle defensively
             event_data["success"] = False
             event_data["error"] = "Task completed without results or error."
-            logger.warning(f"[{self.agent_id}] Task {action} (ID: {task_id}) finished without explicit results or error.")
+            logger.warning(f"[{self.name}] Task {action} (ID: {task_id}) finished without explicit results or error.")
 
         return Event(data=event_data)
 
@@ -249,3 +376,11 @@ class ContentGenerationAgent(LlmAgent):
             return f"Learn about {product_name}, the comprehensive solution designed for {niche} professionals. Features include X, Y, and Z to streamline your workflow."
         else: # casual
             return f"Tired of the usual {niche} tools? {product_name} is here to shake things up. Easy to use, powerful results. See what the hype is about."
+
+# Example of how to run this agent as a standalone A2A server
+if __name__ == "__main__":
+    # Create the agent
+    agent = ContentGenerationAgent()
+
+    # Run the A2A server
+    agent.run_server(host="0.0.0.0", port=agent.port or 8003)

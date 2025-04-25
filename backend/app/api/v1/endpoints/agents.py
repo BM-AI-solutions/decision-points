@@ -10,7 +10,7 @@ from google.adk.sessions import InvocationContext
 
 from python_a2a import Message, TextContent, MessageRole
 
-from app.core.socketio import sio # Import the initialized SocketIO server
+from app.core.socketio import websocket_manager # Import the WebSocket manager
 from app.config import settings
 from agents.orchestrator_agent import OrchestratorAgent
 from agents.agent_network import agent_network
@@ -43,17 +43,7 @@ def get_orchestrator_agent() -> OrchestratorAgent:
         # Filter out None values in case some IDs are not set
         filtered_agent_ids = {k: v for k, v in agent_ids.items() if v is not None}
 
-        # Create a WebSocket manager class that wraps the SocketIO instance
-        class WebSocketManager:
-            def __init__(self, sio_instance):
-                self.sio = sio_instance
-
-            def broadcast(self, room, data):
-                """Broadcast a message to a room."""
-                asyncio.create_task(self.sio.emit('agent_update', data, room=room))
-                return True
-
-        websocket_manager = WebSocketManager(sio)
+        # Use the WebSocket manager singleton
 
         logger.info(f"Instantiating OrchestratorAgent with WebSocket Manager and agent IDs: {filtered_agent_ids}")
         orchestrator_agent_instance = OrchestratorAgent(

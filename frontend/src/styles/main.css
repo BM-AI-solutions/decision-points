@@ -18,11 +18,5 @@
 
 /* Import additional styles */
 @import './animations.css'; /* Kept for potential dashboard use */
-/* Removed: @import './hero.css'; */
-/* Removed: @import './features.css'; */
-/* Removed: @import './header.css'; */
-/* Removed: @import './footer.css'; */
-/* Removed duplicate: @import './layout.css'; */
-/* Removed: @import './how-it-works.css'; */
 @import './buttons.css'; /* Kept for potential dashboard use */
-/* Removed: @import './form.css'; */
+@import './agent-updates.css'; /* Added for agent updates component */
