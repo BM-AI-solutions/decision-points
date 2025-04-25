@@ -1,129 +1,283 @@
+"""
+Code Generation Agent for Decision Points.
+
+This agent generates code based on product specifications and branding.
+It implements the A2A protocol for agent communication.
+"""
+
 import json
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Optional, List
 
 import google.generativeai as genai
-from google.adk.agents import LlmAgent
 from google.adk.runtime import InvocationContext, Event
+
+# A2A Imports
+from python_a2a import skill
+
+from agents.base_agent import BaseSpecializedAgent
+from app.config import settings
 
 # Configure logging
 logger = logging.getLogger(__name__)
 
-# TODO: Configure Gemini API key (likely handled globally or via env vars)
-# genai.configure(api_key="YOUR_GEMINI_API_KEY")
-
-class CodeGenerationAgent(LlmAgent):
+class CodeGenerationAgent(BaseSpecializedAgent):
     """
-    An agent responsible for generating initial project code based on specifications.
+    Agent responsible for code generation.
+    Generates code based on product specifications and branding.
+    Implements A2A protocol for agent communication.
     """
-
-    def __init__(self,
-                 agent_id: str = "code_generation_agent",
-                 model_name: Optional[str] = None, # Added model_name parameter
-                 target_framework: str = "vite-react"):
+    def __init__(
+        self,
+        name: str = "code_generation",
+        description: str = "Generates code based on product specifications and branding",
+        model_name: Optional[str] = None,
+        port: Optional[int] = None,
+        target_framework: str = "vite-react",
+        **kwargs: Any,
+    ):
         """
-        Initializes the CodeGenerationAgent.
+        Initialize the CodeGenerationAgent.
 
         Args:
-            agent_id: The unique identifier for this agent instance.
-            model_name: The name of the Gemini model to use (e.g., 'gemini-2.5-flash-preview-04-17').
-                        Defaults to a suitable model if None.
+            name: The name of the agent.
+            description: The description of the agent.
+            model_name: The name of the model to use. Defaults to settings.GEMINI_MODEL_NAME.
+            port: The port to run the A2A server on. Defaults to settings.CODE_GENERATION_AGENT_URL port.
             target_framework: The target frontend framework (e.g., 'vite-react').
+            **kwargs: Additional arguments for BaseSpecializedAgent.
         """
-        # Determine the model name to use
-        effective_model_name = model_name if model_name else 'gemini-2.5-flash-preview-04-17' # Default for specialized agent
-        self.model_name = effective_model_name # Store the actual model name used
+        # Extract port from URL if not provided
+        if port is None and settings.CODE_GENERATION_AGENT_URL:
+            try:
+                port = int(settings.CODE_GENERATION_AGENT_URL.split(':')[-1])
+            except (ValueError, IndexError):
+                port = 8007  # Default port
 
-        # Initialize the ADK Gemini model
-        adk_model = Gemini(model=self.model_name)
-
-        # Call super().__init__ from LlmAgent, passing the model
+        # Initialize BaseSpecializedAgent
         super().__init__(
-            agent_id=agent_id,
-            model=adk_model # Pass the initialized ADK model object
-            # instruction can be set here if needed, or rely on default/prompt
+            name=name,
+            description=description,
+            model_name=model_name,
+            port=port,
+            **kwargs
         )
+
         self.target_framework = target_framework
-        # self.llm_model = genai.GenerativeModel('gemini-2.5-flash-preview-04-17') # Removed direct instantiation
-        logger.info(f"CodeGenerationAgent initialized with model: {self.model_name} for framework: {self.target_framework}")
+        logger.info(f"CodeGenerationAgent initialized with port: {self.port} for framework: {self.target_framework}")
+
+    # --- A2A Skills ---
+    @skill(
+        name="generate_code",
+        description="Generate code based on product specifications and branding",
+        tags=["code", "generation"]
+    )
+    async def generate_code(self, product_spec: Dict[str, Any], branding: Dict[str, Any],
+                           framework: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Generate code based on product specifications and branding.
+
+        Args:
+            product_spec: The product specification.
+            branding: The branding package.
+            framework: Optional framework to use (e.g., 'vite-react', 'next.js').
+                      Defaults to the agent's target_framework.
+
+        Returns:
+            A dictionary containing the generated code structure.
+        """
+        logger.info(f"Generating code for product: {product_spec.get('appName', 'Unknown')}")
+
+        if not product_spec or not branding:
+            return {
+                "success": False,
+                "error": "Missing 'product_spec' or 'branding' in input data."
+            }
+
+        # Use specified framework or default to agent's target_framework
+        target_framework = framework or self.target_framework
+
+        try:
+            # Construct the prompt for the LLM
+            prompt = self._build_generation_prompt(product_spec, branding, target_framework)
+
+            # Call the LLM
+            response_text = await self.llm_client.generate_text_async(prompt=prompt)
+            logger.info("LLM response received.")
+
+            # Attempt to find JSON block within the response
+            json_start = response_text.find('{')
+            json_end = response_text.rfind('}') + 1
+
+            if json_start != -1 and json_end != -1:
+                json_string = response_text[json_start:json_end]
+                try:
+                    generated_code = json.loads(json_string)
+                    if not isinstance(generated_code, dict):
+                        raise ValueError("LLM response JSON is not a dictionary.")
+
+                    logger.info(f"Successfully parsed generated code structure for {len(generated_code)} files.")
+
+                    return {
+                        "success": True,
+                        "message": f"Successfully generated code for {len(generated_code)} files.",
+                        "generated_code": generated_code,
+                        "framework": target_framework
+                    }
+                except json.JSONDecodeError as e:
+                    logger.error(f"Failed to parse LLM response as JSON: {e}")
+                    return {
+                        "success": False,
+                        "error": f"Failed to parse LLM response as JSON: {str(e)}",
+                        "raw_response": response_text
+                    }
+                except ValueError as e:
+                    logger.error(f"LLM response JSON format error: {e}")
+                    return {
+                        "success": False,
+                        "error": f"LLM response JSON format error: {str(e)}",
+                        "raw_response": response_text
+                    }
+            else:
+                logger.error("Could not find valid JSON object in LLM response.")
+                return {
+                    "success": False,
+                    "error": "Could not find valid JSON object in LLM response.",
+                    "raw_response": response_text
+                }
+
+        except Exception as e:
+            logger.exception(f"Code generation failed: {e}")
+            return {
+                "success": False,
+                "error": f"Code generation failed: {str(e)}"
+            }
+
+    @skill(
+        name="generate_component",
+        description="Generate a single React component based on specifications",
+        tags=["code", "component"]
+    )
+    async def generate_component(self, component_name: str, component_description: str,
+                                props: Optional[List[Dict[str, str]]] = None,
+                                styling: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+        """
+        Generate a single React component based on specifications.
+
+        Args:
+            component_name: The name of the component.
+            component_description: Description of what the component should do.
+            props: Optional list of props the component should accept.
+            styling: Optional styling information.
+
+        Returns:
+            A dictionary containing the generated component code.
+        """
+        logger.info(f"Generating component: {component_name}")
+
+        try:
+            # Construct the prompt for the LLM
+            prompt = f"""
+            You are an expert React developer. Your task is to generate a single React functional component based on the provided specifications.
+
+            **Component Specifications:**
+            - Name: {component_name}
+            - Description: {component_description}
+            - Props: {json.dumps(props) if props else "None specified"}
+            - Styling: {json.dumps(styling) if styling else "Use basic inline styles or CSS modules"}
+
+            **Instructions:**
+            1. Create a React functional component using modern React practices (hooks, etc.).
+            2. Include appropriate PropTypes or TypeScript types for the props.
+            3. Add comments explaining the component's purpose and any complex logic.
+            4. Implement the functionality described in the component description.
+            5. Apply the specified styling approach.
+
+            **Output Format:**
+            Respond with ONLY the complete component code as a string. Do not include any explanations or markdown formatting.
+            """
+
+            # Call the LLM
+            component_code = await self.llm_client.generate_text_async(prompt=prompt)
+            logger.info(f"Successfully generated component: {component_name}")
+
+            return {
+                "success": True,
+                "message": f"Successfully generated component: {component_name}",
+                "component_name": component_name,
+                "component_code": component_code
+            }
+
+        except Exception as e:
+            logger.exception(f"Component generation failed: {e}")
+            return {
+                "success": False,
+                "error": f"Component generation failed: {str(e)}"
+            }
 
     async def run_async(self, context: InvocationContext) -> Event:
         """
-        Generates project code based on ImprovedProductSpec and BrandingPackage.
+        Executes the code generation workflow asynchronously according to ADK spec.
+        Maintained for backward compatibility with ADK.
 
         Args:
-            context: The invocation context containing input data.
-                     Expected data: {'product_spec': ImprovedProductSpec, 'branding': BrandingPackage}
+            context: The invocation context containing the input data.
 
         Returns:
-            An Event containing the generated code structure (Dict[str, str]) on success,
-            or an error Event on failure.
+            An Event containing the generated code or an error.
         """
-        logger.info(f"CodeGenerationAgent run_async invoked for instance: {context.instance_id}")
-
-        product_spec = context.data.get("product_spec")
-        branding = context.data.get("branding")
-
-        if not product_spec or not branding:
-            error_msg = "Missing 'product_spec' or 'branding' in input data."
-            logger.error(error_msg)
-            return Event.create_error_event(error_msg)
-
-        logger.debug(f"Received Product Spec: {product_spec}")
-        logger.debug(f"Received Branding Package: {branding}")
+        logger.info(f"Received invocation for CodeGenerationAgent (ID: {context.instance_id})")
 
         try:
-            # 1. Construct the prompt for the LLM
-            prompt = self._build_generation_prompt(product_spec, branding)
-            logger.debug(f"Constructed LLM Prompt:\n{prompt}")
+            # Extract input from context
+            data = {}
+            if hasattr(context, 'data') and isinstance(context.data, dict):
+                data = context.data
 
-            # 2. Call the LLM
-            # TODO: Add retry logic, more sophisticated error handling for LLM calls
-            # Use the LlmAgent's client, configured with the correct model
-            response_text = await self.llm_client.generate_text_async(prompt=prompt)
-            logger.info("LLM response received.")
-            # Assuming the LLM returns a JSON string mapping file paths to content
-            # Need robust parsing and validation here
-            # response_text = response.text.strip() # Already have response_text
-            logger.debug(f"Raw LLM Response Text:\n{response_text}")
+            product_spec = data.get("product_spec")
+            branding = data.get("branding")
 
-             # Attempt to find JSON block within the response
-            json_start = response_text.find('{')
-            json_end = response_text.rfind('}') + 1
-            if json_start != -1 and json_end != -1:
-                 json_string = response_text[json_start:json_end]
-                 try:
-                     generated_code = json.loads(json_string)
-                     if not isinstance(generated_code, dict):
-                         raise ValueError("LLM response JSON is not a dictionary.")
-                     logger.info(f"Successfully parsed generated code structure for {len(generated_code)} files.")
-                 except json.JSONDecodeError as e:
-                     error_msg = f"Failed to parse LLM response as JSON: {e}\nResponse: {response_text}"
-                     logger.error(error_msg)
-                     return Event.create_error_event(error_msg)
-                 except ValueError as e:
-                     error_msg = f"LLM response JSON format error: {e}\nResponse: {response_text}"
-                     logger.error(error_msg)
-                     return Event.create_error_event(error_msg)
+            if not product_spec or not branding:
+                error_msg = "Missing 'product_spec' or 'branding' in input data."
+                logger.error(error_msg)
+                return Event.create_error_event(error_msg)
+
+            # Use the A2A skill
+            result = await self.generate_code(
+                product_spec=product_spec,
+                branding=branding
+            )
+
+            # Create an event from the result
+            if result.get("success", False):
+                return Event.create_result_event(data={
+                    "generated_code": result.get("generated_code", {})
+                })
             else:
-                 error_msg = f"Could not find valid JSON object in LLM response.\nResponse: {response_text}"
-                 logger.error(error_msg)
-                 return Event.create_error_event(error_msg)
-
-
-            # 4. Return success event with generated code
-            logger.info("Code generation successful.")
-            return Event.create_result_event(data={"generated_code": generated_code})
+                return Event.create_error_event(result.get("error", "Code generation failed."))
 
         except Exception as e:
+            # Catch-all for unexpected errors
             error_msg = f"Code generation failed: {e}"
-            logger.exception(error_msg) # Log full traceback
+            logger.exception(error_msg)
             return Event.create_error_event(error_msg)
 
-    def _build_generation_prompt(self, product_spec: Any, branding: Any) -> str:
+    def _build_generation_prompt(self, product_spec: Any, branding: Any, framework: str = None) -> str:
         """
         Constructs the prompt for the LLM to generate code, focusing on feature implementation.
+
+        Args:
+            product_spec: The product specification.
+            branding: The branding package.
+            framework: The target framework (e.g., 'vite-react', 'next.js').
+                      Defaults to the agent's target_framework.
+
+        Returns:
+            The prompt for the LLM.
         """
+        # Use specified framework or default to agent's target_framework
+        target_framework = framework or self.target_framework
+
         # Convert spec and branding to JSON strings for the prompt
         spec_json = json.dumps(product_spec, indent=2)
         branding_json = json.dumps(branding, indent=2)
@@ -227,39 +381,10 @@ Now, generate the JSON object containing the complete codebase based on the prov
 """
         return prompt
 
-# Example Usage (for testing purposes, would not be in production agent code)
-if __name__ == '__main__':
-    # This block allows for testing the agent logic locally if needed
-    # You would need to mock InvocationContext, Event, product_spec, branding
-    # and potentially the LLM call.
-    print("CodeGenerationAgent defined. Run integration tests for actual execution.")
+# Example of how to run this agent as a standalone A2A server
+if __name__ == "__main__":
+    # Create the agent
+    agent = CodeGenerationAgent()
 
-    # Mock data example:
-    mock_spec = {
-        "appName": "Idea Spark",
-        "concept": "A simple web app to capture and organize ideas.",
-        "features": ["Input field for new ideas", "List display of ideas", "Ability to delete ideas"],
-        "targetAudience": "Individuals"
-    }
-    mock_branding = {
-        "brandName": "Idea Spark",
-        "logoDescription": "A lightbulb icon",
-        "colorPalette": {
-            "primary": "#4A90E2", # Blue
-            "secondary": "#F5A623", # Orange
-            "background": "#FFFFFF", # White
-            "text": "#333333" # Dark Gray
-        },
-        "typography": {
-            "fontFamily": "Arial, sans-serif",
-            "headings": "bold"
-        }
-    }
-
-    # Note: Direct instantiation and running like this bypasses the ADK runtime.
-    # Use 'adk run' or proper testing frameworks for real execution.
-    # agent = CodeGenerationAgent()
-    # prompt = agent._build_generation_prompt(mock_spec, mock_branding)
-    # print("\n--- Example Prompt ---")
-    # print(prompt)
-    # print("\n--- End Example Prompt ---")
+    # Run the A2A server
+    agent.run_server(host="0.0.0.0", port=agent.port or 8007)

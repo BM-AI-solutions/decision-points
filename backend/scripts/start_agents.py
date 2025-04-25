@@ -113,11 +113,11 @@ AGENT_CONFIGS = [
 def start_agent(agent_config: Dict[str, str], debug: bool = False) -> Optional[subprocess.Popen]:
     """
     Start an agent as a separate process.
-    
+
     Args:
         agent_config: The agent configuration.
         debug: Whether to run in debug mode.
-        
+
     Returns:
         The subprocess.Popen object for the agent process, or None if the agent failed to start.
     """
@@ -125,40 +125,36 @@ def start_agent(agent_config: Dict[str, str], debug: bool = False) -> Optional[s
     module = agent_config["module"]
     class_name = agent_config["class"]
     port = agent_config["port"]
-    
+
     # Create a Python script to run the agent
     script = f"""
 import os
 import sys
-import asyncio
 from {module} import {class_name}
 from app.config import settings
 
-async def main():
+if __name__ == "__main__":
     # Initialize the agent
     agent = {class_name}(
         name="{name}",
         description="Specialized agent for {name} tasks",
         port={port}
     )
-    
+
     # Run the A2A server
     agent.run_server(host="0.0.0.0", port={port})
-
-if __name__ == "__main__":
-    asyncio.run(main())
 """
-    
+
     # Write the script to a temporary file
     script_path = f"/tmp/agent_{name}.py"
     with open(script_path, "w") as f:
         f.write(script)
-    
+
     # Start the agent process
     cmd = [sys.executable, script_path]
     if debug:
         print(f"Starting agent {name} with command: {' '.join(cmd)}")
-    
+
     try:
         process = subprocess.Popen(
             cmd,
@@ -178,7 +174,7 @@ def main():
     parser.add_argument("--debug", action="store_true", help="Run in debug mode")
     parser.add_argument("--agents", nargs="+", help="Specific agents to start (default: all)")
     args = parser.parse_args()
-    
+
     # Filter agents if specified
     configs = AGENT_CONFIGS
     if args.agents:
@@ -186,20 +182,20 @@ def main():
         if not configs:
             print(f"No valid agents specified. Available agents: {', '.join(c['name'] for c in AGENT_CONFIGS)}")
             return
-    
+
     # Start agents
     processes = []
     for config in configs:
         process = start_agent(config, args.debug)
         if process:
             processes.append((config["name"], process))
-    
+
     if not processes:
         print("No agents started.")
         return
-    
+
     print(f"Started {len(processes)} agents. Press Ctrl+C to stop all agents.")
-    
+
     try:
         # Keep the script running until interrupted
         while True:
@@ -209,12 +205,12 @@ def main():
         for name, process in processes:
             print(f"Stopping agent {name} (PID: {process.pid})...")
             process.terminate()
-        
+
         # Wait for all processes to terminate
         for name, process in processes:
             process.wait()
             print(f"Agent {name} stopped.")
-    
+
     print("All agents stopped.")
 
 if __name__ == "__main__":

@@ -1,7 +1,14 @@
+"""
+Improvement Agent for Decision Points.
+
+This agent analyzes market research input and suggests product improvements/features.
+It implements the A2A protocol for agent communication.
+"""
+
 import random
 import asyncio
 import logging
-import httpx  # For async HTTP requests (A2A calls)
+import httpx
 from typing import List, Optional, Dict, Any
 import google.generativeai as genai
 import json
@@ -9,11 +16,14 @@ import json
 from pydantic import BaseModel, Field, ValidationError
 
 # ADK Imports
-from google.adk.agents import Agent
 from google.adk.runtime import InvocationContext
 from google.adk.runtime.events import Event, ErrorEvent
 
-from app.config import settings # Import centralized settings
+# A2A Imports
+from python_a2a import skill
+
+from agents.base_agent import BaseSpecializedAgent
+from app.config import settings
 
 # TODO: Potentially align this more closely with the actual MarketOpportunityReport structure
 # if it becomes significantly different. For now, assume the necessary fields are passed.
@@ -41,43 +51,48 @@ class ImprovedProductSpec(BaseModel):
 
 # --- Agent Class ---
 
-class ImprovementAgent(Agent): # Inherit from ADK Agent
+class ImprovementAgent(BaseSpecializedAgent):
     """
-    ADK Agent responsible for Stage 2: Product Improvement.
+    Agent responsible for product improvement.
     Analyzes market research input and suggests product improvements/features.
+    Implements A2A protocol for agent communication.
     """
-    def __init__(self, model_name: Optional[str] = None):
+    def __init__(
+        self,
+        name: str = "improvement",
+        description: str = "Analyzes market research input and suggests product improvements/features",
+        model_name: Optional[str] = None,
+        port: Optional[int] = None,
+        **kwargs: Any,
+    ):
         """
-        Initialize the Improvement Agent.
+        Initialize the ImprovementAgent.
 
         Args:
-            model_name: The name of the Gemini model to use for analysis (e.g., 'gemini-2.5-flash-preview-04-17').
-                        Defaults to a suitable model if None.
+            name: The name of the agent.
+            description: The description of the agent.
+            model_name: The name of the model to use. Defaults to settings.GEMINI_MODEL_NAME.
+            port: The port to run the A2A server on. Defaults to settings.IMPROVEMENT_AGENT_URL port.
+            **kwargs: Additional arguments for BaseSpecializedAgent.
         """
-        super().__init__()
+        # Extract port from URL if not provided
+        if port is None and settings.IMPROVEMENT_AGENT_URL:
+            try:
+                port = int(settings.IMPROVEMENT_AGENT_URL.split(':')[-1])
+            except (ValueError, IndexError):
+                port = 8005  # Default port
+
+        # Initialize BaseSpecializedAgent
+        super().__init__(
+            name=name,
+            description=description,
+            model_name=model_name,
+            port=port,
+            **kwargs
+        )
+
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.info("Initializing ImprovementAgent...")
-
-        # Determine the model name to use
-        effective_model_name = model_name if model_name else 'gemini-2.5-flash-preview-04-17' # Default for specialized agent
-        self.model_name = effective_model_name # Store the actual model name used
-
-        # --- LLM Client Initialization ---
-        # Get API key from settings
-        gemini_api_key = settings.GEMINI_API_KEY
-        if gemini_api_key:
-            try:
-                # Configure genai globally (if not already done elsewhere)
-                # genai.configure(api_key=gemini_api_key) # Assuming configure is done at app startup
-                # Initialize the Gemini model using the determined model name
-                self.llm = genai.GenerativeModel(self.model_name)
-                self.logger.info(f"Gemini GenerativeModel initialized with model: {self.model_name}.")
-            except Exception as e:
-                self.logger.error(f"Failed to initialize Gemini client with model {self.model_name}: {e}", exc_info=True)
-                self.llm = None
-        else:
-            self.llm = None
-            self.logger.warning("GEMINI_API_KEY not configured in settings. LLM functionality will be disabled.")
 
         # --- Web Search Agent Integration ---
         # Get Agent ID from settings
@@ -88,153 +103,250 @@ class ImprovementAgent(Agent): # Inherit from ADK Agent
         else:
             self.logger.info(f"Web Search Agent ID configured via settings: {self.agent_web_search_id}")
 
+        self.logger.info(f"ImprovementAgent initialized with port: {self.port}")
 
-        self.logger.info("ImprovementAgent initialized.")
+    # --- A2A Skills ---
+    @skill(
+        name="improve_product",
+        description="Analyze market research and suggest product improvements",
+        tags=["improvement", "product"]
+    )
+    async def improve_product(self, product_concept: str, competitor_weaknesses: List[str] = None,
+                             market_gaps: List[str] = None, target_audience_suggestions: List[str] = None,
+                             feature_recommendations_from_market: List[str] = None,
+                             business_model_type: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Analyze market research and suggest product improvements.
 
-    # Removed _load_feature_ideas as LLM will handle this.
+        Args:
+            product_concept: Initial description of the product/model concept.
+            competitor_weaknesses: List of weaknesses identified in competitors.
+            market_gaps: List of gaps identified in the market.
+            target_audience_suggestions: Suggested target audiences from market research.
+            feature_recommendations_from_market: Initial feature ideas from market research.
+            business_model_type: Type of business model (e.g., 'saas', 'e-commerce').
 
-    # Removed _select_features and _generate_usps methods. Logic moved to LLM call in run_async.
-    async def run_async(self, context: InvocationContext) -> Event:
-        """Executes the product improvement workflow asynchronously, potentially using web search and LLM."""
-        self.logger.info(f"Received invocation: {context.invocation_id}")
+        Returns:
+            A dictionary containing the improved product specification.
+        """
+        self.logger.info(f"Improving product concept: {product_concept}")
 
-        # --- 1. Input Validation ---
         try:
-            if not isinstance(context.input_event.payload, dict):
-                raise ValueError("Input payload must be a dictionary.")
-            inputs = ImprovementAgentInput(**context.input_event.payload)
-            self.logger.info(f"Starting product improvement analysis for concept: {inputs.product_concept}")
-        except (ValidationError, ValueError) as e:
-            self.logger.error(f"Input validation failed: {e}")
-            return ErrorEvent(
-                error_code="INPUT_VALIDATION_ERROR",
-                message=f"Invalid input payload: {e}",
-                details=e.errors() if isinstance(e, ValidationError) else None
+            # Create input model
+            inputs = ImprovementAgentInput(
+                product_concept=product_concept,
+                competitor_weaknesses=competitor_weaknesses or [],
+                market_gaps=market_gaps or [],
+                target_audience_suggestions=target_audience_suggestions or [],
+                feature_recommendations_from_market=feature_recommendations_from_market or [],
+                business_model_type=business_model_type
             )
 
-        # --- 2. Optional: Web Search for Technical Details/Competitors ---
-        web_search_results = None
-        # Condition to trigger web search (can be refined)
-        # Example: Search if concept is complex or mentions specific tech
-        trigger_search = "technology" in inputs.product_concept.lower() or "competitor" in inputs.product_concept.lower()
+            # Optional: Web Search for Technical Details/Competitors
+            web_search_results = None
+            trigger_search = "technology" in inputs.product_concept.lower() or "competitor" in inputs.product_concept.lower()
 
-        if self.agent_web_search_id and trigger_search:
-            self.logger.info("Web search triggered based on product concept.")
-            search_query = f"Technical details and competitors for product concept: {inputs.product_concept}"
-            try:
-                search_payload = {
-                    "query": search_query,
-                    # Add other params WebSearchAgent might expect, e.g., num_results
-                    "num_results": 5
+            if self.agent_web_search_id and trigger_search:
+                self.logger.info("Web search triggered based on product concept.")
+                search_query = f"Technical details and competitors for product concept: {inputs.product_concept}"
+
+                try:
+                    from agents.agent_network import agent_network
+
+                    # Get the agent from the network
+                    agent = agent_network.get_agent("web_search")
+                    if agent:
+                        # Invoke the web_search skill
+                        search_result = await agent.invoke_skill(
+                            skill_name="web_search",
+                            input_data={"query": search_query, "num_results": 5},
+                            timeout=30.0
+                        )
+
+                        if search_result and "results" in search_result:
+                            web_search_results = search_result["results"]
+                            self.logger.info(f"Received {len(web_search_results)} results from WebSearchAgent.")
+                    else:
+                        self.logger.warning("WebSearchAgent not found in agent network.")
+                except Exception as e:
+                    self.logger.error(f"Error calling WebSearchAgent: {e}", exc_info=True)
+
+            # LLM Analysis
+            if not self.llm_client:
+                return {
+                    "success": False,
+                    "error": "LLM client not initialized. Cannot proceed with analysis."
                 }
-                # Note: Ensure BRAVE_API_KEY is implicitly available to the WebSearchAgent service
-                # or pass it if the A2A endpoint requires it explicitly in the payload/headers.
-                a2a_url = f"{self.agent_web_search_url}/a2a/web_search/invoke" # Assuming this is the correct endpoint path
-                self.logger.info(f"Calling WebSearchAgent at {a2a_url} with query: {search_query}")
 
-                response = await self.http_client.post(a2a_url, json=search_payload)
-                response.raise_for_status() # Raise HTTPError for bad responses (4xx or 5xx)
-
-                search_response_data = response.json()
-
-                # Assuming WebSearchAgent returns results in a structured way, e.g., under a 'results' key
-                if response.status_code == 200 and search_response_data.get("status") == "success":
-                     web_search_results = search_response_data.get("results", []) # Adjust key based on actual response
-                     self.logger.info(f"Received {len(web_search_results)} results from WebSearchAgent.")
-                     self.logger.debug(f"Web Search Results: {web_search_results}")
-                else:
-                    # Handle cases where the agent call succeeded (2xx) but indicated an internal failure
-                    error_msg = search_response_data.get("message", "Unknown error from WebSearchAgent")
-                    self.logger.error(f"WebSearchAgent call failed internally: {error_msg}")
-                    # Decide whether to proceed without search results or return an error
-                    # For now, we'll proceed without search results but log the error.
-
-            except httpx.RequestError as req_err:
-                self.logger.error(f"A2A call to WebSearchAgent failed (Request Error): {req_err}", exc_info=True)
-                # Proceed without search results, log the error
-            except httpx.HTTPStatusError as status_err:
-                 self.logger.error(f"A2A call to WebSearchAgent failed (Status Code {status_err.response.status_code}): {status_err.response.text}", exc_info=True)
-                 # Proceed without search results, log the error
-            except json.JSONDecodeError as json_err:
-                 self.logger.error(f"Failed to decode JSON response from WebSearchAgent: {json_err}", exc_info=True)
-                 # Proceed without search results, log the error
-            except Exception as search_err: # Catch any other unexpected errors during search
-                self.logger.error(f"Unexpected error during web search A2A call: {search_err}", exc_info=True)
-                # Proceed without search results, log the error
-
-        # --- 3. LLM Analysis ---
-        if not self.llm:
-            self.logger.error("LLM client not initialized. Cannot proceed with core analysis.")
-            return ErrorEvent(
-                error_code="LLM_NOT_INITIALIZED",
-                message="LLM client (Gemini) is not available. Check API key and configuration.",
-            )
-
-        try:
-            # Prepare Prompt (now includes optional search results)
+            # Prepare Prompt
             prompt = self._build_llm_prompt(inputs, web_search_results)
-            self.logger.debug(f"Generated LLM Prompt:\n{prompt}")
 
             # Call LLM
             self.logger.info("Calling LLM for product improvement analysis...")
-            # TODO: Explore direct JSON output mode if available and reliable for the model
-            # generation_config = genai.types.GenerationConfig(response_mime_type="application/json")
-            # response = await self.llm.generate_content_async(prompt, generation_config=generation_config)
-            response = await self.llm.generate_content_async(prompt)
-            self.logger.info("LLM call completed.")
-            llm_output_text = response.text
+            response = await self.llm_client.generate_text_async(prompt=prompt)
 
-        except Exception as llm_error:
-            self.logger.error(f"LLM call failed: {llm_error}", exc_info=True)
-            return ErrorEvent(
-                error_code="LLM_API_ERROR",
-                message=f"Error interacting with the LLM: {str(llm_error)}",
-                details={"exception_type": type(llm_error).__name__, "exception_args": llm_error.args}
-            )
+            # Parse and Validate LLM Output
+            try:
+                # Clean the output (remove potential markdown fences)
+                cleaned_output = response.strip().removeprefix("```json").removesuffix("```").strip()
+                if not cleaned_output:
+                    raise ValueError("LLM returned empty content after cleaning.")
 
-        # --- 4. Parse and Validate LLM Output ---
+                llm_data = json.loads(cleaned_output)
+                spec = ImprovedProductSpec(**llm_data)
+                self.logger.info("LLM output parsed and validated successfully.")
+
+                # Return the improved product spec
+                return {
+                    "success": True,
+                    "message": "Product improvement analysis completed successfully.",
+                    **spec.model_dump()
+                }
+            except (json.JSONDecodeError, ValidationError, ValueError) as e:
+                self.logger.error(f"Error processing LLM output: {e}", exc_info=True)
+                return {
+                    "success": False,
+                    "error": f"Error processing LLM output: {str(e)}",
+                    "raw_output": response
+                }
+
+        except Exception as e:
+            self.logger.error(f"Error improving product: {e}", exc_info=True)
+            return {
+                "success": False,
+                "error": f"Error improving product: {str(e)}"
+            }
+
+    @skill(
+        name="assess_product_feasibility",
+        description="Assess the feasibility of a product concept",
+        tags=["improvement", "assessment"]
+    )
+    async def assess_product_feasibility(self, product_concept: str) -> Dict[str, Any]:
+        """
+        Assess the feasibility of a product concept.
+
+        Args:
+            product_concept: Description of the product concept to assess.
+
+        Returns:
+            A dictionary containing the feasibility assessment.
+        """
+        self.logger.info(f"Assessing feasibility of product concept: {product_concept}")
+
         try:
-            # Clean the output (remove potential markdown fences)
-            cleaned_output = llm_output_text.strip().removeprefix("```json").removesuffix("```").strip()
-            if not cleaned_output:
-                 raise ValueError("LLM returned empty content after cleaning.")
-            llm_data = json.loads(cleaned_output)
-            spec = ImprovedProductSpec(**llm_data)
-            self.logger.info("LLM output parsed and validated successfully.")
-        except json.JSONDecodeError as json_err:
-            self.logger.error(f"Failed to parse LLM JSON output: {json_err}")
-            self.logger.debug(f"Raw LLM Output:\n{llm_output_text}")
-            return ErrorEvent(
-                error_code="LLM_OUTPUT_PARSE_ERROR",
-                message=f"Failed to parse JSON from LLM response: {json_err}",
-                details={"raw_output": llm_output_text}
-            )
-        except ValidationError as validation_err:
-            self.logger.error(f"LLM output validation failed: {validation_err}")
-            self.logger.debug(f"Parsed LLM Data:\n{llm_data if 'llm_data' in locals() else 'N/A'}")
-            return ErrorEvent(
-                error_code="LLM_OUTPUT_VALIDATION_ERROR",
-                message=f"LLM output did not match expected format: {validation_err}",
-                details={"parsed_data": llm_data if 'llm_data' in locals() else 'N/A', "validation_errors": validation_err.errors()}
-            )
-        except Exception as parse_err: # Catch any other parsing/validation issues
-             self.logger.error(f"Error processing LLM output: {parse_err}", exc_info=True)
-             self.logger.debug(f"Raw LLM Output during processing error:\n{llm_output_text}")
-             return ErrorEvent(
-                error_code="LLM_PROCESSING_ERROR",
-                message=f"An unexpected error occurred while processing LLM output: {str(parse_err)}",
-                details={"exception_type": type(parse_err).__name__, "exception_args": parse_err.args, "raw_output": llm_output_text}
+            # Create a prompt for the LLM
+            prompt = f"""
+            You are an expert Product Strategist AI. Your task is to assess the feasibility of the following product concept:
+
+            Product Concept: {product_concept}
+
+            Provide a detailed assessment including:
+            1. Feasibility score (0.0 to 1.0, where 1.0 is highly feasible)
+            2. Potential rating ('Low', 'Medium', 'High')
+            3. Assessment rationale (brief explanation justifying the score and rating)
+
+            Format your response as a JSON object with the following structure:
+            {{
+                "feasibility_score": 0.8,
+                "potential_rating": "High",
+                "assessment_rationale": "This product concept is highly feasible because..."
+            }}
+            """
+
+            # Call LLM
+            response = await self.llm_client.generate_text_async(prompt=prompt)
+
+            # Parse the response
+            try:
+                # Clean the output
+                cleaned_output = response.strip().removeprefix("```json").removesuffix("```").strip()
+                assessment = json.loads(cleaned_output)
+
+                return {
+                    "success": True,
+                    "message": "Feasibility assessment completed successfully.",
+                    "product_concept": product_concept,
+                    "assessment": assessment
+                }
+            except (json.JSONDecodeError, ValueError) as e:
+                self.logger.error(f"Error parsing LLM output: {e}", exc_info=True)
+                return {
+                    "success": False,
+                    "error": f"Error parsing LLM output: {str(e)}",
+                    "raw_output": response
+                }
+
+        except Exception as e:
+            self.logger.error(f"Error assessing product feasibility: {e}", exc_info=True)
+            return {
+                "success": False,
+                "error": f"Error assessing product feasibility: {str(e)}"
+            }
+
+    async def run_async(self, context: InvocationContext) -> Event:
+        """
+        Executes the product improvement workflow asynchronously according to ADK spec.
+        Maintained for backward compatibility with ADK.
+
+        Args:
+            context: The invocation context containing the input data.
+
+        Returns:
+            An Event containing the improvement results or an error.
+        """
+        self.logger.info(f"Received invocation for ImprovementAgent (ID: {context.invocation_id})")
+
+        try:
+            # Extract input from context
+            input_data = {}
+            if hasattr(context, 'input_event') and hasattr(context.input_event, 'payload'):
+                input_data = context.input_event.payload
+            elif hasattr(context, 'input') and isinstance(context.input, dict):
+                input_data = context.input
+
+            # Parse and validate input
+            try:
+                inputs = ImprovementAgentInput(**input_data)
+            except (ValidationError, ValueError) as e:
+                self.logger.error(f"Input validation failed: {e}")
+                return ErrorEvent(
+                    error_code="INPUT_VALIDATION_ERROR",
+                    message=f"Invalid input payload: {e}",
+                    details=e.errors() if isinstance(e, ValidationError) else None
+                )
+
+            # Use the A2A skill
+            result = await self.improve_product(
+                product_concept=inputs.product_concept,
+                competitor_weaknesses=inputs.competitor_weaknesses,
+                market_gaps=inputs.market_gaps,
+                target_audience_suggestions=inputs.target_audience_suggestions,
+                feature_recommendations_from_market=inputs.feature_recommendations_from_market,
+                business_model_type=inputs.business_model_type
             )
 
-        # --- 5. Return Success Event ---
-        self.logger.info("Product improvement analysis finished successfully.")
-        return Event(
-            event_type="product.improvement.completed",
-            payload=spec.model_dump() # Use model_dump for Pydantic v2
-        )
+            # Create an event from the result
+            if result.get("success", False):
+                return Event(
+                    event_type="product.improvement.completed",
+                    payload={k: v for k, v in result.items() if k != "success" and k != "message"}
+                )
+            else:
+                return ErrorEvent(
+                    error_code="IMPROVEMENT_FAILED",
+                    message=result.get("error", "Product improvement failed."),
+                    details=result
+                )
 
-        # Note: General exception handling removed from here as specific errors are caught above.
-        # If an uncaught exception occurs before returning, ADK runtime might handle it.
+        except Exception as e:
+            # Catch-all for unexpected errors
+            self.logger.error(f"Unexpected error in ImprovementAgent: {e}", exc_info=True)
+            return ErrorEvent(
+                error_code="UNEXPECTED_ERROR",
+                message=f"An unexpected error occurred: {str(e)}",
+                details={"exception_type": type(e).__name__, "exception_args": e.args}
+            )
 
     def _build_llm_prompt(self, inputs: ImprovementAgentInput, web_search_results: Optional[List[Dict]] = None) -> str:
         """Constructs the prompt for the LLM based on input data and optional web search results."""
@@ -329,4 +441,10 @@ Now, based *only* on the provided input data and web search context, generate th
 """
         return prompt
 
-# Removed the __main__ block as it's not typical for ADK agents
+# Example of how to run this agent as a standalone A2A server
+if __name__ == "__main__":
+    # Create the agent
+    agent = ImprovementAgent()
+
+    # Run the A2A server
+    agent.run_server(host="0.0.0.0", port=agent.port or 8005)

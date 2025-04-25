@@ -1,17 +1,31 @@
+"""
+Branding Agent for Decision Points.
+
+This agent generates a brand identity based on the improved product specification.
+It implements the A2A protocol for agent communication.
+"""
+
 import random
 import string
 import httpx
 import asyncio
-import json # Added for potential context data parsing
+import json
+import logging
 from typing import Dict, List, Any, Optional
 from pydantic import BaseModel, Field
 
-# Import ADK components
-from google.adk.agents import LlmAgent
+# ADK Imports
 from google.adk.runtime import InvocationContext
 from google.adk.runtime.events import Event
 
-from app.config import settings # Import centralized settings
+# A2A Imports
+from python_a2a import skill
+
+from agents.base_agent import BaseSpecializedAgent
+from app.config import settings
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 # Assuming ImprovedProductSpec structure is available or defined elsewhere
 # Define input based on what BrandingAgent needs from ImprovedProductSpec
@@ -71,56 +85,66 @@ class BrandPackage(BaseModel):
 
 # --- Agent Class ---
 
-class BrandingAgent(LlmAgent): # Inherit from LlmAgent
+class BrandingAgent(BaseSpecializedAgent):
     """
-    ADK Agent responsible for Stage 3: Rebranding.
+    Agent responsible for branding.
     Generates a brand identity based on the improved product specification.
+    Implements A2A protocol for agent communication.
     """
-    def __init__(self,
-                 agent_id: str = "branding_agent",
-                 model_name: Optional[str] = None, # Added model_name parameter
-                 agent_web_search_id: Optional[str] = None):
+    def __init__(
+        self,
+        name: str = "branding",
+        description: str = "Generates a brand identity based on the improved product specification",
+        model_name: Optional[str] = None,
+        port: Optional[int] = None,
+        agent_web_search_id: Optional[str] = None,
+        **kwargs: Any,
+    ):
         """
-        Initialize the Branding Agent.
+        Initialize the BrandingAgent.
 
         Args:
-            agent_id: The unique identifier for this agent instance.
-            model_name: The name of the Gemini model to use (e.g., 'gemini-2.5-flash-preview-04-17').
-                        Defaults to a suitable model if None.
+            name: The name of the agent.
+            description: The description of the agent.
+            model_name: The name of the model to use. Defaults to settings.GEMINI_MODEL_NAME.
+            port: The port to run the A2A server on. Defaults to settings.BRANDING_AGENT_URL port.
             agent_web_search_id: The ID of the WebSearchAgent.
+            **kwargs: Additional arguments for BaseSpecializedAgent.
         """
-        # Determine the model name to use
-        effective_model_name = model_name if model_name else 'gemini-2.5-flash-preview-04-17' # Default for specialized agent
-        self.model_name = effective_model_name # Store the actual model name used
+        # Extract port from URL if not provided
+        if port is None and settings.BRANDING_AGENT_URL:
+            try:
+                port = int(settings.BRANDING_AGENT_URL.split(':')[-1])
+            except (ValueError, IndexError):
+                port = 8006  # Default port
 
-        # Initialize the ADK Gemini model
-        # Note: Assumes GEMINI_API_KEY is configured globally for ADK or handled by LlmAgent
-        adk_model = Gemini(model=self.model_name)
-
-        # Call super().__init__ from LlmAgent, passing the model
+        # Initialize BaseSpecializedAgent
         super().__init__(
-            agent_id=agent_id,
-            model=adk_model # Pass the initialized ADK model object
-            # instruction can be set here if needed, or rely on default/prompt
+            name=name,
+            description=description,
+            model_name=model_name,
+            port=port,
+            **kwargs
         )
 
         # Prioritize passed ID, fallback to central settings
         self.agent_web_search_id = agent_web_search_id if agent_web_search_id is not None else settings.AGENT_WEB_SEARCH_ID
 
         if not self.agent_web_search_id:
-            self.logger.warning("AGENT_WEB_SEARCH_ID is not configured (checked constructor arg and settings). Availability checks will be skipped.")
+            logger.warning("AGENT_WEB_SEARCH_ID is not configured (checked constructor arg and settings). Availability checks will be skipped.")
         else:
-             self.logger.info(f"Using WebSearchAgent ID: {self.agent_web_search_id}")
-        self.logger.info(f"BrandingAgent initialized with model: {self.model_name}") # Added logging for model
+            logger.info(f"Using WebSearchAgent ID: {self.agent_web_search_id}")
 
-    async def _check_name_availability(self, context: InvocationContext, name: str) -> tuple[str, str]:
+        logger.info(f"BrandingAgent initialized with port: {self.port}")
+
+    async def _check_name_availability(self, name: str) -> tuple[str, str]:
         """
         Checks domain, social, and potentially trademark availability for a given name.
         Returns a tuple: (summary_string, availability_status).
         Status can be 'available', 'likely_taken', 'uncertain', 'error', or 'skipped'.
         """
         if not self.agent_web_search_id:
-            self.logger.warning(f"Skipping availability check for '{name}' due to missing configuration.")
+            logger.warning(f"Skipping availability check for '{name}' due to missing configuration.")
             return "Availability check skipped (missing configuration).", "skipped"
 
         # Simple check for common TLDs - more sophisticated checks might be needed
@@ -138,28 +162,28 @@ class BrandingAgent(LlmAgent): # Inherit from LlmAgent
         raw_search_details = {} # Store snippets for summary
 
         async def perform_search(query_type: str, query: str):
-            input_payload = {"query": query}
-            # Metadata might be needed if WebSearchAgent requires API keys passed this way
-            # input_metadata = {"brave_api_key": self.brave_api_key} # Example if needed
-            input_event = Event(payload=input_payload) # Add metadata=input_metadata if needed
             try:
-                self.logger.info(f"Invoking WebSearchAgent skill 'web_search' for '{name}' ({query_type}) via ADK...")
-                result_event = await context.invoke_skill(
-                    target_agent_id=self.agent_web_search_id,
-                    skill_name="web_search", # Assuming skill name
-                    input=input_event,
-                    timeout_seconds=30.0
-                )
-                self.logger.debug(f"Received search response event for '{name}' ({query_type}): Type={result_event.type}, Payload={result_event.payload}")
+                from agents.agent_network import agent_network
 
-                if result_event.type == "error":
-                    error_msg = result_event.payload.get('message', 'Unknown error from WebSearchAgent skill')
-                    self.logger.error(f"WebSearchAgent skill invocation failed for '{name}' ({query_type}): {error_msg}")
+                # Get the agent from the network
+                agent = agent_network.get_agent("web_search")
+                if not agent:
+                    logger.error("WebSearchAgent not found in agent network.")
                     results[query_type] = "Error during check"
-                    raw_search_details[query_type] = "Error during check."
-                elif result_event.payload and result_event.payload.get("status") == "success":
-                    # Extract relevant info - structure depends on WebSearchAgent's output
-                    search_result_data = result_event.payload.get("results", "No specific result found.") # Assuming 'results' key
+                    raw_search_details[query_type] = "WebSearchAgent not found in agent network."
+                    return
+
+                logger.info(f"Invoking WebSearchAgent skill 'web_search' for '{name}' ({query_type}) via agent network...")
+
+                # Invoke the web_search skill
+                search_result = await agent.invoke_skill(
+                    skill_name="web_search",
+                    input_data={"query": query},
+                    timeout=30.0
+                )
+
+                if search_result and "results" in search_result:
+                    search_result_data = search_result["results"]
                     # Basic interpretation (can be improved)
                     raw_search_details[query_type] = f"{str(search_result_data)[:150]}..." # Store for summary
                     if "available" in str(search_result_data).lower() and "not available" not in str(search_result_data).lower():
@@ -170,23 +194,14 @@ class BrandingAgent(LlmAgent): # Inherit from LlmAgent
                         results[query_type] = "Unclear/Check Manually"
                 else:
                     # Handle cases where the skill call succeeded but indicated an internal failure or unexpected payload
-                    error_msg = result_event.payload.get("message", "Unknown or unsuccessful response from WebSearchAgent skill")
-                    self.logger.warning(f"WebSearchAgent skill call for '{name}' ({query_type}) reported failure or unexpected payload: {error_msg}")
+                    error_msg = search_result.get("error", "Unknown or unsuccessful response from WebSearchAgent skill")
+                    logger.warning(f"WebSearchAgent skill call for '{name}' ({query_type}) reported failure or unexpected payload: {error_msg}")
                     results[query_type] = "Unknown response format"
                     raw_search_details[query_type] = "Unknown response format."
-
-            except TimeoutError:
-                self.logger.error(f"ADK skill invocation for WebSearchAgent timed out for '{name}' ({query_type}).", exc_info=True)
-                results[query_type] = "Timeout Error"
-                raw_search_details[query_type] = "Timeout Error."
-            except ConnectionError as conn_err:
-                self.logger.error(f"ADK skill invocation for WebSearchAgent failed (Connection Error) for '{name}' ({query_type}): {conn_err}", exc_info=True)
-                results[query_type] = "Connection Error"
-                raw_search_details[query_type] = "Connection Error."
             except Exception as e:
-                self.logger.error(f"Unexpected error during WebSearchAgent skill invocation for '{name}' ({query_type}): {e}", exc_info=True)
-                results[query_type] = "Unexpected Error"
-                raw_search_details[query_type] = "Unexpected Error."
+                logger.error(f"Error calling WebSearchAgent for '{name}' ({query_type}): {e}", exc_info=True)
+                results[query_type] = "Error during check"
+                raw_search_details[query_type] = f"Error: {str(e)}"
 
         # Run searches concurrently
         tasks = [perform_search(q_type, q_text) for q_type, q_text in queries.items()]
@@ -198,7 +213,7 @@ class BrandingAgent(LlmAgent): # Inherit from LlmAgent
             f"Social: {results.get('social', 'N/A')} ({raw_search_details.get('social', 'N/A')}). "
             f"Trademark: {results.get('trademark', 'N/A')} ({raw_search_details.get('trademark', 'N/A')})"
         )
-        self.logger.info(f"Availability check summary for '{name}': {summary_str}")
+        logger.info(f"Availability check summary for '{name}': {summary_str}")
 
         # Determine overall status
         domain_status = results.get('domain')
@@ -215,37 +230,43 @@ class BrandingAgent(LlmAgent): # Inherit from LlmAgent
         else: # Covers cases where domain is unclear, or domain is available but social is unavailable etc.
             status = 'uncertain'
 
-        self.logger.info(f"Determined availability status for '{name}': {status}")
+        logger.info(f"Determined availability status for '{name}': {status}")
         return summary_str, status
 
 
-    async def run_async(self, context: InvocationContext) -> Event:
-        """Executes the branding generation workflow using an LLM."""
-        self.logger.info(f"Starting LLM-based branding generation for context: {context.invocation_id}")
+    # --- A2A Skills ---
+    @skill(
+        name="generate_brand",
+        description="Generate a comprehensive brand identity package",
+        tags=["branding", "identity"]
+    )
+    async def generate_brand(self, product_concept: str, target_audience: List[str],
+                            keywords: Optional[List[str]] = None,
+                            business_model_type: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Generate a comprehensive brand identity package.
+
+        Args:
+            product_concept: Description of the core product/model.
+            target_audience: Defined target demographics.
+            keywords: Optional keywords related to the product/concept.
+            business_model_type: Optional type of business model (e.g., 'saas', 'e-commerce').
+
+        Returns:
+            A dictionary containing the brand identity package.
+        """
+        logger.info(f"Generating brand identity for product concept: {product_concept}")
 
         try:
-            # 1. Parse Input from context
-            if not isinstance(context.input.data, dict):
-                try:
-                    input_data = json.loads(context.input.data)
-                except json.JSONDecodeError as e:
-                    self.logger.error(f"Input data is not a valid dictionary or JSON string: {context.input.data}")
-                    raise ValueError(f"Input data is not a valid dictionary or JSON string: {e}") from e
-            else:
-                input_data = context.input.data
+            # Create input model
+            inputs = BrandingAgentInput(
+                product_concept=product_concept,
+                target_audience=target_audience,
+                keywords=keywords,
+                business_model_type=business_model_type
+            )
 
-            # Validate input using Pydantic model
-            try:
-                inputs = BrandingAgentInput(**input_data)
-                self.logger.info(f"Parsed input: Concept='{inputs.product_concept}', Audience='{inputs.target_audience}', Keywords='{inputs.keywords}', Model='{inputs.business_model_type}'")
-            except Exception as e: # Catch Pydantic validation errors
-                 self.logger.error(f"Input validation failed: {e}. Input data: {input_data}")
-                 raise ValueError(f"Input validation failed: {e}") from e
-
-            # 2. Construct LLM Prompt
-            # --- Enhanced LLM Prompt ---
-            # This prompt is designed to elicit more creative, detailed, and relevant branding elements.
-            # It emphasizes deep consideration of the input and asks for rationales.
+            # Construct LLM Prompt
             prompt = f"""
             You are a highly creative and strategic branding expert tasked with developing a compelling brand identity.
             Deeply analyze the provided product specification:
@@ -347,94 +368,66 @@ class BrandingAgent(LlmAgent): # Inherit from LlmAgent
             Ensure all fields are populated according to the instructions above. The output MUST be only the JSON object.
             """
 
-            # 3. Call LLM
-            self.logger.info("Sending request to LLM for branding generation.")
+            # Call LLM
+            logger.info("Sending request to LLM for branding generation.")
             llm_response_text = await self.llm_client.generate_text_async(prompt=prompt)
-            self.logger.debug(f"Raw LLM response: {llm_response_text}") # Log raw response for debugging
 
-            # 4. Parse LLM Response
+            # Parse LLM Response
             try:
                 # Clean potential markdown code fences
                 if llm_response_text.strip().startswith("```json"):
                     llm_response_text = llm_response_text.strip()[7:-3].strip()
                 elif llm_response_text.strip().startswith("```"):
-                     llm_response_text = llm_response_text.strip()[3:-3].strip()
+                    llm_response_text = llm_response_text.strip()[3:-3].strip()
 
                 llm_data = json.loads(llm_response_text)
-                self.logger.info("Successfully parsed LLM response JSON.")
+                logger.info("Successfully parsed LLM response JSON.")
             except json.JSONDecodeError as e:
-                self.logger.error(f"Failed to parse LLM response as JSON: {e}. Response: {llm_response_text}")
-                raise ValueError(f"LLM response was not valid JSON: {e}") from e
-            except Exception as e: # Catch other potential errors during parsing
-                self.logger.error(f"An unexpected error occurred during LLM response parsing: {e}. Response: {llm_response_text}")
-                raise ValueError(f"Could not process LLM response: {e}") from e
+                logger.error(f"Failed to parse LLM response as JSON: {e}")
+                return {
+                    "success": False,
+                    "error": f"Failed to parse LLM response as JSON: {str(e)}"
+                }
 
-
-            # 5. Perform Availability Checks (if configured)
+            # Perform Availability Checks
             availability_notes: Dict[str, str] = {}
             availability_statuses: Dict[str, str] = {}
-            suggested_names_map: Dict[str, Dict] = {} # Map name to original suggestion dict
 
-            if self.agent_web_search_url and self.brave_api_key:
-                brand_suggestions = llm_data.get("brand_name_suggestions", [])
-                suggested_names = [s.get("value") for s in brand_suggestions if s.get("value")]
+            brand_suggestions = llm_data.get("brand_name_suggestions", [])
+            suggested_names = [s.get("value") for s in brand_suggestions if s.get("value")]
 
-                if not suggested_names:
-                     self.logger.warning("No brand name suggestions found in LLM response to check availability.")
-                else:
-                    # Store original suggestions for later lookup
-                    for suggestion in brand_suggestions:
-                        if suggestion.get("value"):
-                            suggested_names_map[suggestion["value"]] = suggestion
+            if suggested_names:
+                logger.info(f"Checking availability for suggested names: {suggested_names}")
 
-                    self.logger.info(f"Checking availability for suggested names: {suggested_names}")
-                    async with httpx.AsyncClient() as client:
-                        tasks = [self._check_name_availability(name, client) for name in suggested_names]
-                        # results will be a list of tuples: [(summary1, status1), (summary2, status2), ...]
-                        check_results = await asyncio.gather(*tasks)
+                # Check availability for each name
+                for name in suggested_names:
+                    summary, status = await self._check_name_availability(name)
+                    availability_notes[name] = summary
+                    availability_statuses[name] = status
 
-                        # Populate notes and statuses dictionaries
-                        for i, name in enumerate(suggested_names):
-                            if i < len(check_results):
-                                summary, status = check_results[i]
-                                availability_notes[name] = summary
-                                availability_statuses[name] = status
-                            else:
-                                # Should not happen if gather worked correctly, but handle defensively
-                                availability_notes[name] = "Error retrieving check result."
-                                availability_statuses[name] = "error"
+                logger.info(f"Availability check statuses: {availability_statuses}")
 
-                        self.logger.info(f"Availability check notes: {availability_notes}")
-                        self.logger.info(f"Availability check statuses: {availability_statuses}")
-            else:
-                self.logger.info("Skipping availability checks as Web Search Agent URL or Brave API Key is not configured.")
-                availability_notes = {"info": "Availability checks skipped due to missing configuration."}
-                # Populate statuses as skipped for any suggested names
-                for s in llm_data.get("brand_name_suggestions", []):
-                    if s.get("value"):
-                        availability_statuses[s["value"]] = "skipped"
-
-
-            # 6. Analyze Availability and Select Final Name
+            # Analyze Availability and Select Final Name
             original_selected_name_item = llm_data.get("selected_brand_name", {})
             original_selected_name = original_selected_name_item.get("value")
             final_selected_name_item = original_selected_name_item # Default to original
 
             if original_selected_name and original_selected_name in availability_statuses:
                 original_status = availability_statuses[original_selected_name]
-                self.logger.info(f"Original LLM selected name '{original_selected_name}' has availability status: {original_status}")
+                logger.info(f"Original LLM selected name '{original_selected_name}' has availability status: {original_status}")
 
                 # If original selection is not ideal ('available'), try to find a better one
                 if original_status != 'available':
-                    self.logger.info(f"Original selection '{original_selected_name}' is not 'available'. Searching for alternatives.")
+                    logger.info(f"Original selection '{original_selected_name}' is not 'available'. Searching for alternatives.")
                     found_available_alternative = False
+
                     # Iterate through suggestions IN THE ORDER PROVIDED BY LLM
-                    for suggestion_item in llm_data.get("brand_name_suggestions", []):
+                    for suggestion_item in brand_suggestions:
                         suggestion_name = suggestion_item.get("value")
                         if suggestion_name and suggestion_name in availability_statuses:
                             suggestion_status = availability_statuses[suggestion_name]
                             if suggestion_status == 'available':
-                                self.logger.info(f"Found 'available' alternative: '{suggestion_name}'. Selecting it.")
+                                logger.info(f"Found 'available' alternative: '{suggestion_name}'. Selecting it.")
                                 # Use the original rationale from the suggestion
                                 original_rationale = suggestion_item.get("rationale", "No rationale provided.")
                                 final_selected_name_item = {
@@ -445,56 +438,152 @@ class BrandingAgent(LlmAgent): # Inherit from LlmAgent
                                 break # Stop after finding the first available alternative
 
                     if not found_available_alternative:
-                         self.logger.warning(f"Could not find an 'available' alternative. Keeping original selection '{original_selected_name}' despite status '{original_status}'.")
-                         # Optionally update justification to mention availability issue
-                         final_selected_name_item["justification"] = f"{original_selected_name_item.get('justification', '')} (Availability Status: {original_status})"
-
-            else:
-                 self.logger.warning(f"Could not determine availability status for originally selected name '{original_selected_name}'. Keeping original selection.")
+                        logger.warning(f"Could not find an 'available' alternative. Keeping original selection '{original_selected_name}' despite status '{original_status}'.")
+                        # Optionally update justification to mention availability issue
+                        final_selected_name_item["justification"] = f"{original_selected_name_item.get('justification', '')} (Availability Status: {original_status})"
 
             # Update llm_data with the potentially revised selection
             llm_data["selected_brand_name"] = final_selected_name_item
 
-
-            # 7. Validate and Assemble Final Brand Package
+            # Validate and Assemble Final Brand Package
             try:
                 # Add target demographics back into the package if not already present
                 if 'target_demographics' not in llm_data:
-                     llm_data['target_demographics'] = inputs.target_audience
+                    llm_data['target_demographics'] = inputs.target_audience
 
-                # Validate the main structure first (using the potentially updated llm_data)
+                # Validate the main structure
                 brand_package = BrandPackage(**llm_data)
-                # Add the availability notes (summary strings) collected separately
+                # Add the availability notes
                 brand_package.availability_notes = availability_notes
-                self.logger.info("Successfully validated LLM data and added availability notes.")
+                logger.info("Successfully validated LLM data and added availability notes.")
 
-            except Exception as e: # Catch Pydantic validation errors
-                self.logger.error(f"LLM response data failed validation against BrandPackage model: {e}. Data: {llm_data}")
-                # Consider logging the specific validation errors if Pydantic provides them easily
-                raise ValueError(f"LLM response data failed validation: {e}") from e
+                # Return the brand package
+                return {
+                    "success": True,
+                    "message": "Brand identity generated successfully.",
+                    **brand_package.model_dump()
+                }
+            except Exception as e:
+                logger.error(f"LLM response data failed validation: {e}")
+                return {
+                    "success": False,
+                    "error": f"LLM response data failed validation: {str(e)}",
+                    "partial_data": llm_data
+                }
 
-            # 7. Return Success Event
-            self.logger.info("Branding generation finished successfully.")
-            return Event(
-                event_type="adk.agent.result",
-                data=brand_package.model_dump(), # Serialize the Pydantic model including notes
-                metadata={"status": "success"}
+        except Exception as e:
+            logger.error(f"Error generating brand identity: {e}", exc_info=True)
+            return {
+                "success": False,
+                "error": f"Error generating brand identity: {str(e)}"
+            }
+
+    @skill(
+        name="check_name_availability",
+        description="Check domain, social, and trademark availability for a brand name",
+        tags=["branding", "availability"]
+    )
+    async def check_name_availability_skill(self, name: str) -> Dict[str, Any]:
+        """
+        Check domain, social, and trademark availability for a brand name.
+
+        Args:
+            name: The brand name to check.
+
+        Returns:
+            A dictionary containing the availability check results.
+        """
+        logger.info(f"Checking availability for brand name: {name}")
+
+        try:
+            summary, status = await self._check_name_availability(name)
+
+            return {
+                "success": True,
+                "name": name,
+                "status": status,
+                "summary": summary
+            }
+        except Exception as e:
+            logger.error(f"Error checking name availability: {e}", exc_info=True)
+            return {
+                "success": False,
+                "name": name,
+                "error": f"Error checking name availability: {str(e)}"
+            }
+
+    async def run_async(self, context: InvocationContext) -> Event:
+        """
+        Executes the branding generation workflow asynchronously according to ADK spec.
+        Maintained for backward compatibility with ADK.
+
+        Args:
+            context: The invocation context containing the input data.
+
+        Returns:
+            An Event containing the branding results or an error.
+        """
+        logger.info(f"Received invocation for BrandingAgent (ID: {context.invocation_id})")
+
+        try:
+            # Extract input from context
+            input_data = {}
+            if hasattr(context, 'input') and hasattr(context.input, 'data'):
+                if isinstance(context.input.data, dict):
+                    input_data = context.input.data
+                else:
+                    try:
+                        input_data = json.loads(context.input.data)
+                    except json.JSONDecodeError as e:
+                        logger.error(f"Input data is not a valid dictionary or JSON string: {context.input.data}")
+                        raise ValueError(f"Input data is not a valid dictionary or JSON string: {e}") from e
+
+            # Parse and validate input
+            try:
+                inputs = BrandingAgentInput(**input_data)
+            except Exception as e:
+                logger.error(f"Input validation failed: {e}")
+                return Event(
+                    event_type="adk.agent.error",
+                    data={"error": "Input validation failed", "details": str(e)},
+                    metadata={"status": "error"}
+                )
+
+            # Use the A2A skill
+            result = await self.generate_brand(
+                product_concept=inputs.product_concept,
+                target_audience=inputs.target_audience,
+                keywords=inputs.keywords,
+                business_model_type=inputs.business_model_type
             )
 
-        except ValueError as ve: # Catch specific validation/parsing errors
-             self.logger.error(f"BrandingAgent execution failed due to ValueError: {ve}", exc_info=True)
-             return Event(
-                 event_type="adk.agent.error",
-                 data={"error": "Input or LLM Response Error", "details": str(ve)},
-                 metadata={"status": "error"}
-             )
-        except Exception as e: # Catch broader errors (e.g., LLM client issues)
-            self.logger.error(f"BrandingAgent execution failed unexpectedly: {e}", exc_info=True)
+            # Create an event from the result
+            if result.get("success", False):
+                return Event(
+                    event_type="adk.agent.result",
+                    data={k: v for k, v in result.items() if k != "success" and k != "message"},
+                    metadata={"status": "success"}
+                )
+            else:
+                return Event(
+                    event_type="adk.agent.error",
+                    data={"error": result.get("error", "Branding generation failed.")},
+                    metadata={"status": "error"}
+                )
+
+        except Exception as e:
+            # Catch-all for unexpected errors
+            logger.error(f"Unexpected error in BrandingAgent: {e}", exc_info=True)
             return Event(
                 event_type="adk.agent.error",
                 data={"error": "Internal Agent Error", "details": f"An unexpected error occurred: {str(e)}"},
                 metadata={"status": "error"}
             )
 
-# Removed the old _load_branding_elements, _generate_brand_name, _generate_color_scheme, _generate_positioning methods
-# Removed the if __name__ == "__main__": block
+# Example of how to run this agent as a standalone A2A server
+if __name__ == "__main__":
+    # Create the agent
+    agent = BrandingAgent()
+
+    # Run the A2A server
+    agent.run_server(host="0.0.0.0", port=agent.port or 8006)
