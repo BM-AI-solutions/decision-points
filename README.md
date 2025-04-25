@@ -43,7 +43,16 @@ Docker Compose is used to manage the local development environment, running the 
 
 The system implements a multi-agent architecture using the Agent-to-Agent (A2A) protocol and Google Gemini. Each agent is a specialized service that can be run independently and communicates with other agents through a standardized protocol.
 
-### Agent State Persistence
+### A2A Protocol Integration
+
+The Agent-to-Agent (A2A) protocol enables seamless communication between agents, allowing them to:
+
+1. **Delegate Tasks**: The orchestrator agent can route tasks to specialized agents based on the nature of the request.
+2. **Share Context**: Agents can pass context and results between each other, maintaining continuity in multi-step workflows.
+3. **Stream Responses**: Support for streaming responses enables real-time feedback during long-running tasks.
+4. **Access via ADK Web**: All agents, including the orchestrator, can be accessed through the ADK web interface for easy testing and debugging.
+
+### Agent State Persistence with PostgreSQL
 
 All agents use PostgreSQL for state persistence, which provides several advantages:
 
@@ -57,6 +66,8 @@ The database schema includes tables for:
 - `workflow_steps`: Tracks individual steps within a workflow
 - `agent_states`: Stores agent-specific state data
 - `agent_tasks`: Tracks tasks assigned to agents
+
+The integration with ADK's `DatabaseSessionService` ensures that agent state is properly persisted and can be retrieved across sessions, providing a robust foundation for complex multi-agent workflows.
 
 ### Autonomous Income Generation Workflow
 
@@ -154,6 +165,22 @@ This is the primary and recommended method for local development and testing.
         ```
         http://localhost:<port>/adk/web
         ```
+
+    *   **Starting the Orchestrator Agent with ADK Web:**
+        ```bash
+        # First, install dependencies
+        docker compose exec backend bash scripts/install_dependencies.sh
+
+        # Then, start the orchestrator agent with ADK web
+        docker compose exec backend python scripts/start_orchestrator_adk.py --port 8001
+        ```
+
+        After starting the orchestrator agent with ADK web, you can access the ADK web interface at:
+        ```
+        http://localhost:8001/adk/web
+        ```
+
+        This allows you to interact with the orchestrator agent directly through the ADK web interface, which provides a user-friendly way to test and debug the agent. The orchestrator agent can delegate tasks to specialized agents using the A2A protocol.
 
 ## Environment Variables
 

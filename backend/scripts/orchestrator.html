@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Orchestrator Agent Interface</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+        }
+        .container {
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+        textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            margin-bottom: 10px;
+            font-family: inherit;
+        }
+        button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        #response {
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background-color: #f9f9f9;
+            white-space: pre-wrap;
+            min-height: 200px;
+        }
+        .loading {
+            text-align: center;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Orchestrator Agent Interface</h1>
+    
+    <div class="container">
+        <h2>Send a Prompt to the Orchestrator</h2>
+        <textarea id="prompt" rows="5" placeholder="Enter your prompt here...">Create a passive income stream using a simple weather app that shows current weather and 5-day forecast</textarea>
+        <button id="sendButton" onclick="sendPrompt()">Send Prompt</button>
+        <div id="loading" class="loading" style="display: none;">Processing your request...</div>
+        <div id="response"></div>
+    </div>
+
+    <script>
+        async function sendPrompt() {
+            const prompt = document.getElementById('prompt').value;
+            const responseDiv = document.getElementById('response');
+            const loadingDiv = document.getElementById('loading');
+            const sendButton = document.getElementById('sendButton');
+            
+            if (!prompt) {
+                responseDiv.textContent = 'Please enter a prompt.';
+                return;
+            }
+            
+            // Show loading indicator
+            loadingDiv.style.display = 'block';
+            responseDiv.textContent = '';
+            sendButton.disabled = true;
+            
+            try {
+                const response = await fetch('http://localhost:8001/api/v1/agents/orchestrator/prompt', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ prompt }),
+                });
+                
+                const data = await response.json();
+                responseDiv.textContent = JSON.stringify(data, null, 2);
+            } catch (error) {
+                responseDiv.textContent = 'Error: ' + error.message;
+            } finally {
+                // Hide loading indicator
+                loadingDiv.style.display = 'none';
+                sendButton.disabled = false;
+            }
+        }
+    </script>
+</body>
+</html>
