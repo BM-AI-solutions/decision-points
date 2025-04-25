@@ -5,10 +5,7 @@
   "backend": {
     "language": "Python 3.10",
     "framework": "FastAPI",
-    "server": {
-      "development": "Uvicorn",
-      "production": "Gunicorn"
-    },
+    "server": "Uvicorn",
     "database": {
       "orm": "SQLAlchemy",
       "migration": "Alembic",
@@ -42,7 +39,7 @@
           "MarketingAgent",
           "WebSearchAgent"
         ],
-        "communication": ["ADK invoke_skill", "A2A HTTP (implied by WorkflowManagerAgent._invoke_a2a_agent)"]
+        "communication": ["update this"]
       },
       "external_integrations": [
         "Exa AI",
@@ -59,9 +56,7 @@
     "cloud_services": ["Google Cloud Secret Manager"],
     "logging_observability": ["Loguru", "Logfire"],
     "other_libraries": [
-      "Pydantic (Data Validation, Settings)",
-      "HTTPX (API Client)",
-      "python-multipart (File Uploads)"
+      "update this"
     ],
     "inconsistencies": [
       "backend/Dockerfile 'dev' stage CMD uses 'flask run', conflicting with FastAPI/Uvicorn setup indicated elsewhere."

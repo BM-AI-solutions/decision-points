@@ -1,16 +1,42 @@
+import asyncio
 import json
 import logging
-from typing import Dict, Any
+import os
+import argparse
+from typing import Dict, Any, Optional
 
-import google.generativeai as genai
+import uvicorn
+from fastapi import FastAPI, HTTPException, Body
+from pydantic import BaseModel, Field
+
+# Assuming ADK is installed and configured
 from google.adk.agents import LlmAgent
+from google.adk.llm import Gemini # Assuming Gemini is the intended LLM client
 from google.adk.runtime import InvocationContext, Event
 
 # Configure logging
-logger = logging.getLogger(__name__)
+# Use logfire if configured globally, otherwise standard logging
+try:
+    import logfire
+    # Assuming logfire is configured elsewhere (e.g., main backend or globally)
+    logger = logfire # Use logfire directly if available
+except ImportError:
+    logger = logging.getLogger(__name__)
+    logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"))
 
-# TODO: Configure Gemini API key (likely handled globally or via env vars)
-# genai.configure(api_key="YOUR_GEMINI_API_KEY")
+# --- Pydantic Models ---
+
+# Define a generic input model as the exact structures aren't imported/defined here
+class CodeGenInput(BaseModel):
+    product_spec: Dict[str, Any] = Field(description="The improved product specification.")
+    branding: Dict[str, Any] = Field(description="The branding package.")
+
+# Define output model (assuming the agent returns a dict mapping filenames to code)
+class CodeGenOutput(BaseModel):
+    generated_code: Dict[str, str] = Field(description="Dictionary mapping file paths to their generated code content.")
+
+
+# --- Agent Class ---
 
 class CodeGenerationAgent(LlmAgent):
     """
@@ -18,34 +44,41 @@ class CodeGenerationAgent(LlmAgent):
     """
 
     def __init__(self,
-                 agent_id: str = "code_generation_agent",
-                 model_name: Optional[str] = None, # Added model_name parameter
+                 agent_id: str = "code-generation-agent", # Hyphenated convention
+                 model_name: Optional[str] = None,
                  target_framework: str = "vite-react"):
         """
         Initializes the CodeGenerationAgent.
 
         Args:
             agent_id: The unique identifier for this agent instance.
-            model_name: The name of the Gemini model to use (e.g., 'gemini-2.5-flash-preview-04-17').
-                        Defaults to a suitable model if None.
+            model_name: The name of the Gemini model to use. Reads from GEMINI_MODEL_NAME env var if None.
             target_framework: The target frontend framework (e.g., 'vite-react').
         """
-        # Determine the model name to use
-        effective_model_name = model_name if model_name else 'gemini-2.5-flash-preview-04-17' # Default for specialized agent
-        self.model_name = effective_model_name # Store the actual model name used
+        # Get config from environment variables
+        effective_model_name = model_name or os.environ.get('GEMINI_MODEL_NAME', 'gemini-1.5-flash-latest') # Default model
+        self.model_name = effective_model_name
+        self.target_framework = target_framework
 
         # Initialize the ADK Gemini model
-        adk_model = Gemini(model=self.model_name)
+        # Assumes GEMINI_API_KEY is configured via environment variable for ADK
+        try:
+            adk_model = Gemini(model=self.model_name)
+        except Exception as e:
+            logger.error(f"Failed to initialize Gemini model '{self.model_name}': {e}", exc_info=True)
+            adk_model = None # Handle initialization failure
 
-        # Call super().__init__ from LlmAgent, passing the model
+        # Call super().__init__ from LlmAgent
         super().__init__(
             agent_id=agent_id,
-            model=adk_model # Pass the initialized ADK model object
-            # instruction can be set here if needed, or rely on default/prompt
+            model=adk_model
         )
-        self.target_framework = target_framework
-        # self.llm_model = genai.GenerativeModel('gemini-2.5-flash-preview-04-17') # Removed direct instantiation
-        logger.info(f"CodeGenerationAgent initialized with model: {self.model_name} for framework: {self.target_framework}")
+
+        if not adk_model:
+             logger.error("CodeGenerationAgent initialized WITHOUT a valid LLM client due to model initialization failure.")
+        else:
+            logger.info(f"CodeGenerationAgent initialized with model: {self.model_name} for framework: {self.target_framework}")
+
 
     async def run_async(self, context: InvocationContext) -> Event:
         """
@@ -53,7 +86,7 @@ class CodeGenerationAgent(LlmAgent):
 
         Args:
             context: The invocation context containing input data.
-                     Expected data: {'product_spec': ImprovedProductSpec, 'branding': BrandingPackage}
+                     Expected data: {'product_spec': Dict, 'branding': Dict}
 
         Returns:
             An Event containing the generated code structure (Dict[str, str]) on success,
@@ -61,73 +94,114 @@ class CodeGenerationAgent(LlmAgent):
         """
         logger.info(f"CodeGenerationAgent run_async invoked for instance: {context.instance_id}")
 
+        if not isinstance(context.data, dict):
+            error_msg = f"Input data is not a dictionary: {type(context.data)}"
+            logger.error(error_msg)
+            return context.create_error_event(error_msg)
+
         product_spec = context.data.get("product_spec")
         branding = context.data.get("branding")
 
         if not product_spec or not branding:
             error_msg = "Missing 'product_spec' or 'branding' in input data."
             logger.error(error_msg)
-            return Event.create_error_event(error_msg)
+            return context.create_error_event(error_msg)
 
-        logger.debug(f"Received Product Spec: {product_spec}")
-        logger.debug(f"Received Branding Package: {branding}")
+        logger.debug(f"Received Product Spec keys: {list(product_spec.keys())}")
+        logger.debug(f"Received Branding Package keys: {list(branding.keys())}")
 
         try:
             # 1. Construct the prompt for the LLM
             prompt = self._build_generation_prompt(product_spec, branding)
-            logger.debug(f"Constructed LLM Prompt:\n{prompt}")
+            logger.debug("Constructed LLM Prompt.") # Avoid logging full prompt by default
 
             # 2. Call the LLM
-            # TODO: Add retry logic, more sophisticated error handling for LLM calls
-            # Use the LlmAgent's client, configured with the correct model
+            if not self.llm_client:
+                 logger.error("LLM client is not initialized. Cannot generate code.")
+                 raise RuntimeError("LLM client not initialized.")
+
+            logger.info("Sending request to LLM for code generation.")
+            # Use the LlmAgent's client
             response_text = await self.llm_client.generate_text_async(prompt=prompt)
             logger.info("LLM response received.")
-            # Assuming the LLM returns a JSON string mapping file paths to content
-            # Need robust parsing and validation here
-            # response_text = response.text.strip() # Already have response_text
-            logger.debug(f"Raw LLM Response Text:\n{response_text}")
+            logger.debug(f"Raw LLM Response Text length: {len(response_text)}")
 
-             # Attempt to find JSON block within the response
-            json_start = response_text.find('{')
-            json_end = response_text.rfind('}') + 1
-            if json_start != -1 and json_end != -1:
-                 json_string = response_text[json_start:json_end]
-                 try:
-                     generated_code = json.loads(json_string)
-                     if not isinstance(generated_code, dict):
-                         raise ValueError("LLM response JSON is not a dictionary.")
-                     logger.info(f"Successfully parsed generated code structure for {len(generated_code)} files.")
-                 except json.JSONDecodeError as e:
-                     error_msg = f"Failed to parse LLM response as JSON: {e}\nResponse: {response_text}"
-                     logger.error(error_msg)
-                     return Event.create_error_event(error_msg)
-                 except ValueError as e:
-                     error_msg = f"LLM response JSON format error: {e}\nResponse: {response_text}"
-                     logger.error(error_msg)
-                     return Event.create_error_event(error_msg)
-            else:
-                 error_msg = f"Could not find valid JSON object in LLM response.\nResponse: {response_text}"
+            # 3. Parse LLM Response (JSON object mapping file paths to content)
+            json_string = self._extract_json(response_text)
+            if not json_string:
+                 error_msg = f"Could not find valid JSON object in LLM response.\nFirst 500 chars: {response_text[:500]}"
                  logger.error(error_msg)
-                 return Event.create_error_event(error_msg)
+                 return context.create_error_event(error_msg)
 
+            try:
+                generated_code = json.loads(json_string)
+                if not isinstance(generated_code, dict):
+                    raise ValueError("LLM response JSON is not a dictionary.")
+                # Basic validation: check if values are strings
+                for k, v in generated_code.items():
+                    if not isinstance(v, str):
+                        raise ValueError(f"Value for key '{k}' is not a string.")
+                logger.info(f"Successfully parsed generated code structure for {len(generated_code)} files.")
+            except json.JSONDecodeError as e:
+                error_msg = f"Failed to parse LLM response as JSON: {e}\nExtracted JSON string: {json_string[:500]}..."
+                logger.error(error_msg)
+                return context.create_error_event(error_msg)
+            except ValueError as e:
+                error_msg = f"LLM response JSON format error: {e}\nExtracted JSON string: {json_string[:500]}..."
+                logger.error(error_msg)
+                return context.create_error_event(error_msg)
 
             # 4. Return success event with generated code
             logger.info("Code generation successful.")
-            return Event.create_result_event(data={"generated_code": generated_code})
+            return context.create_result_event(data={"generated_code": generated_code})
 
         except Exception as e:
             error_msg = f"Code generation failed: {e}"
             logger.exception(error_msg) # Log full traceback
-            return Event.create_error_event(error_msg)
+            return context.create_error_event(error_msg)
+
+    def _extract_json(self, text: str) -> Optional[str]:
+        """Attempts to extract a JSON object string from the LLM response."""
+        try:
+            # Find the first '{' and the last '}'
+            json_start = text.find('{')
+            json_end = text.rfind('}') + 1
+            if json_start != -1 and json_end != -1 and json_start < json_end:
+                 potential_json = text[json_start:json_end]
+                 # Basic validation: try parsing it
+                 json.loads(potential_json)
+                 return potential_json
+            else:
+                 # Look for markdown code fences
+                 fence_start = text.find("```json")
+                 if fence_start != -1:
+                     fence_end = text.find("```", fence_start + 7)
+                     if fence_end != -1:
+                         potential_json = text[fence_start + 7:fence_end].strip()
+                         json.loads(potential_json)
+                         return potential_json
+        except (json.JSONDecodeError, Exception):
+            logger.warning("Could not extract valid JSON from text.", exc_info=True)
+            return None
+        return None
+
 
     def _build_generation_prompt(self, product_spec: Any, branding: Any) -> str:
         """
-        Constructs the prompt for the LLM to generate code, focusing on feature implementation.
+        Constructs the prompt for the LLM to generate code.
+        (Using the detailed prompt from the previous version)
         """
         # Convert spec and branding to JSON strings for the prompt
-        spec_json = json.dumps(product_spec, indent=2)
-        branding_json = json.dumps(branding, indent=2)
+        try:
+            spec_json = json.dumps(product_spec, indent=2)
+            branding_json = json.dumps(branding, indent=2)
+        except Exception as e:
+            logger.error(f"Failed to serialize product_spec or branding to JSON: {e}")
+            # Fallback or raise error - using basic string representation as fallback
+            spec_json = str(product_spec)
+            branding_json = str(branding)
 
+        # --- Using the detailed prompt from the previous file content ---
         prompt = f"""
 You are an expert Vite + React developer. Your task is to generate the complete codebase for a web application based on the provided Product Specification and Branding Package.
 
@@ -227,39 +301,56 @@ Now, generate the JSON object containing the complete codebase based on the prov
 """
         return prompt
 
-# Example Usage (for testing purposes, would not be in production agent code)
-if __name__ == '__main__':
-    # This block allows for testing the agent logic locally if needed
-    # You would need to mock InvocationContext, Event, product_spec, branding
-    # and potentially the LLM call.
-    print("CodeGenerationAgent defined. Run integration tests for actual execution.")
+# --- FastAPI Server Setup ---
 
-    # Mock data example:
-    mock_spec = {
-        "appName": "Idea Spark",
-        "concept": "A simple web app to capture and organize ideas.",
-        "features": ["Input field for new ideas", "List display of ideas", "Ability to delete ideas"],
-        "targetAudience": "Individuals"
-    }
-    mock_branding = {
-        "brandName": "Idea Spark",
-        "logoDescription": "A lightbulb icon",
-        "colorPalette": {
-            "primary": "#4A90E2", # Blue
-            "secondary": "#F5A623", # Orange
-            "background": "#FFFFFF", # White
-            "text": "#333333" # Dark Gray
-        },
-        "typography": {
-            "fontFamily": "Arial, sans-serif",
-            "headings": "bold"
-        }
-    }
+app = FastAPI(title="CodeGenerationAgent A2A Server")
 
-    # Note: Direct instantiation and running like this bypasses the ADK runtime.
-    # Use 'adk run' or proper testing frameworks for real execution.
-    # agent = CodeGenerationAgent()
-    # prompt = agent._build_generation_prompt(mock_spec, mock_branding)
-    # print("\n--- Example Prompt ---")
-    # print(prompt)
-    # print("\n--- End Example Prompt ---")
+# Instantiate the agent (reads env vars internally)
+code_gen_agent_instance = CodeGenerationAgent()
+
+@app.post("/invoke", response_model=CodeGenOutput) # Use output model for response validation
+async def invoke_agent(request: CodeGenInput = Body(...)):
+    """
+    A2A endpoint to invoke the CodeGenerationAgent.
+    Expects JSON body with 'product_spec' and 'branding'.
+    """
+    logger.info("CodeGenerationAgent /invoke called.")
+    # Create InvocationContext, passing data directly
+    context = InvocationContext(agent_id="code-generation-agent", data=request.model_dump())
+
+    try:
+        result_event = await code_gen_agent_instance.run_async(context)
+        if result_event and result_event.metadata.get("status") != "error": # Check for non-error status
+            logger.info("CodeGenerationAgent returning success result.")
+            # Validate the structure before returning
+            if "generated_code" in result_event.data and isinstance(result_event.data["generated_code"], dict):
+                 return result_event.data # Return the data part of the event
+            else:
+                 logger.error(f"Agent returned success status but data format is incorrect: {result_event.data}")
+                 raise HTTPException(status_code=500, detail="Agent returned success but data format is invalid.")
+        elif result_event:
+             error_details = result_event.data.get("details", "Unknown agent error")
+             logger.error(f"CodeGenerationAgent run_async returned error event: {error_details}")
+             raise HTTPException(status_code=500, detail=f"Agent execution failed: {error_details}")
+        else:
+            logger.error("CodeGenerationAgent run_async returned None")
+            raise HTTPException(status_code=500, detail="Agent execution failed to return an event.")
+    except Exception as e:
+        logger.error(f"Error during agent invocation: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {e}")
+
+@app.get("/health")
+async def health_check():
+    return {"status": "ok"}
+
+# --- Main execution block ---
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Run the CodeGenerationAgent A2A server.")
+    parser.add_argument("--host", type=str, default="0.0.0.0", help="Host to bind the server to.")
+    parser.add_argument("--port", type=int, default=8082, help="Port to run the server on (default from compose).") # Default matches compose
+    args = parser.parse_args()
+
+    print(f"Starting CodeGenerationAgent A2A server on {args.host}:{args.port}")
+
+    uvicorn.run(app, host=args.host, port=args.port)

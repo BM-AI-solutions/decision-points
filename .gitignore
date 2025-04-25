@@ -1,10 +1,6 @@
 .github/
 # Environment variables
 .env
-.env.local
-.env.development
-.env.test
-.env.production
 
 # Python
 __pycache__/
@@ -69,22 +65,11 @@ frontend/dist/
 backend/__pycache__/
 backend/**/__pycache__/
 
-/deployment-summary.md
-
 .pytest_cache
 .__pycache__
 .pyc 
-.aider*
-.templates/*
-.docs/*
-.modes/*
-.roo/*
 .tasks
 .workflows/*
-.roo/*
-.context/*
 .planning/*
 .processes/*
-*.roomodes
 *.changelog.md
-*.rooREADME.md

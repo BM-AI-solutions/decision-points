@@ -1,0 +1,354 @@
+version: "3.8"
+
+# Unified Docker Compose for Local Development with A2A
+
+# Environment variables loaded from .env
+# Ensure .env exists in the root directory
+# Example: Copy .env.example to .env and fill in values
+# POSTGRES_USER=user
+# POSTGRES_PASSWORD=password
+# POSTGRES_DB=appdb
+# KAFKA_BOOTSTRAP_SERVERS=kafka:9092 # Keep if needed for ADK/other parts, otherwise remove
+# ADK_AGENT_ID=backend-agent # Example ID for the main backend
+# BRAVE_API_KEY=your_brave_api_key # Example for web search agent
+# LOG_LEVEL=INFO
+# JWT_SECRET=your_jwt_secret # Example, ensure all needed secrets are in .env
+
+networks:
+  a2a_network:
+    driver: bridge
+
+volumes:
+  postgres_data: # Persistent data for the database
+
+services:
+  # ================== Database Service ==================
+  db:
+    image: postgres:15
+    env_file:
+      - ./.env
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - a2a_network
+    ports:
+      - "5432:5432" # Expose DB port for local debugging
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ================== Backend Service (A2A Client) ==================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile # Simplified Dockerfile (target removed)
+    env_file:
+      - ./.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      ADK_AGENT_ID: ${ADK_AGENT_ID:-backend-client} # Renamed to reflect client role
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      JWT_SECRET: ${JWT_SECRET}
+      # Add environment variables for each agent's A2A endpoint URL
+      WEB_SEARCH_AGENT_URL: http://web_search_agent:8080
+      BRANDING_AGENT_URL: http://branding_agent:8081
+      CODE_GENERATION_AGENT_URL: http://code_generation_agent:8082
+      CONTENT_GENERATION_AGENT_URL: http://content_generation_agent:8083
+      DEPLOYMENT_AGENT_URL: http://deployment_agent:8084
+      FREELANCE_TASK_AGENT_URL: http://freelance_task_agent:8085
+      IMPROVEMENT_AGENT_URL: http://improvement_agent:8086
+      LEAD_GENERATION_AGENT_URL: http://lead_generation_agent:8087
+      MARKET_ANALYSIS_AGENT_URL: http://market_analysis_agent:8088
+      MARKET_RESEARCH_AGENT_URL: http://market_research_agent:8089
+      MARKETING_AGENT_URL: http://marketing_agent:8090
+      ORCHESTRATOR_AGENT_URL: http://orchestrator_agent:8091
+      WORKFLOW_MANAGER_AGENT_URL: http://workflow_manager_agent:8092
+    working_dir: /app
+    volumes:
+      - ./backend:/app # Mount code for hot-reloading
+    ports:
+      - "8000:8000"
+    networks:
+      - a2a_network
+    depends_on:
+      db:
+        condition: service_healthy # Wait for DB healthcheck
+      # Add depends_on for all agents if backend needs them at startup
+      # web_search_agent:
+      #   condition: service_started # Or service_healthy if agents have healthchecks
+      # branding_agent:
+      #   condition: service_started
+      # ... etc for all agents
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    restart: unless-stopped
+
+  # ================== Frontend Service ==================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile # Simplified Dockerfile (target removed)
+    working_dir: /app
+    volumes:
+      - ./frontend:/app # Mount code
+      - /app/node_modules # Prevent host node_modules from overwriting container's
+    ports:
+      - "3000:5173" # Vite default dev port
+    networks:
+      - a2a_network
+    depends_on:
+      - backend
+    command: npm run dev -- --host # Run Vite dev server
+    restart: unless-stopped
+
+  # ================== Agent Services (A2A Servers) ==================
+
+  web_search_agent:
+    build:
+      context: ./backend # Context is backend where Dockerfile resides
+      dockerfile: agents/web_search.Dockerfile # Specific Dockerfile
+    env_file:
+      - ./.env
+    environment:
+      ADK_AGENT_ID: web-search-agent
+      A2A_PORT: 8080 # Internal port for A2A
+      BRAVE_API_KEY: ${BRAVE_API_KEY}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      # Add DB URL if needed by this agent
+      # DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    volumes:
+      - ./backend/agents:/app/agents # Mount specific agent code
+      - ./backend/utils:/app/utils # Mount shared utils if needed
+    networks:
+      - a2a_network
+    # ports: # Only expose externally if direct debugging is needed
+    #   - "8080:8080"
+    command: python agents/web_search_agent.py --port 8080 # Example command to start ADK server
+    restart: unless-stopped
+    # depends_on: # Add dependencies if needed (e.g., db)
+    #   db:
+    #     condition: service_healthy
+
+  branding_agent:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - ./.env
+    environment:
+      ADK_AGENT_ID: branding-agent
+      A2A_PORT: 8081
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      # Add other necessary env vars (e.g., API keys, DB URL)
+    volumes:
+      - ./backend/agents:/app/agents
+      - ./backend/utils:/app/utils
+    networks: [a2a_network]
+    command: python agents/branding_agent.py --port 8081 # Adjust command as needed
+    restart: unless-stopped
+
+  code_generation_agent:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - ./.env
+    environment:
+      ADK_AGENT_ID: code-generation-agent
+      A2A_PORT: 8082
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      - ./backend/agents:/app/agents
+      - ./backend/utils:/app/utils
+    networks: [a2a_network]
+    command: python agents/code_generation_agent.py --port 8082 # Adjust command as needed
+    restart: unless-stopped
+
+  content_generation_agent:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - ./.env
+    environment:
+      ADK_AGENT_ID: content-generation-agent
+      A2A_PORT: 8083
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      - ./backend/agents:/app/agents
+      - ./backend/utils:/app/utils
+    networks: [a2a_network]
+    command: python agents/content_generation_agent.py --port 8083 # Adjust command as needed
+    restart: unless-stopped
+
+  deployment_agent:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - ./.env
+    environment:
+      ADK_AGENT_ID: deployment-agent
+      A2A_PORT: 8084
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      - ./backend/agents:/app/agents
+      - ./backend/utils:/app/utils
+    networks: [a2a_network]
+    command: python agents/deployment_agent.py --port 8084 # Adjust command as needed
+    restart: unless-stopped
+
+  freelance_task_agent:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - ./.env
+    environment:
+      ADK_AGENT_ID: freelance-task-agent
+      A2A_PORT: 8085
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      - ./backend/agents:/app/agents
+      - ./backend/utils:/app/utils
+    networks: [a2a_network]
+    command: python agents/freelance_task_agent.py --port 8085 # Adjust command as needed
+    restart: unless-stopped
+
+  improvement_agent:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - ./.env
+    environment:
+      ADK_AGENT_ID: improvement-agent
+      A2A_PORT: 8086
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      - ./backend/agents:/app/agents
+      - ./backend/utils:/app/utils
+    networks: [a2a_network]
+    command: python agents/improvement_agent.py --port 8086 # Adjust command as needed
+    restart: unless-stopped
+
+  lead_generation_agent:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - ./.env
+    environment:
+      ADK_AGENT_ID: lead-generation-agent
+      A2A_PORT: 8087
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      - ./backend/agents:/app/agents
+      - ./backend/utils:/app/utils
+    networks: [a2a_network]
+    command: python agents/lead_generation_agent.py --port 8087 # Adjust command as needed
+    restart: unless-stopped
+
+  market_analysis_agent:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - ./.env
+    environment:
+      ADK_AGENT_ID: market-analysis-agent
+      A2A_PORT: 8088
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      - ./backend/agents:/app/agents
+      - ./backend/utils:/app/utils
+    networks: [a2a_network]
+    command: python agents/market_analysis_agent.py --port 8088 # Adjust command as needed
+    restart: unless-stopped
+
+  market_research_agent:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - ./.env
+    environment:
+      ADK_AGENT_ID: market-research-agent
+      A2A_PORT: 8089
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      - ./backend/agents:/app/agents
+      - ./backend/utils:/app/utils
+    networks: [a2a_network]
+    command: python agents/market_research_agent.py --port 8089 # Adjust command as needed
+    restart: unless-stopped
+
+  marketing_agent:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - ./.env
+    environment:
+      ADK_AGENT_ID: marketing-agent
+      A2A_PORT: 8090
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      - ./backend/agents:/app/agents
+      - ./backend/utils:/app/utils
+    networks: [a2a_network]
+    command: python agents/marketing_agent.py --port 8090 # Adjust command as needed
+    restart: unless-stopped
+
+  orchestrator_agent:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - ./.env
+    environment:
+      ADK_AGENT_ID: orchestrator-agent
+      A2A_PORT: 8091
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      # Orchestrator likely needs URLs for all other agents
+      WEB_SEARCH_AGENT_URL: http://web_search_agent:8080
+      BRANDING_AGENT_URL: http://branding_agent:8081
+      # ... add all other agent URLs here
+    volumes:
+      - ./backend/agents:/app/agents
+      - ./backend/utils:/app/utils
+    networks: [a2a_network]
+    command: python agents/orchestrator_agent.py --port 8091 # Adjust command as needed
+    restart: unless-stopped
+    # depends_on: # Orchestrator likely depends on all other agents
+    #   - web_search_agent
+    #   - branding_agent
+    #   ... etc
+
+  workflow_manager_agent:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - ./.env
+    environment:
+      ADK_AGENT_ID: workflow-manager-agent
+      A2A_PORT: 8092
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB} # Likely needs DB access
+    volumes:
+      - ./backend/agents:/app/agents
+      - ./backend/utils:/app/utils
+    networks: [a2a_network]
+    command: python agents/workflow_manager_agent.py --port 8092 # Adjust command as needed
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy

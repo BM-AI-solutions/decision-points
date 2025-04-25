@@ -3,37 +3,48 @@ import httpx
 import asyncio
 import traceback
 import logging
+import os # Added for env vars
+import argparse # Added for server args
+from datetime import datetime
 from typing import List, Optional, Dict, Any, Union
-from typing import List, Optional, Dict, Any, Union
+
+import uvicorn # Added for server
+from fastapi import FastAPI, HTTPException, Body # Added for server
 from pydantic import BaseModel, Field, HttpUrl, ValidationError
 
 # ADK Imports
 from google.adk.agents import Agent
 from google.adk.runtime import InvocationContext
-from google.adk.runtime.event import Event, EventSeverity
+from google.adk.runtime.events import Event, EventSeverity # Corrected import
 
 # Tooling Imports
 from exa_py import Exa
-from firecrawl import FirecrawlApp, AsyncFirecrawlApp
-# import gemini # Removed Gemini import
-import google.generativeai as genai # Added Gemini import
-from google.api_core import exceptions as google_exceptions # Added Google API exceptions
-
-from app.config import settings # Import centralized settings
+from firecrawl import FirecrawlApp, AsyncFirecrawlApp # Keep both if needed
+# Gemini for analysis (if ContentGenAgent isn't used or for fallback)
+try:
+    import google.generativeai as genai
+    GEMINI_SDK_AVAILABLE = True
+except ImportError:
+    genai = None
+    GEMINI_SDK_AVAILABLE = False
 
 # Setup basic logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+# Use logfire if configured globally, otherwise standard logging
+try:
+    import logfire
+    logger = logfire
+except ImportError:
+    logger = logging.getLogger(__name__)
+    logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"), format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
-logger.info("Attempting to load API keys from environment variables...")
 
 # --- Pydantic Models ---
-# ... (Models remain the same) ...
+
 class MarketResearchInput(BaseModel):
-    """Input for the Market Research Agent."""
+    """Input for the Market Research Agent /invoke endpoint."""
     initial_topic: str = Field(description="A keyword, domain, or description defining the area of interest.")
     target_url: Optional[HttpUrl] = Field(None, description="Optional URL of the user's company for comparison.")
-    num_competitors: int = Field(3, description="Number of competitors to find and analyze.")
+    num_competitors: int = Field(default=3, description="Number of competitors to find and analyze.")
 
 class CompetitorInfo(BaseModel):
     """Structured information extracted for a single competitor."""
@@ -54,16 +65,21 @@ class MarketAnalysis(BaseModel):
     positioning_strategies: List[str] = Field(description="Observations or suggestions regarding market positioning.")
 
 class MarketOpportunityReport(BaseModel):
-    """Output schema for the Market Research Agent, aligning with the architecture plan."""
+    """Output schema for the Market Research Agent /invoke endpoint on success."""
     competitors: List[CompetitorInfo] = Field(description="List of identified competitors and their extracted data.")
     analysis: MarketAnalysis = Field(description="Structured analysis of the market, competitors, and opportunities.")
     feature_recommendations: List[str] = Field(description="List of potential features to consider based on the analysis.")
     target_audience_suggestions: List[str] = Field(description="Suggestions for potential target demographics or niches.")
-    # Optional: Add fields here if web search provides distinct, structured insights consistently
-    # web_search_summary: Optional[str] = Field(None, description="Summary of relevant findings from general web search.")
+    # Optional field for web search summary if needed
+    # web_search_summary: Optional[str] = None
+
+class MarketResearchErrorOutput(BaseModel):
+    """Output model for the /invoke endpoint on failure."""
+    error: str
+    details: Optional[Any] = None
 
 class FirecrawlExtractSchema(BaseModel):
-    """Schema specifically for Firecrawl extraction, based on prototype."""
+    """Schema specifically for Firecrawl extraction."""
     company_name: str = Field(description="Name of the company")
     pricing: str = Field(description="Pricing details, tiers, and plans")
     key_features: List[str] = Field(description="Main features and capabilities of the product/service")
@@ -77,612 +93,349 @@ class FirecrawlExtractSchema(BaseModel):
 class MarketResearchAgent(Agent):
     """
     ADK Agent responsible for Stage 1: Market Research.
-    Finds competitors, extracts data, performs web search, and generates a MarketOpportunityReport using Gemini.
-    Inherits from google.adk.agents.Agent.
+    Finds competitors, extracts data, performs web search, and generates a MarketOpportunityReport.
+    Uses A2A server structure and environment variables for config.
+    Requires: GOOGLE_API_KEY, FIRECRAWL_API_KEY, EXA_API_KEY (or PERPLEXITY_API_KEY),
+              WEB_SEARCH_AGENT_URL, CONTENT_GENERATION_AGENT_URL, COMPETITOR_SEARCH_PROVIDER.
     """
-    def __init__(self, model_name: Optional[str] = None):
-        """
-        Initialize the agent and required clients.
+    ENV_GOOGLE_API_KEY = "GOOGLE_API_KEY" # For Gemini analysis fallback/direct use
+    ENV_FIRECRAL_API_KEY = "FIRECRAWL_API_KEY"
+    ENV_EXA_API_KEY = "EXA_API_KEY"
+    ENV_PERPLEXITY_API_KEY = "PERPLEXITY_API_KEY"
+    ENV_SEARCH_PROVIDER = "COMPETITOR_SEARCH_PROVIDER"
+    ENV_WEB_SEARCH_AGENT_URL = "WEB_SEARCH_AGENT_URL" # Changed from ID
+    ENV_CONTENT_GENERATION_AGENT_URL = "CONTENT_GENERATION_AGENT_URL" # Changed from ID
+    ENV_GEMINI_MODEL_NAME = "GEMINI_MODEL_NAME" # Optional, for analysis model
 
-        Args:
-            model_name: The name of the Gemini model to use for analysis (e.g., 'gemini-2.5-flash-preview-04-17').
-                        Defaults to a suitable model if None.
-        """
-        # Load configuration from the central settings object
-        self.google_api_key = settings.GOOGLE_API_KEY
-        self.firecrawl_api_key = settings.FIRECRAWL_API_KEY
-        self.exa_api_key = settings.EXA_API_KEY
-        self.perplexity_api_key = settings.PERPLEXITY_API_KEY
-        self.search_provider = settings.COMPETITOR_SEARCH_PROVIDER.lower() # Use settings
-        self.web_search_agent_id = settings.WEB_SEARCH_AGENT_ID # Use settings
-        self.brave_api_key = settings.BRAVE_API_KEY # Use settings
-        self.content_generation_agent_id = settings.CONTENT_GENERATION_AGENT_ID # Use settings
+    DEFAULT_GEMINI_MODEL = "gemini-1.5-flash-latest"
 
-        # Determine the model name to use (use argument or fallback to settings)
-        effective_model_name = model_name if model_name else settings.GEMINI_MODEL_NAME
-        self.model_name = effective_model_name # Store the actual model name used
+    def __init__(self, agent_id: str = "market-research-agent"):
+        """Initialize the agent and required clients."""
+        super().__init__(agent_id=agent_id)
+        logger.info(f"Initializing MarketResearchAgent ({self.agent_id})...")
+
+        # Load configuration from environment variables
+        self.google_api_key = os.environ.get(self.ENV_GOOGLE_API_KEY)
+        self.firecrawl_api_key = os.environ.get(self.ENV_FIRECRAL_API_KEY)
+        self.exa_api_key = os.environ.get(self.ENV_EXA_API_KEY)
+        self.perplexity_api_key = os.environ.get(self.ENV_PERPLEXITY_API_KEY)
+        self.search_provider = os.environ.get(self.ENV_SEARCH_PROVIDER, "exa").lower() # Default to exa
+        self.web_search_agent_url = os.environ.get(self.ENV_WEB_SEARCH_AGENT_URL)
+        self.content_generation_agent_url = os.environ.get(self.ENV_CONTENT_GENERATION_AGENT_URL)
+        self.model_name = os.environ.get(self.ENV_GEMINI_MODEL_NAME, self.DEFAULT_GEMINI_MODEL)
 
         # Initialize shared httpx client
         self.http_client = httpx.AsyncClient(timeout=30.0)
 
-        # --- Validation & Client Initialization (using values from settings) ---
-        if not self.firecrawl_api_key:
-            raise ValueError("FIRECRAWL_API_KEY not configured in settings.")
+        # --- Validation & Client Initialization ---
+        if not self.firecrawl_api_key: raise ValueError(f"{self.ENV_FIRECRAL_API_KEY} not configured.")
         self.firecrawl_client = AsyncFirecrawlApp(api_key=self.firecrawl_api_key)
 
+        self.exa_client = None
         if self.search_provider == "exa":
-            if not self.exa_api_key:
-                raise ValueError("EXA_API_KEY not configured in settings for Exa search provider.")
+            if not self.exa_api_key: raise ValueError(f"{self.ENV_EXA_API_KEY} not configured for Exa search provider.")
             self.exa_client = Exa(api_key=self.exa_api_key)
-            logger.info("Using Exa for competitor search (configured via settings).")
+            logger.info("Using Exa for competitor search.")
         elif self.search_provider == "perplexity":
-            if not self.perplexity_api_key:
-                raise ValueError("PERPLEXITY_API_KEY not configured in settings for Perplexity search provider.")
-            logger.info("Using Perplexity for competitor search (configured via settings).")
+            if not self.perplexity_api_key: raise ValueError(f"{self.ENV_PERPLEXITY_API_KEY} not configured for Perplexity search provider.")
+            logger.info("Using Perplexity for competitor search.")
         else:
-            raise ValueError(f"Unsupported COMPETITOR_SEARCH_PROVIDER in settings: {self.search_provider}. Use 'exa' or 'perplexity'.")
+            raise ValueError(f"Unsupported {self.ENV_SEARCH_PROVIDER}: {self.search_provider}. Use 'exa' or 'perplexity'.")
 
-        # --- Gemini Initialization ---
-        if not self.google_api_key:
-            # Log warning, analysis step will fail if key is missing
-            logger.warning("GOOGLE_API_KEY not configured in settings. Gemini model initialization skipped.")
-            self.gemini_model = None # Explicitly set to None
+        # --- Gemini Initialization (Optional - primarily uses ContentGenAgent now) ---
+        self.gemini_model = None
+        if not GEMINI_SDK_AVAILABLE: logger.warning("google-generativeai SDK not installed. Direct Gemini analysis disabled.")
+        elif not self.google_api_key: logger.warning(f"{self.ENV_GOOGLE_API_KEY} not configured. Direct Gemini analysis disabled.")
         else:
             try:
                 genai.configure(api_key=self.google_api_key)
-                # Initialize the Gemini model using the determined model name
-                self.gemini_model = genai.GenerativeModel(
-                    self.model_name, # Use the stored model name
-                    # Define generation config for JSON output
-                    generation_config=genai.types.GenerationConfig(
-                        # candidate_count=1, # Default is 1
-                        # stop_sequences=['...'], # Optional stop sequences
-                        # max_output_tokens=2048, # Optional max tokens
-                        temperature=0.5, # Adjust temperature
-                        response_mime_type="application/json", # Request JSON output
-                    ),
-                    # safety_settings=... # Optional safety settings
-                )
-                logger.info(f"Gemini client configured successfully using model: {self.model_name}")
-            except Exception as e:
-                logger.error(f"Failed to configure or initialize Gemini client with model {self.model_name}: {e}", exc_info=True)
-                self.gemini_model = None # Ensure model is None on error
-        # --- End Gemini Initialization ---
+                self.gemini_model = genai.GenerativeModel(self.model_name) # Config removed, handled by ContentGenAgent
+                logger.info(f"Gemini client configured for potential direct use with model: {self.model_name}")
+            except Exception as e: logger.error(f"Failed to initialize Gemini client: {e}", exc_info=True)
 
-        # --- WebSearchAgent A2A Validation (using settings) ---
-        if not self.web_search_agent_id:
-            raise ValueError("WEB_SEARCH_AGENT_ID not configured in settings. Cannot call WebSearchAgent.")
-        if not self.brave_api_key:
-            logger.warning("BRAVE_API_KEY not configured in settings. WebSearchAgent might require it.")
-        logger.info(f"WebSearchAgent ID configured via settings: {self.web_search_agent_id}")
-        # --- End Additions ---
-        # --- ContentGenerationAgent A2A Validation (using settings) ---
-        if not self.content_generation_agent_id:
-            raise ValueError("CONTENT_GENERATION_AGENT_ID not configured in settings. Cannot call ContentGenerationAgent.")
-        logger.info(f"ContentGenerationAgent ID configured via settings: {self.content_generation_agent_id}")
+        # --- A2A Agent URL Validation ---
+        if not self.web_search_agent_url: logger.warning(f"{self.ENV_WEB_SEARCH_AGENT_URL} not configured. Web search via A2A disabled.")
+        else: logger.info(f"WebSearchAgent URL configured: {self.web_search_agent_url}")
+        if not self.content_generation_agent_url: raise ValueError(f"{self.ENV_CONTENT_GENERATION_AGENT_URL} not configured. Cannot generate report.")
+        else: logger.info(f"ContentGenerationAgent URL configured: {self.content_generation_agent_url}")
+
+        logger.info(f"MarketResearchAgent ({self.agent_id}) initialized successfully.")
 
 
-    # ... (_find_competitor_urls_exa, _find_competitor_urls_perplexity, _extract_competitor_info, _call_web_search_agent remain the same) ...
+    # --- Helper Methods (Keep original logic, ensure async where needed) ---
     async def _find_competitor_urls_exa(self, topic: str, target_url: Optional[str], num_results: int) -> List[str]:
         """Finds competitor URLs using Exa asynchronously."""
+        if not self.exa_client: raise RuntimeError("Exa client not initialized.")
         try:
             logger.info(f"Searching Exa for companies related to topic/URL: {topic or target_url}")
-            # Wrap synchronous Exa calls in run_in_executor
             loop = asyncio.get_running_loop()
             if target_url:
-                result = await loop.run_in_executor(
-                    None, # Use default executor
-                    lambda: self.exa_client.find_similar(
-                        url=target_url,
-                        num_results=num_results,
-                        exclude_source_domain=True, # Exclude the target itself
-                        category="company"
-                    )
-                )
+                result = await loop.run_in_executor(None, lambda: self.exa_client.find_similar(
+                    url=target_url, num_results=num_results, exclude_source_domain=True, category="company"
+                ))
             else:
-                result = await loop.run_in_executor(
-                    None,
-                    lambda: self.exa_client.search(
-                        topic,
-                        type="neural",
-                        category="company",
-                        use_autoprompt=True, # Let Exa optimize the query
-                        num_results=num_results
-                    )
-                )
-            urls = [item.url for item in result.results]
+                result = await loop.run_in_executor(None, lambda: self.exa_client.search(
+                    topic, type="neural", category="company", use_autoprompt=True, num_results=num_results
+                ))
+            urls = [item.url for item in result.results if hasattr(item, 'url')]
             logger.info(f"Exa found URLs: {urls}")
             return urls
         except Exception as e:
             logger.error(f"Error fetching competitor URLs from Exa: {str(e)}", exc_info=True)
-            return [] # Return empty list on error, handled in run_async
+            return []
 
     async def _find_competitor_urls_perplexity(self, topic: str, target_url: Optional[str], num_results: int) -> List[str]:
         """Finds competitor URLs using Perplexity asynchronously."""
+        if not self.perplexity_api_key: raise RuntimeError("Perplexity API key not configured.")
         perplexity_url = "https://api.perplexity.ai/chat/completions"
         content = f"Find me {num_results} competitor company URLs "
-        if target_url and topic:
-             content += f"similar to the company with URL '{target_url}' and description '{topic}'"
-        elif target_url:
-            content += f"similar to the company with URL: {target_url}"
-        else:
-            content += f"related to the topic: {topic}"
+        if target_url and topic: content += f"similar to the company with URL '{target_url}' and description '{topic}'"
+        elif target_url: content += f"similar to the company with URL: {target_url}"
+        else: content += f"related to the topic: {topic}"
         content += ". ONLY RESPOND WITH THE URLS, each on a new line, NO OTHER TEXT."
-
-        logger.info(f"Querying Perplexity API...") # Don't log the full content potentially containing sensitive info
-
-        payload = {
-            "model": "sonar-large-32k-online", # Use online model for web search
-            "messages": [
-                {"role": "system", "content": f"You are an assistant that finds competitor websites. Only return {num_results} company URLs, each on a new line."},
-                {"role": "user", "content": content}
-            ],
-            "max_tokens": 1000, # Adjust as needed
-            "temperature": 0.1, # Low temperature for factual retrieval
-        }
-        headers = {
-            "Authorization": f"Bearer {self.perplexity_api_key}",
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-        }
-
+        logger.info(f"Querying Perplexity API...")
+        payload = {"model": "sonar-large-32k-online", "messages": [{"role": "system", "content": f"You are an assistant that finds competitor websites. Only return {num_results} company URLs, each on a new line."}, {"role": "user", "content": content}], "max_tokens": 1000, "temperature": 0.1}
+        headers = {"Authorization": f"Bearer {self.perplexity_api_key}", "Content-Type": "application/json", "Accept": "application/json"}
         try:
-            # Use httpx for external Perplexity API call
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                 response = await client.post(perplexity_url, json=payload, headers=headers)
-
-            response.raise_for_status() # Raise HTTPError for bad responses (4xx or 5xx)
+            response = await self.http_client.post(perplexity_url, json=payload, headers=headers) # Use shared client
+            response.raise_for_status()
             response_data = response.json()
             message_content = response_data.get('choices', [{}])[0].get('message', {}).get('content', '')
-            # Robust URL parsing: handle potential extra text or formatting issues
-            urls = [
-                url.strip() for url in message_content.strip().split('\n')
-                if url.strip().startswith('http')
-            ]
+            urls = [url.strip() for url in message_content.strip().split('\n') if url.strip().startswith('http')]
             logger.info(f"Perplexity found URLs: {urls}")
-            return urls[:num_results] # Ensure we only return the requested number
-        except httpx.HTTPStatusError as e: # Catch httpx specific error
-            logger.error(f"HTTP error fetching competitor URLs from Perplexity: {e.response.status_code} - {e.response.text}", exc_info=True)
-            return [] # Return empty list on error
-        except httpx.RequestError as e: # Catch other httpx request errors
-            logger.error(f"Request error fetching competitor URLs from Perplexity: {str(e)}", exc_info=True)
-            return [] # Return empty list on error
-        except Exception as e:
-            logger.error(f"Unexpected error processing Perplexity response: {str(e)}", exc_info=True)
-            return [] # Return empty list on error
-
+            return urls[:num_results]
+        except httpx.HTTPStatusError as e: logger.error(f"HTTP error fetching competitor URLs from Perplexity: {e.response.status_code} - {e.response.text}", exc_info=True); return []
+        except httpx.RequestError as e: logger.error(f"Request error fetching competitor URLs from Perplexity: {str(e)}", exc_info=True); return []
+        except Exception as e: logger.error(f"Unexpected error processing Perplexity response: {str(e)}", exc_info=True); return []
 
     async def _extract_competitor_info(self, competitor_url: str) -> Optional[CompetitorInfo]:
         """Extracts structured data from a competitor URL using AsyncFirecrawlApp."""
         logger.info(f"Extracting data from URL: {competitor_url} using AsyncFirecrawlApp")
         try:
-            # Use AsyncFirecrawlApp directly
-            extraction_prompt = """
-            Extract detailed information about the company's offerings from its website ({competitor_url}), focusing on:
-            - Company name and basic information
-            - Pricing details, plans, and tiers (summarize if complex)
-            - Key features and main capabilities (list top 5-7)
-            - Technology stack and technical details (if mentioned, list key ones)
-            - Marketing focus and target audience (who are they selling to?)
-            - Customer feedback and testimonials (summarize key themes or quotes)
-
-            Analyze the website content to provide comprehensive information for each field based *only* on the website's content. If information isn't found, indicate 'N/A' or omit the field.
-            """
-            # Call async extract method
+            extraction_prompt = f"""Extract detailed information about the company's offerings from its website ({competitor_url}), focusing on: Company name, Pricing details, Key features (top 5-7), Technology stack (if mentioned), Marketing focus/target audience, Customer feedback/testimonials (summarize). Analyze the website content to provide comprehensive information for each field based *only* on the website's content. If information isn't found, indicate 'N/A' or omit the field."""
             response = await self.firecrawl_client.extract(
                 url=competitor_url,
-                params={
-                    'extractorOptions': {
-                        'mode': 'llm-extraction',
-                        'extractionPrompt': extraction_prompt.format(competitor_url=competitor_url),
-                        'extractionSchema': FirecrawlExtractSchema.model_json_schema(),
-                    },
-                    'pageOptions': {
-                        'onlyMainContent': True # Focus extraction
-                    }
-                },
-                timeout=60 # Keep timeout for extraction
+                params={'extractorOptions': {'mode': 'llm-extraction', 'extractionPrompt': extraction_prompt, 'extractionSchema': FirecrawlExtractSchema.model_json_schema()}, 'pageOptions': {'onlyMainContent': True}},
+                timeout=60
             )
-
             if response and isinstance(response, dict) and response.get('data'):
                 extracted_data = response['data']
-                # Use Pydantic validation during creation
                 info = CompetitorInfo(
-                    competitor_url=competitor_url, # Ensure URL is valid HttpUrl
-                    company_name=extracted_data.get('company_name'),
-                    pricing=extracted_data.get('pricing'),
-                    key_features=extracted_data.get('key_features', []),
-                    tech_stack=extracted_data.get('tech_stack', []),
-                    marketing_focus=extracted_data.get('marketing_focus'),
+                    competitor_url=competitor_url, company_name=extracted_data.get('company_name'),
+                    pricing=extracted_data.get('pricing'), key_features=extracted_data.get('key_features', []),
+                    tech_stack=extracted_data.get('tech_stack', []), marketing_focus=extracted_data.get('marketing_focus'),
                     customer_feedback=extracted_data.get('customer_feedback')
                 )
                 logger.info(f"Successfully extracted data for {competitor_url}")
                 return info
-            else:
-                 logger.warning(f"Firecrawl extraction did not return valid data for {competitor_url}. Response: {response}")
-                 return None
+            else: logger.warning(f"Firecrawl extraction did not return valid data for {competitor_url}. Response: {response}"); return None
+        except (ValidationError, TypeError) as e: logger.error(f"Pydantic validation error processing Firecrawl data for {competitor_url}: {e}", exc_info=True); return None
+        except Exception as e: logger.error(f"Error extracting data from {competitor_url}: {str(e)}", exc_info=True); return None
 
-        except (ValidationError, TypeError) as e:
-             logger.error(f"Pydantic validation error processing Firecrawl data for {competitor_url}: {e}", exc_info=True)
-             return None
-        except Exception as e:
-            logger.error(f"Error extracting data from {competitor_url}: {str(e)}", exc_info=True)
-            return None # Return None on error, handled in run_async
-
-    # --- New Method for WebSearchAgent A2A Call ---
     async def _call_web_search_agent(self, context: InvocationContext, query: str) -> Optional[Dict[str, Any]]:
-        """Calls the WebSearchAgent via A2A to perform a general web search."""
-        if not self.web_search_agent_id:
-            logger.error("WebSearchAgent ID not configured for A2A call.")
-            return None
-
-        logger.info(f"Invoking WebSearchAgent skill 'web_search' on agent '{self.web_search_agent_id}' with query: '{query}' via ADK...")
-
-        # Prepare the input Event for the WebSearchAgent skill
-        # Pass Brave key via metadata if WebSearchAgent expects it there
-        input_payload = {"query": query}
-        input_metadata = {"brave_api_key": self.brave_api_key} if self.brave_api_key else None
-        input_event = Event(payload=input_payload, metadata=input_metadata)
-
+        """Calls the WebSearchAgent via A2A HTTP call."""
+        if not self.web_search_agent_url: logger.error("WebSearchAgent URL not configured."); return None
+        invoke_url = f"{self.web_search_agent_url.rstrip('/')}/invoke" # Assuming /invoke endpoint
+        logger.info(f"Calling WebSearchAgent A2A at {invoke_url} with query: '{query}'")
+        payload = {"query": query} # Simple payload
         try:
-            # Use context.invoke_skill for ADK A2A
-            result_event = await context.invoke_skill(
-                target_agent_id=self.web_search_agent_id,
-                skill_name="web_search", # Assuming skill name
-                input=input_event,
-                timeout_seconds=30.0 # Keep timeout
-            )
+            response = await self.http_client.post(invoke_url, json=payload)
+            response.raise_for_status()
+            data = response.json()
+            logger.info(f"WebSearchAgent A2A call successful.")
+            return data # Return the full response payload
+        except httpx.RequestError as e: logger.error(f"A2A call to WebSearchAgent failed (Request Error): {e}", exc_info=True); return None
+        except httpx.HTTPStatusError as e: logger.error(f"A2A call to WebSearchAgent failed (Status Code {e.response.status_code}): {e.response.text}", exc_info=True); return None
+        except Exception as e: logger.error(f"Unexpected error during WebSearchAgent A2A call: {str(e)}", exc_info=True); return None
 
-            if result_event.type == "error":
-                error_msg = result_event.payload.get('message', 'Unknown error from WebSearchAgent skill')
-                logger.error(f"WebSearchAgent skill invocation failed: {error_msg}")
-                return None
-            elif result_event.payload:
-                logger.info(f"WebSearchAgent skill invocation successful.")
-                return result_event.payload # Return the payload containing results
-            else:
-                logger.warning("WebSearchAgent skill invocation succeeded but returned no payload.")
-                return {}
-
-        except TimeoutError:
-            logger.error(f"ADK skill invocation for WebSearchAgent timed out.", exc_info=True)
-            return None
-        except ConnectionError as conn_err:
-            logger.error(f"ADK skill invocation for WebSearchAgent failed (Connection Error): {conn_err}", exc_info=True)
-            return None
-        except Exception as e:
-            logger.error(f"Unexpected error during WebSearchAgent skill invocation: {str(e)}", exc_info=True)
-            return None
-    # --- End New Method ---
-
-    async def _call_content_generation_agent(self, competitors_data: List[CompetitorInfo], web_search_results: Optional[Dict[str, Any]], parent_context: InvocationContext) -> Optional[Dict[str, Any]]:
-        """Calls the ContentGenerationAgent via A2A to summarize and structure the research findings."""
-        if not self.content_generation_agent_url:
-            logger.error("ContentGenerationAgent URL not configured for A2A call.")
-            return None
-
-        a2a_endpoint = f"{self.content_generation_agent_url.rstrip('/')}/a2a/content_generation/invoke"
-        logger.info(f"Calling ContentGenerationAgent A2A endpoint: {a2a_endpoint}")
-
-        # Prepare data for the prompt
-        try:
-            competitors_json = json.dumps([c.model_dump(exclude_none=True) for c in competitors_data], indent=2)
-        except TypeError as e:
-            logger.error(f"Failed to serialize competitor data for A2A call: {e}", exc_info=True)
-            return None # Cannot proceed without competitor data
-
+    async def _call_content_generation_agent(self, context: InvocationContext, competitors_data: List[CompetitorInfo], web_search_results: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """Calls the ContentGenerationAgent via A2A HTTP call."""
+        if not self.content_generation_agent_url: logger.error("ContentGenerationAgent URL not configured."); return None
+        invoke_url = f"{self.content_generation_agent_url.rstrip('/')}/invoke" # Assuming /invoke endpoint
+        logger.info(f"Calling ContentGenerationAgent A2A at {invoke_url}")
+        try: competitors_json = json.dumps([c.model_dump(exclude_none=True) for c in competitors_data], indent=2)
+        except TypeError as e: logger.error(f"Failed to serialize competitor data: {e}", exc_info=True); return None
         web_search_summary = "N/A"
         if web_search_results:
-            # Simple summary for the prompt
-            if isinstance(web_search_results, dict) and 'summary' in web_search_results:
-                 web_search_summary = web_search_results['summary']
-            elif isinstance(web_search_results, dict) and 'results' in web_search_results and isinstance(web_search_results['results'], list):
-                 web_search_summary = "\n".join([f"- {item.get('title', 'N/A')}: {item.get('snippet', 'N/A')}" for item in web_search_results['results'][:5]])
-            else:
-                 try:
-                     web_search_summary = json.dumps(web_search_results, indent=2, default=str)[:1000] + "..."
-                 except Exception:
-                     web_search_summary = "Could not serialize web search results."
-
-        # Construct the prompt for ContentGenerationAgent
-        prompt = f"""
-        Analyze the following market research data, consisting of competitor information and general web search results.
-        Generate a structured report summarizing the findings and providing actionable insights.
-
-        Competitor Data:
-        ```json
-        {competitors_json}
-        ```
-
-        General Web Search Results (Summarized):
-        ```text
-        {web_search_summary}
-        ```
-
-        Based on ALL the provided data, generate a JSON object containing:
-        1.  'analysis': An object with fields 'market_gaps', 'opportunities', 'competitor_weaknesses', 'pricing_strategies', 'positioning_strategies' (each a list of strings).
-        2.  'feature_recommendations': A list of strings suggesting potential features.
-        3.  'target_audience_suggestions': A list of strings suggesting target audiences.
-
-        Structure the output EXACTLY like this example (ensure valid JSON):
-        ```json
-        {{
-          "analysis": {{
-            "market_gaps": ["Identified gap 1...", "Gap 2..."],
-            "opportunities": ["Opportunity 1...", "Opportunity 2..."],
-            "competitor_weaknesses": ["Weakness 1..."],
-            "pricing_strategies": ["Strategy suggestion 1..."],
-            "positioning_strategies": ["Positioning idea 1..."]
-          }},
-          "feature_recommendations": ["Recommended feature 1...", "Feature 2..."],
-          "target_audience_suggestions": ["Target audience 1...", "Audience 2..."]
-        }}
-        ```
-        Focus on synthesizing insights from *both* competitor data and web search results into actionable recommendations within the specified JSON structure.
-        """
-
-        # Prepare the input Event for the ContentGenerationAgent skill
-        input_payload = {
-            "prompt": prompt,
-            "output_format": "json" # Assuming ContentGenAgent supports this
-        }
-        input_event = Event(payload=input_payload)
-
+            try: web_search_summary = json.dumps(web_search_results, indent=2, default=str)[:1000] + "..."
+            except Exception: web_search_summary = "Could not serialize web search results."
+        prompt = f"""Analyze the following market research data (competitors, web search). Generate a structured JSON report with 'analysis' (market_gaps, opportunities, competitor_weaknesses, pricing_strategies, positioning_strategies - all lists of strings), 'feature_recommendations' (list of strings), and 'target_audience_suggestions' (list of strings). Focus on synthesizing insights into actionable recommendations. Competitor Data: ```json\n{competitors_json}\n``` Web Search Summary: ```text\n{web_search_summary}\n``` Output ONLY the valid JSON object adhering to the structure."""
+        payload = {"action": "generate_structured_report", "prompt": prompt} # Assuming ContentGen takes an action and prompt
         try:
-            # Use context.invoke_skill for ADK A2A
-            result_event = await context.invoke_skill(
-                target_agent_id=self.content_generation_agent_id,
-                skill_name="generate", # Assuming skill name
-                input=input_event,
-                timeout_seconds=60.0 # Keep timeout
-            )
-
-            if result_event.type == "error":
-                error_msg = result_event.payload.get('message', 'Unknown error from ContentGenerationAgent skill')
-                logger.error(f"ContentGenerationAgent skill invocation failed: {error_msg}")
-                return None
-            elif result_event.payload and result_event.payload.get("status") == "success":
-                logger.info(f"ContentGenerationAgent skill invocation successful.")
-                # Assuming the structured JSON is in the payload under 'generated_content'
-                generated_content = result_event.payload.get('generated_content')
-                if isinstance(generated_content, str):
-                    try:
-                        return json.loads(generated_content)
-                    except json.JSONDecodeError as json_err:
-                        logger.error(f"Failed to parse JSON from ContentGenerationAgent payload: {json_err}. Content: {generated_content}")
-                        return None
-                elif isinstance(generated_content, dict):
-                    return generated_content # Already a dict
-                else:
-                    logger.error(f"Unexpected type for 'generated_content' in ContentGenerationAgent payload: {type(generated_content)}")
-                    return None
+            response = await self.http_client.post(invoke_url, json=payload)
+            response.raise_for_status()
+            data = response.json()
+            # Assuming the response payload *is* the generated report structure
+            if isinstance(data, dict) and "analysis" in data: # Basic check
+                logger.info(f"ContentGenerationAgent A2A call successful.")
+                return data
             else:
-                # Handle cases where the skill call succeeded but indicated an internal failure or unexpected payload
-                error_msg = result_event.payload.get("message", "Unknown or unsuccessful response from ContentGenerationAgent skill")
-                logger.error(f"ContentGenerationAgent skill call reported failure or unexpected payload: {error_msg}")
-                logger.debug(f"ContentGenerationAgent Payload: {result_event.payload}")
+                logger.error(f"ContentGenerationAgent returned unexpected payload format: {data}")
                 return None
-
-        except TimeoutError:
-            logger.error(f"ADK skill invocation for ContentGenerationAgent timed out.", exc_info=True)
-            return None
-        except ConnectionError as conn_err:
-            logger.error(f"ADK skill invocation for ContentGenerationAgent failed (Connection Error): {conn_err}", exc_info=True)
-            return None
-        except Exception as e:
-            logger.error(f"Unexpected error during ContentGenerationAgent skill invocation: {str(e)}", exc_info=True)
-            return None
+        except httpx.RequestError as e: logger.error(f"A2A call to ContentGenerationAgent failed (Request Error): {e}", exc_info=True); return None
+        except httpx.HTTPStatusError as e: logger.error(f"A2A call to ContentGenerationAgent failed (Status Code {e.response.status_code}): {e.response.text}", exc_info=True); return None
+        except Exception as e: logger.error(f"Unexpected error during ContentGenerationAgent A2A call: {str(e)}", exc_info=True); return None
 
 
     async def run_async(self, context: InvocationContext) -> Event:
-        """
-        Executes the market research workflow asynchronously according to ADK spec.
-        Reads input from context, performs research (including web search), and returns an Event.
-        """
-        logger.info(f"Received invocation for MarketResearchAgent (ID: {context.invocation_id})")
-        agent_id = context.agent_id
-        invocation_id = context.invocation_id
-        web_search_results = None # Initialize web search results
+        """Executes the market research workflow asynchronously."""
+        logger.info(f"[{self.agent_id}] Invoked: {context.invocation_id}")
+        web_search_results = None
+        competitors_data: List[CompetitorInfo] = []
+        extraction_errors = []
 
         try:
-            # 1. Parse and Validate Input from context
-            try:
-                if not isinstance(context.input, dict):
-                     raise TypeError(f"Expected dict input, got {type(context.input)}")
-                inputs = MarketResearchInput(**context.input)
-                logger.info(f"Parsed input: Topic='{inputs.initial_topic}', Target URL='{inputs.target_url}', Num Competitors={inputs.num_competitors}")
-            except (ValidationError, TypeError) as e:
-                error_msg = f"Input validation/parsing failed: {e}"
-                logger.error(error_msg, exc_info=True)
-                return Event(
-                    agent_id=agent_id,
-                    invocation_id=invocation_id,
-                    severity=EventSeverity.FATAL, # Input error is fatal for this invocation
-                    message=error_msg,
-                    payload={"error": str(e), "received_input": context.input}
-                )
+            # 1. Parse and Validate Input
+            if not isinstance(context.data, dict): raise ValueError("Input data must be a dictionary.")
+            inputs = MarketResearchInput(**context.data)
+            logger.info(f"Parsed input: Topic='{inputs.initial_topic}', Target URL='{inputs.target_url}', Num Competitors={inputs.num_competitors}")
 
-            # 2. Find Competitor URLs (using configured provider)
+            # 2. Find Competitor URLs
             logger.info(f"Finding competitors using {self.search_provider}...")
             target_url_str = str(inputs.target_url) if inputs.target_url else None
             if self.search_provider == "exa":
-                competitor_urls = await self._find_competitor_urls_exa(
-                    topic=inputs.initial_topic,
-                    target_url=target_url_str,
-                    num_results=inputs.num_competitors
-                )
+                competitor_urls = await self._find_competitor_urls_exa(inputs.initial_topic, target_url_str, inputs.num_competitors)
             elif self.search_provider == "perplexity":
-                 competitor_urls = await self._find_competitor_urls_perplexity(
-                    topic=inputs.initial_topic,
-                    target_url=target_url_str,
-                    num_results=inputs.num_competitors
-                )
-            else:
-                 # This case should be caught by __init__, but handle defensively
-                 return Event(
-                    agent_id=agent_id,
-                    invocation_id=invocation_id,
-                    severity=EventSeverity.FATAL,
-                    message=f"Internal configuration error: Invalid search provider '{self.search_provider}'",
-                    payload={"error": "Configuration error"}
-                 )
+                 competitor_urls = await self._find_competitor_urls_perplexity(inputs.initial_topic, target_url_str, inputs.num_competitors)
+            else: raise ValueError(f"Internal config error: Invalid search provider '{self.search_provider}'") # Should be caught in init
 
-            # --- New Step 2b: Perform General Web Search via A2A ---
+            # 3. Perform General Web Search via A2A
             logger.info(f"Performing general web search for topic: '{inputs.initial_topic}' via A2A...")
-            web_search_results = await self._call_web_search_agent(
-                query=inputs.initial_topic,
-                parent_context=context
-            )
-            if web_search_results:
-                logger.info("Successfully received web search results via A2A.")
-            else:
-                logger.warning("Web search via A2A failed or returned no results. Proceeding without web context.")
-            # --- End New Step ---
+            web_search_results = await self._call_web_search_agent(context, inputs.initial_topic) # Pass context
+            if web_search_results: logger.info("Successfully received web search results via A2A.")
+            else: logger.warning("Web search via A2A failed or returned no results.")
 
-
+            # 4. Extract Data for Competitors (if any found)
             if not competitor_urls:
-                warning_msg = "No competitor URLs found for the given topic/URL."
-                logger.warning(warning_msg)
-                # Return a successful event but indicate no competitors found via payload
-                # Include web search results if available
-                empty_report = MarketOpportunityReport(
-                    competitors=[],
-                    analysis=MarketAnalysis(
-                        market_gaps=["N/A - No competitors found"],
-                        opportunities=["N/A - No competitors found"],
-                        competitor_weaknesses=["N/A - No competitors found"],
-                        pricing_strategies=["N/A - No competitors found"],
-                        positioning_strategies=["N/A - No competitors found"]
-                    ),
-                    feature_recommendations=[],
-                    target_audience_suggestions=[]
-                )
-                payload = empty_report.model_dump()
+                logger.warning("No competitor URLs found.")
+                # Construct an empty/minimal report if desired, or raise specific error
+            else:
+                logger.info(f"Attempting to extract data for {len(competitor_urls)} competitors: {competitor_urls}")
+                extraction_tasks = [self._extract_competitor_info(url) for url in competitor_urls]
+                results = await asyncio.gather(*extraction_tasks, return_exceptions=True)
+                for i, res in enumerate(results):
+                    if isinstance(res, CompetitorInfo): competitors_data.append(res)
+                    else: extraction_errors.append(f"URL: {competitor_urls[i]}, Error: {str(res)}")
+                if not competitors_data: raise RuntimeError("Could not extract data from any competitor URLs.", {"extraction_errors": extraction_errors})
+                if extraction_errors: logger.warning(f"Proceeding with data from {len(competitors_data)} competitors. Errors: {extraction_errors}")
 
-                return Event(
-                    agent_id=agent_id,
-                    invocation_id=invocation_id,
-                    severity=EventSeverity.INFO,
-                    message=warning_msg + (" Web search performed." if web_search_results else " Web search failed or skipped."),
-                    payload=payload
-                )
-
-            # 3. Extract Data for each Competitor (concurrently)
-            logger.info(f"Attempting to extract data for {len(competitor_urls)} competitors: {competitor_urls}")
-            extraction_tasks = [self._extract_competitor_info(url) for url in competitor_urls]
-            results = await asyncio.gather(*extraction_tasks, return_exceptions=True)
-
-            competitors_data: List[CompetitorInfo] = []
-            failed_extractions = 0
-            extraction_errors = []
-            for i, res in enumerate(results):
-                if isinstance(res, CompetitorInfo):
-                    competitors_data.append(res)
-                else:
-                    failed_extractions += 1
-                    error_detail = f"URL: {competitor_urls[i]}, Error: {str(res)}"
-                    extraction_errors.append(error_detail)
-                    logger.warning(f"Failed extraction for {competitor_urls[i]}. Error: {res}", exc_info=res if isinstance(res, Exception) else None)
-
-
-            if not competitors_data:
-                 error_msg = "Could not extract data from any identified competitor URLs."
-                 logger.error(f"{error_msg} Errors: {extraction_errors}")
-                 payload = {
-                     "competitor_urls_found": competitor_urls,
-                     "extraction_errors": extraction_errors
-                 }
-                 return Event(
-                     agent_id=agent_id,
-                    invocation_id=invocation_id,
-                    severity=EventSeverity.ERROR,
-                    message=error_msg,
-                    payload=payload
-                 )
-
-            # Log a warning if some extractions failed but not all
-            partial_extraction_warning = ""
-            if failed_extractions > 0:
-                partial_extraction_warning = f" Failed to extract data for {failed_extractions} URL(s)."
-                logger.warning(f"Proceeding with data from {len(competitors_data)} out of {len(competitor_urls)} competitors. Errors: {extraction_errors}")
-
-            # 4. Generate Final Analysis Report via ContentGenerationAgent A2A
-            logger.info(f"Calling ContentGenerationAgent A2A to generate report based on data from {len(competitors_data)} competitors and web search results...")
-            analysis_payload = await self._call_content_generation_agent(
-                competitors_data=competitors_data,
-                web_search_results=web_search_results,
-                parent_context=context
-            )
-
+            # 5. Generate Final Analysis Report via ContentGenerationAgent A2A
+            logger.info(f"Calling ContentGenerationAgent A2A to generate report...")
+            analysis_payload = await self._call_content_generation_agent(context, competitors_data, web_search_results) # Pass context
             if not analysis_payload or not isinstance(analysis_payload, dict):
-                error_msg = "Failed to generate analysis report via ContentGenerationAgent A2A or received invalid payload."
-                logger.error(error_msg)
-                payload = {
-                    "extracted_competitor_data": [c.model_dump(exclude_none=True) for c in competitors_data],
-                    "extraction_errors": extraction_errors,
-                    "web_search_results": web_search_results # Include for debugging
-                }
-                return Event(
-                    agent_id=agent_id,
-                    invocation_id=invocation_id,
-                    severity=EventSeverity.ERROR,
-                    message=error_msg,
-                    payload=payload
-                )
+                raise RuntimeError("Failed to generate analysis report via ContentGenerationAgent A2A.", {"a2a_payload_received": analysis_payload})
 
-            # 5. Construct Final Report from A2A Payload
-            try:
-                final_report = MarketOpportunityReport(
-                    competitors=competitors_data, # Add back the competitor data
-                    analysis=MarketAnalysis(**analysis_payload.get("analysis", {})),
-                    feature_recommendations=analysis_payload.get("feature_recommendations", []),
-                    target_audience_suggestions=analysis_payload.get("target_audience_suggestions", [])
-                )
-                logger.info("Successfully constructed final report from ContentGenerationAgent response.")
-            except (ValidationError, TypeError) as e:
-                 error_msg = f"Failed to validate or construct MarketOpportunityReport from ContentGenerationAgent payload: {e}"
-                 logger.error(f"{error_msg}. Payload received: {analysis_payload}", exc_info=True)
-                 payload = {
-                    "extracted_competitor_data": [c.model_dump(exclude_none=True) for c in competitors_data],
-                    "extraction_errors": extraction_errors,
-                    "web_search_results": web_search_results,
-                    "a2a_payload_received": analysis_payload # Include raw payload for debugging
-                 }
-                 return Event(
-                     agent_id=agent_id,
-                     invocation_id=invocation_id,
-                     severity=EventSeverity.ERROR,
-                     message=error_msg,
-                     payload=payload
-                 )
-
-
-            success_message = f"Market research completed. Analyzed {len(competitors_data)} competitors. Report generated via ContentGenerationAgent."
-            success_message += partial_extraction_warning
-            success_message += (" Incorporated web search results." if web_search_results else " Web search failed or skipped.")
+            # 6. Construct Final Report
+            final_report = MarketOpportunityReport(
+                competitors=competitors_data,
+                analysis=MarketAnalysis(**analysis_payload.get("analysis", {})),
+                feature_recommendations=analysis_payload.get("feature_recommendations", []),
+                target_audience_suggestions=analysis_payload.get("target_audience_suggestions", [])
+            )
+            success_message = f"Market research completed. Analyzed {len(competitors_data)} competitors."
+            if extraction_errors: success_message += f" ({len(extraction_errors)} extraction errors)"
             logger.info(success_message)
 
-            # 6. Return Success Event
-            return Event(
-                agent_id=agent_id,
-                invocation_id=invocation_id,
-                severity=EventSeverity.INFO,
-                message=success_message,
-                payload=final_report.model_dump()
+            # 7. Return Success Event
+            return context.create_event(
+                event_type="market.research.completed", data=final_report.model_dump(), metadata={"status": "success"}
             )
 
         except Exception as e:
-            # Catch-all for unexpected errors during the main execution flow
-            error_msg = f"Unexpected fatal error in MarketResearchAgent execution: {str(e)}"
+            error_msg = f"Unexpected error in MarketResearchAgent: {str(e)}"
             logger.critical(error_msg, exc_info=True)
-            payload = {"error": str(e), "traceback": traceback.format_exc()}
-            return Event(
-                agent_id=agent_id if 'agent_id' in locals() else 'unknown',
-                invocation_id=invocation_id if 'invocation_id' in locals() else 'unknown',
-                severity=EventSeverity.FATAL,
-                message=error_msg,
-                payload=payload
+            return context.create_event(
+                event_type="market.research.failed",
+                data={"error": error_msg, "details": traceback.format_exc()},
+                metadata={"status": "error"}
             )
 
+    async def close_clients(self):
+        """Close any open HTTP clients."""
+        if self.http_client and not self.http_client.is_closed:
+            await self.http_client.aclose()
+            logger.info("Closed shared httpx client.")
 
-# Agent now uses run_async and delegates report generation to ContentGenerationAgent.
+
+# --- FastAPI Server Setup ---
+
+app = FastAPI(title="MarketResearchAgent A2A Server")
+
+# Instantiate the agent
+try:
+    market_research_agent_instance = MarketResearchAgent()
+except ValueError as e:
+    logger.critical(f"Failed to initialize MarketResearchAgent: {e}. Server cannot start.", exc_info=True)
+    import sys
+    sys.exit(f"Agent Initialization Error: {e}")
+
+
+@app.post("/invoke", response_model=MarketOpportunityReport, responses={500: {"model": MarketResearchErrorOutput}})
+async def invoke_agent(request: MarketResearchInput = Body(...)):
+    """
+    A2A endpoint to invoke the MarketResearchAgent.
+    Expects JSON body matching MarketResearchInput.
+    Returns MarketOpportunityReport on success, or raises HTTPException on error.
+    """
+    logger.info(f"MarketResearchAgent /invoke called for topic: {request.initial_topic}")
+    invocation_id = f"research-{datetime.now().strftime('%Y%m%d%H%M%S')}-{random.randint(1000,9999)}"
+    context = InvocationContext(agent_id="market-research-agent", invocation_id=invocation_id, data=request.model_dump())
+
+    try:
+        result_event = await market_research_agent_instance.run_async(context)
+
+        if result_event and isinstance(result_event.data, dict):
+            if result_event.metadata.get("status") == "error":
+                 error_msg = result_event.data.get("error", "Unknown agent error")
+                 logger.error(f"MarketResearchAgent run_async returned error event: {error_msg}")
+                 raise HTTPException(status_code=500, detail=MarketResearchErrorOutput(error=error_msg, details=result_event.data.get("details")).model_dump())
+            else:
+                 # Validate success payload against MarketOpportunityReport
+                 try:
+                     output_payload = MarketOpportunityReport(**result_event.data)
+                     logger.info(f"MarketResearchAgent returning success result.")
+                     return output_payload
+                 except ValidationError as val_err:
+                     logger.error(f"Success event payload validation failed: {val_err}. Payload: {result_event.data}")
+                     raise HTTPException(status_code=500, detail=MarketResearchErrorOutput(error="Internal validation error on success payload.", details=val_err.errors()).model_dump())
+        else:
+            logger.error(f"MarketResearchAgent run_async returned None or invalid event data: {result_event}")
+            raise HTTPException(status_code=500, detail=MarketResearchErrorOutput(error="Agent execution failed to return a valid event.").model_dump())
+
+    except HTTPException as http_exc:
+        raise http_exc # Re-raise FastAPI exceptions
+    except Exception as e:
+        logger.error(f"Error during agent invocation: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=MarketResearchErrorOutput(error=f"Internal server error: {e}").model_dump())
+
+@app.get("/health")
+async def health_check():
+    # Add checks for API key presence and client initialization
+    return {"status": "ok"}
+
+# --- Server Shutdown Hook ---
+@app.on_event("shutdown")
+async def shutdown_event():
+    logger.info("Shutting down MarketResearchAgent server...")
+    await market_research_agent_instance.close_clients() # Close httpx client
+
+# --- Main execution block ---
+
+if __name__ == "__main__":
+    # Load .env for local development if needed
+    try:
+        from dotenv import load_dotenv
+        if load_dotenv(): logger.info("Loaded .env file for local run.")
+        else: logger.info("No .env file found or it was empty.")
+    except ImportError: logger.info("dotenv library not found, skipping .env load.")
+
+    parser = argparse.ArgumentParser(description="Run the MarketResearchAgent A2A server.")
+    parser.add_argument("--host", type=str, default="0.0.0.0", help="Host to bind the server to.")
+    parser.add_argument("--port", type=int, default=8089, help="Port to run the server on.") # Default matches compose
+    args = parser.parse_args()
+
+    # Optional: Add checks here for required env vars before starting server
+
+    print(f"Starting MarketResearchAgent A2A server on {args.host}:{args.port}")
+
+    uvicorn.run(app, host=args.host, port=args.port)

@@ -1,178 +1,214 @@
 import asyncio
 import httpx
 import logging
+import os # Added for environment variables
+import argparse # Added for server args
 from typing import List, Dict, Any, Optional
 
-from pydantic import BaseModel, Field
-from google.adk.agents import Agent
-from google.adk.runtime import InvocationContext, Event, Status
+import uvicorn # Added for server
+from fastapi import FastAPI, HTTPException, Body # Added for server
+from pydantic import BaseModel, Field # Added for server models
 
-from app.config import settings # Import centralized settings
+# Assuming ADK is installed
+from google.adk.agents import Agent
+from google.adk.runtime import InvocationContext
+from google.adk.runtime.events import Event, EventSeverity # Use EventSeverity
+
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Use logfire if configured globally, otherwise standard logging
+try:
+    import logfire
+    logger = logfire
+except ImportError:
+    logger = logging.getLogger(__name__)
+    logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"))
 
-# --- Placeholder Data Models ---
-# These should ideally be defined in a shared models directory
-# and imported, but are included here for completeness.
+# --- Pydantic Models ---
 
-class ImprovedProductSpec(BaseModel):
-    """Represents the improved product specification."""
-    product_name: str = Field(..., description="Name of the product.")
-    description: str = Field(..., description="Detailed description of the product.")
-    target_audience: str = Field(..., description="The intended audience for the product.")
-    key_features: List[str] = Field(..., description="List of key product features.")
-    unique_selling_points: List[str] = Field(..., description="Unique aspects differentiating the product.")
+# Input models based on what run_async expects
+class ImprovedProductSpecInput(BaseModel):
+    """Represents the improved product specification input."""
+    product_name: str = Field(description="Name of the product.")
+    description: str = Field(description="Detailed description of the product.")
+    target_audience: str = Field(description="The intended audience for the product.")
+    key_features: List[str] = Field(description="List of key product features.")
+    unique_selling_points: List[str] = Field(description="Unique aspects differentiating the product.")
 
-class BrandingPackage(BaseModel):
-    """Represents the branding guidelines and assets."""
-    brand_name: str = Field(..., description="The brand name.")
-    tone_of_voice: str = Field(..., description="Desired tone for marketing communications (e.g., formal, playful).")
-    keywords: List[str] = Field(..., description="Relevant keywords for the brand/product.")
-    logo_description: Optional[str] = Field(None, description="Description of the brand logo.") # Assuming logo itself isn't passed
+class BrandingPackageInput(BaseModel):
+    """Represents the branding guidelines and assets input."""
+    brand_name: str = Field(description="The brand name.")
+    tone_of_voice: str = Field(description="Desired tone for marketing communications (e.g., formal, playful).")
+    keywords: List[str] = Field(description="Relevant keywords for the brand/product.")
+    logo_description: Optional[str] = Field(None, description="Description of the brand logo.")
 
+class MarketingAgentInput(BaseModel):
+    """Input model for the /invoke endpoint."""
+    product_spec: ImprovedProductSpecInput = Field(description="The improved product specification.")
+    branding_package: BrandingPackageInput = Field(description="The branding package.")
+
+# Output model
 class MarketingMaterialsPackage(BaseModel):
     """Structured output containing generated marketing materials."""
-    social_media_posts: List[str] = Field(..., description="Generated social media posts.")
-    ad_copies: List[str] = Field(..., description="Generated short advertisement copies.")
-    email_announcements: List[str] = Field(..., description="Generated brief email announcements.")
+    social_media_posts: List[str] = Field(description="Generated social media posts.")
+    ad_copies: List[str] = Field(description="Generated short advertisement copies.")
+    email_announcements: List[str] = Field(description="Generated brief email announcements.")
+
+class MarketingAgentErrorOutput(BaseModel):
+    """Output model for the /invoke endpoint on failure."""
+    error: str
+    details: Optional[Any] = None
+
 
 # --- Marketing Agent ---
 
 class MarketingAgent(Agent):
     """
-    Generates various marketing copy snippets by leveraging the ContentGenerationAgent.
+    Generates various marketing copy snippets by leveraging the ContentGenerationAgent via A2A.
     """
+    ENV_CONTENT_GENERATION_AGENT_URL = "CONTENT_GENERATION_AGENT_URL"
 
-    def __init__(self):
+    def __init__(self, agent_id: str = "marketing-agent"):
         """
         Initializes the MarketingAgent.
         Retrieves the ContentGenerationAgent URL from environment variables.
         """
-        super().__init__(unique_id="marketing_agent")
-        # Get agent ID from settings
-        self.content_generation_agent_id = settings.CONTENT_GENERATION_AGENT_ID
-        if not self.content_generation_agent_id:
-            logger.error("CONTENT_GENERATION_AGENT_ID not configured in settings.")
-            raise ValueError("CONTENT_GENERATION_AGENT_ID must be configured in settings")
-        logger.info(f"MarketingAgent initialized. ContentGenerationAgent ID (from settings): {self.content_generation_agent_id}")
+        super().__init__(agent_id=agent_id) # Pass agent_id
+        # Get agent URL from environment variable
+        self.content_generation_agent_url = os.environ.get(self.ENV_CONTENT_GENERATION_AGENT_URL)
+        if not self.content_generation_agent_url:
+            logger.error(f"{self.ENV_CONTENT_GENERATION_AGENT_URL} not configured.")
+            raise ValueError(f"{self.ENV_CONTENT_GENERATION_AGENT_URL} must be configured")
+
+        # Initialize httpx client for A2A calls
+        self.http_client = httpx.AsyncClient(timeout=60.0) # Increased timeout for LLM calls
+
+        logger.info(f"MarketingAgent ({self.agent_id}) initialized. ContentGenerationAgent URL: {self.content_generation_agent_url}")
 
 
-    async def _invoke_content_generation_skill(self, context: InvocationContext, prompt: str, request_key: str) -> tuple[str, Optional[str]]:
+    async def _call_content_generation_agent(self, prompt: str, request_key: str) -> tuple[str, Optional[str]]:
         """
-        Invokes the ContentGenerationAgent's 'generate' skill and returns the result.
-
-        Args:
-            context: The current InvocationContext.
-            prompt: The prompt for the content generation.
-            request_key: An identifier for the request (for logging/mapping results).
-
-        Returns:
-            A tuple containing the request_key and the generated content (str) or None if failed.
+        Calls the ContentGenerationAgent via A2A HTTP call and returns the generated content.
         """
-        input_payload = {"prompt": prompt}
-        input_event = Event(payload=input_payload)
-        logger.info(f"Invoking ContentGenerationAgent skill 'generate' for '{request_key}' via ADK...")
+        if not self.http_client or not self.content_generation_agent_url:
+            logger.error("HTTP client or ContentGenerationAgent URL not configured.")
+            return request_key, None
+
+        # Assuming ContentGenerationAgent has an /invoke endpoint that takes a prompt
+        # and returns a result payload with a 'generated_content' key.
+        invoke_url = f"{self.content_generation_agent_url.rstrip('/')}/invoke"
+        logger.info(f"Calling ContentGenerationAgent A2A at {invoke_url} for '{request_key}'...")
+
+        # Prepare payload for ContentGenerationAgent (assuming it takes 'action' and 'prompt')
+        # The ContentGenerationAgent was refactored to take 'action' and other params directly.
+        # We need to adapt the call here to match its expected input structure.
+        # Let's assume ContentGenerationAgent has a generic 'generate_text' action
+        # that takes a 'prompt' and returns {'generated_content': '...'}
+        # OR, more likely, it has specific actions like 'generate_marketing_copy'
+        # We need to align this call with the ContentGenerationAgent's actual API.
+
+        # Based on the ContentGenerationAgent refactor, it takes an 'action' and other params.
+        # Let's assume we need to call it with action 'generate_marketing_copy' and pass the prompt.
+        # This might require restructuring the prompt or adding more context data.
+        # For now, let's simplify and assume ContentGenAgent has a generic 'generate_text' action
+        # that just takes a prompt and returns raw text. If not, this needs adjustment.
+
+        # Re-evaluating ContentGenerationAgent's refactored /invoke endpoint:
+        # It takes ContentGenInput (action, niche, quantity, focus, product_name, style).
+        # It returns ContentGenOutput (task_id, action, timestamp, success, results, error).
+        # The 'generate_marketing_copy' action takes product_name, niche, style.
+        # The prompt logic here is generating specific snippets (social, ad, email).
+        # It seems the ContentGenerationAgent's actions are too high-level for generating snippets.
+        # The original approach of passing a specific prompt to ContentGenAgent's 'generate' skill
+        # (which likely used an LLM directly) was more suitable.
+
+        # Let's revert to the assumption that ContentGenAgent has a skill/endpoint
+        # that takes a raw prompt and returns generated text. If the refactored
+        # ContentGenAgent doesn't support this, this agent will need further adjustment
+        # or ContentGenAgent needs a new endpoint/action.
+
+        # Assuming a generic 'generate_text' action on ContentGenAgent
+        payload = {
+            "action": "generate_marketing_copy", # Using the action name from ContentGenAgent
+            "prompt": prompt, # Pass the specific snippet prompt
+            # Add other required params for generate_marketing_copy if needed by ContentGenAgent
+            # e.g., "product_name": "...", "niche": "...", "style": "..."
+            # This means the prompt formulation needs to change, or ContentGenAgent needs a simpler action.
+            # Let's assume ContentGenAgent has a simple 'generate_text' action that takes just 'prompt'.
+            "action": "generate_text", # Assuming a simple action exists
+            "prompt": prompt
+        }
 
         try:
-            result_event = await context.invoke_skill(
-                target_agent_id=self.content_generation_agent_id,
-                skill_name="generate", # Assuming the skill name is 'generate'
-                input=input_event,
-                timeout_seconds=60.0
-            )
+            response = await self.http_client.post(invoke_url, json=payload)
+            response.raise_for_status()
+            response_data = response.json()
 
-            if result_event.type == "error":
-                error_msg = result_event.payload.get('message', 'Unknown error from ContentGenerationAgent skill')
-                logger.error(f"ContentGenerationAgent skill invocation failed for '{request_key}': {error_msg}")
-                return request_key, None
-            # Check for success status and expected data key
-            elif result_event.payload and result_event.payload.get("status") == "success" and "generated_content" in result_event.payload:
-                logger.info(f"Successfully received content from ContentGenerationAgent skill for '{request_key}'.")
-                return request_key, result_event.payload["generated_content"]
+            # Assuming ContentGenAgent's success response includes the generated text
+            # Let's check the ContentGenOutput model: it has 'results'.
+            # If action was 'generate_text', maybe 'results' contains the string?
+            # Or maybe it's nested? Let's assume 'results' is the string for 'generate_text'.
+            if response_data.get("success") and "results" in response_data:
+                 generated_content = response_data["results"]
+                 if isinstance(generated_content, str):
+                     logger.info(f"Successfully received content from ContentGenerationAgent for '{request_key}'.")
+                     return request_key, generated_content
+                 else:
+                     logger.warning(f"ContentGenerationAgent returned non-string results for '{request_key}'. Data: {response_data}")
+                     return request_key, None
             else:
-                # Handle cases where the skill call succeeded but indicated an internal failure or unexpected payload
-                error_msg = result_event.payload.get("message", "Unknown or unsuccessful response from ContentGenerationAgent skill")
-                logger.error(f"ContentGenerationAgent skill call for '{request_key}' reported failure or unexpected payload: {error_msg}")
-                logger.debug(f"ContentGenerationAgent Payload for '{request_key}': {result_event.payload}")
+                error_msg = response_data.get("error", "Unknown error from ContentGenerationAgent")
+                logger.error(f"ContentGenerationAgent A2A call failed for '{request_key}': {error_msg}. Response: {response_data}")
                 return request_key, None
 
-        except TimeoutError:
-            logger.error(f"ADK skill invocation for ContentGenerationAgent timed out for '{request_key}'.", exc_info=True)
-            return request_key, None
-        except ConnectionError as conn_err:
-            logger.error(f"ADK skill invocation for ContentGenerationAgent failed (Connection Error) for '{request_key}': {conn_err}", exc_info=True)
-            return request_key, None
-        except Exception as e:
-            logger.error(f"Unexpected error during ContentGenerationAgent skill invocation for '{request_key}': {e}", exc_info=True)
-            return request_key, None
-
-    async def generate_content(self, client: httpx.AsyncClient, prompt: str, context_data: Dict[str, Any]) -> Optional[str]:
-        """
-        Helper function to make a single A2A call to the ContentGenerationAgent.
-        """
-        payload = InvocationContext(
-            invocation_id="marketing_to_contentgen_" + context_data.get("original_invocation_id", "unknown"), # Add traceability
-            agent_id="content_generation", # Target agent ID
-            data={"prompt": prompt} # Data payload for the target agent
-        )
-        try:
-            logger.info(f"Sending request to ContentGenerationAgent: {prompt[:100]}...")
-            response = await client.post(
-                self.content_generation_agent_url,
-                json=payload.model_dump(mode='json'), # Use model_dump for Pydantic v2
-                timeout=60.0 # Set a reasonable timeout
-            )
-            response.raise_for_status() # Raise an exception for bad status codes (4xx or 5xx)
-            event_data = response.json()
-            event = Event(**event_data)
-
-            if event.status == Status.SUCCESS and event.data and "generated_content" in event.data:
-                logger.info("Successfully received content from ContentGenerationAgent.")
-                return event.data["generated_content"]
-            else:
-                logger.error(f"ContentGenerationAgent returned status {event.status} or missing data. Error: {event.error_message}")
-                return None
         except httpx.RequestError as e:
-            logger.error(f"HTTP request error calling ContentGenerationAgent: {e}")
-            return None
+            logger.error(f"HTTP request error calling ContentGenerationAgent for '{request_key}': {e}", exc_info=True)
+            return request_key, None
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HTTP status error calling ContentGenerationAgent for '{request_key}': {e.response.status_code} - {e.response.text}", exc_info=True)
+            return request_key, None
         except Exception as e:
-            logger.error(f"Unexpected error calling ContentGenerationAgent: {e}")
-            return None
+            logger.error(f"Unexpected error calling ContentGenerationAgent for '{request_key}': {e}", exc_info=True)
+            return request_key, None
 
 
     async def run_async(self, context: InvocationContext) -> Event:
         """
         Executes the marketing content generation workflow.
+        Reads input from context.data.
         """
         logger.info(f"MarketingAgent run_async invoked with context ID: {context.invocation_id}")
+        agent_id = context.agent_id
+        invocation_id = context.invocation_id
 
         try:
-            # 1. Parse Input Data
-            if not context.data:
-                logger.error("Input data is missing in the invocation context.")
-                return Event.create_failure(
-                    invocation_id=context.invocation_id,
-                    agent_id=self.unique_id,
-                    error_message="Input data is missing."
-                )
+            # 1. Parse Input Data from context.data
+            if not isinstance(context.data, dict):
+                raise ValueError("Input data must be a dictionary.")
 
             try:
-                product_spec = ImprovedProductSpec(**context.data.get("product_spec", {}))
-                branding = BrandingPackage(**context.data.get("branding_package", {}))
+                # Use the input models defined for the FastAPI endpoint
+                input_data = MarketingAgentInput(**context.data)
+                product_spec = input_data.product_spec
+                branding = input_data.branding_package
+            except ValidationError as e:
+                logger.error(f"Input validation failed: {e}", exc_info=True)
+                return context.create_event(
+                    event_type="adk.agent.error",
+                    data={"error": "Input Validation Error", "details": e.errors()},
+                    metadata={"status": "error"}
+                )
             except Exception as e:
                 logger.error(f"Failed to parse input data: {e}", exc_info=True)
-                return Event.create_failure(
-                    invocation_id=context.invocation_id,
-                    agent_id=self.unique_id,
-                    error_message=f"Invalid input data format: {e}"
+                return context.create_event(
+                    event_type="adk.agent.error",
+                    data={"error": "Input Parsing Error", "details": str(e)},
+                    metadata={"status": "error"}
                 )
 
             logger.info(f"Parsed input: Product='{product_spec.product_name}', Brand='{branding.brand_name}'")
 
             # 2. Formulate Content Requests
-            # Define the types and number of marketing materials needed
             content_requests = {
                 "social_media_post_1": f"Generate a short, engaging social media post for {product_spec.product_name}. Tone: {branding.tone_of_voice}. Target Audience: {product_spec.target_audience}. Key features: {', '.join(product_spec.key_features)}. USP: {', '.join(product_spec.unique_selling_points)}. Keywords: {', '.join(branding.keywords)}.",
                 "social_media_post_2": f"Create another distinct social media post for {product_spec.product_name}, focusing on its unique selling points: {', '.join(product_spec.unique_selling_points)}. Tone: {branding.tone_of_voice}. Brand: {branding.brand_name}.",
@@ -182,33 +218,33 @@ class MarketingAgent(Agent):
                 "email_announcement_1": f"Draft a brief email announcement for {product_spec.product_name} launch/update. Target Audience: {product_spec.target_audience}. Include key features: {', '.join(product_spec.key_features)}. Tone: {branding.tone_of_voice}. Brand: {branding.brand_name}."
             }
 
-            # 3. Delegate to ContentGenerationAgent Concurrently using ADK invoke_skill
+            # 3. Delegate to ContentGenerationAgent Concurrently using A2A HTTP calls
             tasks = []
             for key, prompt in content_requests.items():
-                # Create a task for each content request using the ADK helper
-                tasks.append(self._invoke_content_generation_skill(context, prompt, key))
+                # Create a task for each content request using the HTTP helper
+                tasks.append(self._call_content_generation_agent(prompt, key)) # Pass prompt and key
 
-            logger.info(f"Dispatching {len(tasks)} content generation skill invocations concurrently.")
+            logger.info(f"Dispatching {len(tasks)} content generation A2A calls concurrently.")
             # Gather results. Each result is a tuple: (request_key, content_or_none)
             gathered_results = await asyncio.gather(*tasks)
-            logger.info("Received responses from ContentGenerationAgent skill invocations.")
+            logger.info("Received responses from ContentGenerationAgent A2A calls.")
 
             # Process results into a dictionary
             results = {}
+            failed_tasks = []
             for key, content in gathered_results:
-                results[key] = content # content will be None if the specific invocation failed
+                results[key] = content
+                if content is None:
+                    failed_tasks.append(key)
 
-            # Check for failures
-            failed_tasks = [key for key, content in results.items() if content is None]
             if failed_tasks:
                 error_msg = f"Failed to generate content for: {', '.join(failed_tasks)}"
                 logger.error(error_msg)
-                # Decide if partial results are acceptable or if it's a total failure
-                # For now, let's return failure if any task failed.
-                return Event.create_failure(
-                    invocation_id=context.invocation_id,
-                    agent_id=self.unique_id,
-                    error_message=error_msg
+                # Return error event if any task failed
+                return context.create_event(
+                    event_type="adk.agent.error",
+                    data={"error": "Content Generation Failed", "details": error_msg, "failed_tasks": failed_tasks},
+                    metadata={"status": "error"}
                 )
 
             # 4. Structure Output
@@ -221,29 +257,119 @@ class MarketingAgent(Agent):
                 logger.info("Successfully compiled MarketingMaterialsPackage.")
             except Exception as e:
                  logger.error(f"Failed to structure output package: {e}", exc_info=True)
-                 return Event.create_failure(
-                    invocation_id=context.invocation_id,
-                    agent_id=self.unique_id,
-                    error_message=f"Failed to structure output: {e}"
-                )
+                 return context.create_event(
+                    event_type="adk.agent.error",
+                    data={"error": "Output Structuring Failed", "details": str(e)},
+                    metadata={"status": "error"}
+                 )
 
             # 5. Return Success Event
-            return Event.create_success(
-                invocation_id=context.invocation_id,
-                agent_id=self.unique_id,
-                data=marketing_package.model_dump(mode='json') # Use model_dump for Pydantic v2
+            logger.info("Marketing content generation finished successfully.")
+            return context.create_event(
+                event_type="marketing.materials.generated", # Specific event type
+                data=marketing_package.model_dump(), # Use model_dump for Pydantic v2
+                metadata={"status": "success"}
             )
 
         except Exception as e:
             logger.error(f"An unexpected error occurred in MarketingAgent: {e}", exc_info=True)
-            return Event.create_failure(
-                invocation_id=context.invocation_id,
-                agent_id=self.unique_id,
-                error_message=f"An unexpected error occurred: {str(e)}"
+            return context.create_event(
+                event_type="adk.agent.error",
+                data={"error": "Unexpected Agent Error", "details": str(e)},
+                metadata={"status": "error"}
             )
 
-# Example of how to potentially register the agent (if using a framework that supports it)
-# This part might live elsewhere (e.g., in app.py or main.py) depending on the application structure.
-# from google.adk.runtime import AgentRegistry
-# agent_registry = AgentRegistry()
-# agent_registry.register(MarketingAgent())
+    async def close_clients(self):
+        """Close any open HTTP clients."""
+        if self.http_client and not self.http_client.is_closed:
+            await self.http_client.aclose()
+            logger.info("Closed httpx client.")
+
+
+# --- FastAPI Server Setup ---
+
+app = FastAPI(title="MarketingAgent A2A Server")
+
+# Instantiate the agent (reads env vars internally)
+try:
+    marketing_agent_instance = MarketingAgent()
+except ValueError as e:
+    logger.critical(f"Failed to initialize MarketingAgent: {e}. Server cannot start.", exc_info=True)
+    import sys
+    sys.exit(f"Agent Initialization Error: {e}")
+
+
+@app.post("/invoke", response_model=MarketingMaterialsPackage, responses={500: {"model": MarketingAgentErrorOutput}})
+async def invoke_agent(request: MarketingAgentInput = Body(...)):
+    """
+    A2A endpoint to invoke the MarketingAgent.
+    Expects JSON body matching MarketingAgentInput.
+    Returns MarketingMaterialsPackage on success, or raises HTTPException on error.
+    """
+    logger.info(f"MarketingAgent /invoke called for product: {request.product_spec.product_name}")
+    invocation_id = f"marketing-{datetime.now().strftime('%Y%m%d%H%M%S')}-{random.randint(1000,9999)}"
+    context = InvocationContext(agent_id="marketing-agent", invocation_id=invocation_id, data=request.model_dump())
+
+    try:
+        result_event = await marketing_agent_instance.run_async(context)
+
+        if result_event and isinstance(result_event.data, dict):
+            if result_event.metadata.get("status") == "error":
+                 error_msg = result_event.data.get("error", "Unknown agent error")
+                 error_details = result_event.data.get("details")
+                 logger.error(f"MarketingAgent run_async returned error event: {error_msg}")
+                 raise HTTPException(status_code=500, detail=MarketingAgentErrorOutput(error=error_msg, details=error_details).model_dump(exclude_none=True))
+            else:
+                 # Validate success payload against MarketingMaterialsPackage
+                 try:
+                     output_payload = MarketingMaterialsPackage(**result_event.data)
+                     logger.info(f"MarketingAgent returning success result.")
+                     return output_payload
+                 except ValidationError as val_err:
+                     logger.error(f"Success event payload validation failed: {val_err}. Payload: {result_event.data}")
+                     raise HTTPException(status_code=500, detail=MarketingAgentErrorOutput(error="Internal validation error on success payload.", details=val_err.errors()).model_dump(exclude_none=True))
+        else:
+            logger.error(f"MarketingAgent run_async returned None or invalid event data: {result_event}")
+            raise HTTPException(status_code=500, detail=MarketingAgentErrorOutput(error="Agent execution failed to return a valid event.").model_dump())
+
+    except HTTPException as http_exc:
+        raise http_exc # Re-raise FastAPI exceptions
+    except Exception as e:
+        logger.error(f"Error during agent invocation: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=MarketingAgentErrorOutput(error=f"Internal server error: {e}").model_dump())
+
+@app.get("/health")
+async def health_check():
+    # Add checks for ContentGenerationAgent URL presence if needed
+    return {"status": "ok"}
+
+# --- Server Shutdown Hook ---
+@app.on_event("shutdown")
+async def shutdown_event():
+    logger.info("Shutting down MarketingAgent server...")
+    await marketing_agent_instance.close_clients() # Close httpx client
+
+# --- Main execution block ---
+
+if __name__ == "__main__":
+    # Load .env for local development if needed
+    try:
+        from dotenv import load_dotenv
+        if load_dotenv(): logger.info("Loaded .env file for local run.")
+        else: logger.info("No .env file found or it was empty.")
+    except ImportError: logger.info("dotenv library not found, skipping .env load.")
+
+    parser = argparse.ArgumentParser(description="Run the MarketingAgent A2A server.")
+    parser.add_argument("--host", type=str, default="0.0.0.0", help="Host to bind the server to.")
+    parser.add_argument("--port", type=int, default=8090, help="Port to run the server on.") # Default matches compose
+    args = parser.parse_args()
+
+    # Optional: Check for CONTENT_GENERATION_AGENT_URL before starting
+    # if not os.environ.get(MarketingAgent.ENV_CONTENT_GENERATION_AGENT_URL):
+    #     print(f"CRITICAL ERROR: Environment variable {MarketingAgent.ENV_CONTENT_GENERATION_AGENT_URL} must be set.")
+    #     import sys
+    #     sys.exit(1)
+
+    print(f"Starting MarketingAgent A2A server on {args.host}:{args.port}")
+
+    uvicorn.run(app, host=args.host, port=args.port)
