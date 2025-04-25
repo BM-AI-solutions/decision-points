@@ -81,12 +81,12 @@ class ImprovementAgent(Agent): # Inherit from ADK Agent
 
         # --- Web Search Agent Integration ---
         # Get Agent ID from settings
-        self.web_search_agent_id = settings.WEB_SEARCH_AGENT_ID
+        self.agent_web_search_id = settings.AGENT_WEB_SEARCH_ID
 
-        if not self.web_search_agent_id:
-            self.logger.warning("WEB_SEARCH_AGENT_ID not configured in settings. Web search integration will be disabled.")
+        if not self.agent_web_search_id:
+            self.logger.warning("AGENT_WEB_SEARCH_ID not configured in settings. Web search integration will be disabled.")
         else:
-            self.logger.info(f"Web Search Agent ID configured via settings: {self.web_search_agent_id}")
+            self.logger.info(f"Web Search Agent ID configured via settings: {self.agent_web_search_id}")
 
 
         self.logger.info("ImprovementAgent initialized.")
@@ -118,7 +118,7 @@ class ImprovementAgent(Agent): # Inherit from ADK Agent
         # Example: Search if concept is complex or mentions specific tech
         trigger_search = "technology" in inputs.product_concept.lower() or "competitor" in inputs.product_concept.lower()
 
-        if self.web_search_agent_id and trigger_search:
+        if self.agent_web_search_id and trigger_search:
             self.logger.info("Web search triggered based on product concept.")
             search_query = f"Technical details and competitors for product concept: {inputs.product_concept}"
             try:
@@ -129,7 +129,7 @@ class ImprovementAgent(Agent): # Inherit from ADK Agent
                 }
                 # Note: Ensure BRAVE_API_KEY is implicitly available to the WebSearchAgent service
                 # or pass it if the A2A endpoint requires it explicitly in the payload/headers.
-                a2a_url = f"{self.web_search_agent_url}/a2a/web_search/invoke" # Assuming this is the correct endpoint path
+                a2a_url = f"{self.agent_web_search_url}/a2a/web_search/invoke" # Assuming this is the correct endpoint path
                 self.logger.info(f"Calling WebSearchAgent at {a2a_url} with query: {search_query}")
 
                 response = await self.http_client.post(a2a_url, json=search_payload)

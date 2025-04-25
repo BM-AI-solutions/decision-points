@@ -7,15 +7,13 @@ class UserBase(BaseModel):
     email: EmailStr
     name: Optional[str] = None
 
-# Properties to receive via API on creation
-class UserCreate(UserBase):
-    password: str
+# UserCreate schema removed as user creation endpoint is removed.
 
 # Properties to receive via API on update
 class UserUpdate(BaseModel): # Don't inherit UserBase to allow partial updates easily
     email: Optional[EmailStr] = None
     name: Optional[str] = None
-    password: Optional[str] = None # Allow password update
+    # password: Optional[str] = None # Removed password update field
     is_active: Optional[bool] = None
 
 # Properties shared by models stored in DB
@@ -32,9 +30,11 @@ class UserInDBBase(UserBase):
 class User(UserInDBBase):
     pass # Inherits all necessary fields from UserInDBBase
 
-# Properties stored in DB (includes hashed_password)
+# Properties stored in DB (hashed_password removed)
 class UserInDB(UserInDBBase):
-    hashed_password: str
+    # hashed_password: str # Removed hashed_password field
+    pass # Inherits necessary fields from UserInDBBase
 
-    class Config:
-        orm_mode = True # Pydantic V1 style, use from_attributes=True in V2
+    # Config inherited or can be redefined if needed, but orm_mode is likely still relevant
+    # class Config:
+    #     orm_mode = True # Pydantic V1 style, use from_attributes=True in V2

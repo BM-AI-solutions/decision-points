@@ -1,8 +1,8 @@
 import { io } from 'socket.io-client';
 
 // Get backend URL from environment variables (ensure VITE_WS_BASE_URL is set in .env)
-// Default to localhost:5000 if not set, assuming backend runs there in dev
-const WS_URL = import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:5000';
+// Default to localhost:8000 if not set, assuming backend runs there in dev
+const WS_URL = import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:8000';
 
 class WebSocketService {
   socket = null;

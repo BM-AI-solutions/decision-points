@@ -20,7 +20,7 @@ from typing import Dict, Any, Optional, Tuple, List, Union, Callable
 from functools import wraps
 from datetime import datetime, timedelta
 
-from flask import request, abort, jsonify, Response, g
+# Removed Flask imports: request, abort, jsonify, Response, g
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
@@ -131,36 +131,40 @@ def generate_csrf_token() -> str:
     """
     return secrets.token_hex(32)
 
-def validate_csrf_token(token: str) -> bool:
+def validate_csrf_token(token_from_request: str, token_from_session: Optional[str]) -> bool:
     """Validate a CSRF token against the session token.
     
     Args:
-        token: CSRF token to validate
+        token_from_request: CSRF token from the request (header or form)
+        token_from_session: CSRF token stored in the user's session/cookie
         
     Returns:
         True if valid, False otherwise
     """
-    # In a real implementation, compare with token stored in session
-    session_token = request.cookies.get('csrf_token')
-    return session_token is not None and token == session_token
+    # Compare the token from the request with the one stored (e.g., in a cookie)
+    # This function now requires the session token to be passed in.
+    return token_from_session is not None and secrets.compare_digest(token_from_request, token_from_session)
 
-def csrf_protect(f):
-    """Decorator to protect routes against CSRF attacks."""
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        # Skip for GET, HEAD, OPTIONS, TRACE
-        if request.method in ['GET', 'HEAD', 'OPTIONS', 'TRACE']:
-            return f(*args, **kwargs)
-        
-        # Check CSRF token in header or form
-        token = request.headers.get('X-CSRF-Token') or request.form.get('csrf_token')
-        
-        if not token or not validate_csrf_token(token):
-            logger.warning(f"CSRF validation failed for {request.path}")
-            abort(403, description="CSRF validation failed")
-            
-        return f(*args, **kwargs)
-    return decorated_function
+# TODO: Reimplement CSRF protection using FastAPI middleware or dependency
+# Example Dependency Structure:
+# async def verify_csrf(request: Request):
+#     if request.method in ['GET', 'HEAD', 'OPTIONS', 'TRACE']:
+#         return
+#     token_from_request = request.headers.get('X-CSRF-Token') # or await request.form()
+#     token_from_session = request.cookies.get('csrf_token')
+#     if not token_from_request or not validate_csrf_token(token_from_request, token_from_session):
+#         logger.warning(f"CSRF validation failed for {request.url.path}")
+#         raise HTTPException(status_code=403, detail="CSRF validation failed")
+
+# def csrf_protect(f):
+#     """Decorator to protect routes against CSRF attacks."""
+#     @wraps(f)
+#     def decorated_function(*args, **kwargs):
+#         # ... Flask-specific implementation removed ...
+#         # Use FastAPI dependency injection instead, e.g.:
+#         # @app.post("/some/path", dependencies=[Depends(verify_csrf)])
+#         pass
+#     return decorated_function
 
 # ===== Input Validation =====
 
@@ -327,24 +331,24 @@ class RateLimiter:
 # Global rate limiter instance
 rate_limiter = RateLimiter()
 
-def rate_limit(f):
-    """Decorator to apply rate limiting to routes."""
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        ip_address = request.headers.get('X-Forwarded-For', request.remote_addr)
-        
-        if rate_limiter.is_rate_limited(ip_address):
-            logger.warning(f"Rate limit exceeded for IP: {ip_address}")
-            response = jsonify({
-                'error': 'Rate limit exceeded',
-                'status': 429,
-                'message': 'Too many requests, please try again later'
-            })
-            response.status_code = 429
-            return response
-            
-        return f(*args, **kwargs)
-    return decorated_function
+# TODO: Reimplement rate limiting using FastAPI middleware or dependency
+# Example Middleware Structure (in main.py or middleware file):
+# from starlette.middleware.base import BaseHTTPMiddleware
+# class RateLimitMiddleware(BaseHTTPMiddleware):
+#     async def dispatch(self, request: Request, call_next):
+#         ip_address = request.client.host
+#         if rate_limiter.is_rate_limited(ip_address):
+#             logger.warning(f"Rate limit exceeded for IP: {ip_address}")
+#             return JSONResponse(
+#                 status_code=429,
+#                 content={'detail': 'Rate limit exceeded'}
+#             )
+#         response = await call_next(request)
+#         return response
+# app.add_middleware(RateLimitMiddleware)
+
+# def rate_limit(f): ... Flask decorator removed ...
+
 
 # ===== Enhanced JWT Handling =====
 
@@ -413,105 +417,87 @@ def verify_and_refresh_token(refresh_token: str) -> Optional[Dict[str, str]]:
         logger.warning(f"Invalid refresh token: {e}")
         return None
 
-def jwt_required(f):
-    """Decorator to require valid JWT for routes."""
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        auth_header = request.headers.get('Authorization')
-        
-        if not auth_header or not auth_header.startswith('Bearer '):
-            logger.warning("Missing or invalid Authorization header")
-            return jsonify({
-                'error': 'Authorization required',
-                'status': 401
-            }), 401
-        
-        token = auth_header.split(' ')[1]
-        secret_key = os.environ.get('JWT_SECRET_KEY', 'change-this-in-production')
-        
-        try:
-            payload = jwt.decode(token, secret_key, algorithms=['HS256'])
-            
-            # Ensure it's an access token
-            if payload.get('type') != 'access':
-                logger.warning("Token type is not access")
-                return jsonify({
-                    'error': 'Invalid token type',
-                    'status': 401
-                }), 401
-            
-            # Store user info in Flask g object for route handlers
-            g.user_id = payload['user_id']
-            g.email = payload['email']
-            
-            return f(*args, **kwargs)
-        except jwt.ExpiredSignatureError:
-            logger.warning("Token expired")
-            return jsonify({
-                'error': 'Token expired',
-                'status': 401,
-                'code': 'token_expired'  # Special code for frontend to handle refresh
-            }), 401
-        except jwt.InvalidTokenError as e:
-            logger.warning(f"Invalid token: {e}")
-            return jsonify({
-                'error': 'Invalid token',
-                'status': 401
-            }), 401
-    
-    return decorated_function
+# TODO: Reimplement JWT requirement using FastAPI dependencies and security utilities
+# Example Dependency Structure:
+# from fastapi import Depends, HTTPException, status
+# from fastapi.security import OAuth2PasswordBearer
+#
+# oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token") # Adjust tokenUrl
+#
+# async def get_current_user(token: str = Depends(oauth2_scheme)):
+#     secret_key = os.environ.get('JWT_SECRET_KEY', 'change-this-in-production')
+#     credentials_exception = HTTPException(
+#         status_code=status.HTTP_401_UNAUTHORIZED,
+#         detail="Could not validate credentials",
+#         headers={"WWW-Authenticate": "Bearer"},
+#     )
+#     token_expired_exception = HTTPException(
+#         status_code=status.HTTP_401_UNAUTHORIZED,
+#         detail="Token expired",
+#         headers={"WWW-Authenticate": "Bearer"},
+#     )
+#     try:
+#         payload = jwt.decode(token, secret_key, algorithms=['HS256'])
+#         if payload.get('type') != 'access':
+#             raise credentials_exception # Or a specific exception for type mismatch
+#         user_id: str = payload.get("user_id")
+#         email: str = payload.get("email")
+#         if user_id is None or email is None:
+#             raise credentials_exception
+#         return {"user_id": user_id, "email": email} # Or return a User Pydantic model
+#     except jwt.ExpiredSignatureError:
+#         raise token_expired_exception
+#     except jwt.InvalidTokenError:
+#         raise credentials_exception
+#
+# # Usage in path operation: @app.get("/users/me", response_model=UserSchema) async def read_users_me(current_user: dict = Depends(get_current_user)): return current_user
 
 # ===== Enhanced Security Headers =====
 
-def enhanced_security_headers(response):
-    """Apply enhanced security headers to response.
-    
-    Args:
-        response: Flask response object
-        
-    Returns:
-        Modified response with security headers
-    """
-    # HTTPS enforcement
-    response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains; preload'
-    
-    # Content security policy - customize based on your needs
+# TODO: Reimplement security headers using FastAPI middleware
+# Example Middleware Structure (in main.py or middleware file):
+# class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+#     async def dispatch(self, request: Request, call_next):
+#         response = await call_next(request)
+#         response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains; preload'
+#         # ... set other headers ...
+#         csp_directives = [...]
+#         response.headers['Content-Security-Policy'] = "; ".join(csp_directives)
+#         response.headers['X-Content-Type-Options'] = 'nosniff'
+#         response.headers['X-Frame-Options'] = 'DENY'
+#         response.headers['X-XSS-Protection'] = '1; mode=block'
+#         response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+#         permissions = [...]
+#         response.headers['Permissions-Policy'] = ", ".join(permissions)
+#         return response
+# app.add_middleware(SecurityHeadersMiddleware)
+
+# def enhanced_security_headers(response): ... Flask function removed ...
+
+# Helper function to get headers as a dictionary (can be used by middleware)
+def get_security_headers() -> Dict[str, str]:
+    """Returns a dictionary of recommended security headers."""
     csp_directives = [
         "default-src 'self'",
-        "script-src 'self' https://apis.google.com https://js.stripe.com",
-        "connect-src 'self' https://api.stripe.com",
-        "img-src 'self' data: https://www.gstatic.com",
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-        "font-src 'self' https://fonts.gstatic.com",
-        "frame-src 'self' https://js.stripe.com https://accounts.google.com",
+        "script-src 'self' https://apis.google.com https://js.stripe.com", # Example: Adjust as needed
+        "connect-src 'self' https://api.stripe.com", # Example: Adjust as needed
+        "img-src 'self' data: https://www.gstatic.com", # Example: Adjust as needed
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com", # Example: Adjust as needed
+        "font-src 'self' https://fonts.gstatic.com", # Example: Adjust as needed
+        "frame-src 'self' https://js.stripe.com https://accounts.google.com", # Example: Adjust as needed
         "object-src 'none'",
         "base-uri 'self'",
         "form-action 'self'",
         "frame-ancestors 'none'",
         "upgrade-insecure-requests"
     ]
-    response.headers['Content-Security-Policy'] = "; ".join(csp_directives)
-    
-    # Prevent MIME type sniffing
-    response.headers['X-Content-Type-Options'] = 'nosniff'
-    
-    # Prevent clickjacking
-    response.headers['X-Frame-Options'] = 'DENY'
-    
-    # Enable browser XSS protection
-    response.headers['X-XSS-Protection'] = '1; mode=block'
-    
-    # Control referrer information
-    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
-    
-    # Permissions policy (formerly Feature-Policy)
-    permissions = [
-        "geolocation=()",
-        "microphone=()",
-        "camera=()",
-        "payment=(self)",
-        "usb=()"
-    ]
-    response.headers['Permissions-Policy'] = ", ".join(permissions)
-    
-    return response
+    permissions = ["geolocation=()", "microphone=()", "camera=()", "payment=(self)", "usb=()"]
+    return {
+        'Strict-Transport-Security': 'max-age=31536000; includeSubDomains; preload',
+        'Content-Security-Policy': "; ".join(csp_directives),
+        'X-Content-Type-Options': 'nosniff',
+        'X-Frame-Options': 'DENY',
+        'X-XSS-Protection': '1; mode=block',
+        'Referrer-Policy': 'strict-origin-when-cross-origin',
+        'Permissions-Policy': ", ".join(permissions)
+    }

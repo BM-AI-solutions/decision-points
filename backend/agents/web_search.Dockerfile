@@ -21,7 +21,7 @@ COPY ../app/__init__.py ./backend/app/__init__.py
 COPY ../app/config.py ./backend/app/config.py
 # Copy the agents package init and the specific agent code
 COPY agents/__init__.py ./backend/agents/__init__.py
-COPY agents/web_search_agent.py ./backend/agents/web_search_agent.py
+COPY agents/agent_web_search.py ./backend/agents/agent_web_search.py
 
 # Set PYTHONPATH to ensure the 'backend' package is discoverable
 ENV PYTHONPATH=/app
@@ -31,4 +31,4 @@ EXPOSE 8080
 
 # Command to run the agent using adk api_server
 # Corrected: Removed invalid --host argument
-CMD ["adk", "api_server", "backend.agents.web_search_agent:WebSearchAgent", "--port", "8080"]
+CMD ["adk", "api_server", "backend.agents.agent_web_search:WebSearchAgent", "--port", "8080"]

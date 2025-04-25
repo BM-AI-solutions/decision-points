@@ -79,7 +79,7 @@ class BrandingAgent(LlmAgent): # Inherit from LlmAgent
     def __init__(self,
                  agent_id: str = "branding_agent",
                  model_name: Optional[str] = None, # Added model_name parameter
-                 web_search_agent_id: Optional[str] = None):
+                 agent_web_search_id: Optional[str] = None):
         """
         Initialize the Branding Agent.
 
@@ -87,7 +87,7 @@ class BrandingAgent(LlmAgent): # Inherit from LlmAgent
             agent_id: The unique identifier for this agent instance.
             model_name: The name of the Gemini model to use (e.g., 'gemini-2.5-flash-preview-04-17').
                         Defaults to a suitable model if None.
-            web_search_agent_id: The ID of the WebSearchAgent.
+            agent_web_search_id: The ID of the WebSearchAgent.
         """
         # Determine the model name to use
         effective_model_name = model_name if model_name else 'gemini-2.5-flash-preview-04-17' # Default for specialized agent
@@ -105,12 +105,12 @@ class BrandingAgent(LlmAgent): # Inherit from LlmAgent
         )
 
         # Prioritize passed ID, fallback to central settings
-        self.web_search_agent_id = web_search_agent_id if web_search_agent_id is not None else settings.WEB_SEARCH_AGENT_ID
+        self.agent_web_search_id = agent_web_search_id if agent_web_search_id is not None else settings.AGENT_WEB_SEARCH_ID
 
-        if not self.web_search_agent_id:
-            self.logger.warning("WEB_SEARCH_AGENT_ID is not configured (checked constructor arg and settings). Availability checks will be skipped.")
+        if not self.agent_web_search_id:
+            self.logger.warning("AGENT_WEB_SEARCH_ID is not configured (checked constructor arg and settings). Availability checks will be skipped.")
         else:
-             self.logger.info(f"Using WebSearchAgent ID: {self.web_search_agent_id}")
+             self.logger.info(f"Using WebSearchAgent ID: {self.agent_web_search_id}")
         self.logger.info(f"BrandingAgent initialized with model: {self.model_name}") # Added logging for model
 
     async def _check_name_availability(self, context: InvocationContext, name: str) -> tuple[str, str]:
@@ -119,7 +119,7 @@ class BrandingAgent(LlmAgent): # Inherit from LlmAgent
         Returns a tuple: (summary_string, availability_status).
         Status can be 'available', 'likely_taken', 'uncertain', 'error', or 'skipped'.
         """
-        if not self.web_search_agent_id:
+        if not self.agent_web_search_id:
             self.logger.warning(f"Skipping availability check for '{name}' due to missing configuration.")
             return "Availability check skipped (missing configuration).", "skipped"
 
@@ -145,7 +145,7 @@ class BrandingAgent(LlmAgent): # Inherit from LlmAgent
             try:
                 self.logger.info(f"Invoking WebSearchAgent skill 'web_search' for '{name}' ({query_type}) via ADK...")
                 result_event = await context.invoke_skill(
-                    target_agent_id=self.web_search_agent_id,
+                    target_agent_id=self.agent_web_search_id,
                     skill_name="web_search", # Assuming skill name
                     input=input_event,
                     timeout_seconds=30.0
@@ -375,7 +375,7 @@ class BrandingAgent(LlmAgent): # Inherit from LlmAgent
             availability_statuses: Dict[str, str] = {}
             suggested_names_map: Dict[str, Dict] = {} # Map name to original suggestion dict
 
-            if self.web_search_agent_url and self.brave_api_key:
+            if self.agent_web_search_url and self.brave_api_key:
                 brand_suggestions = llm_data.get("brand_name_suggestions", [])
                 suggested_names = [s.get("value") for s in brand_suggestions if s.get("value")]
 

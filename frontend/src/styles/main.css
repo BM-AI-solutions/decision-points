@@ -1,0 +1,28 @@
+/* Main CSS file - imports all modular CSS files */
+
+/* Import Tailwind CSS */
+@import './tailwind.css';
+
+/* Import base styles and variables */
+@import './variables.css';
+@import './base.css';
+
+/* Import component styles */
+@import './components.css';
+
+/* Import layout styles */
+@import './layout.css';
+
+/* Import dashboard styles */
+@import './dashboard.css';
+
+/* Import additional styles */
+@import './animations.css'; /* Kept for potential dashboard use */
+/* Removed: @import './hero.css'; */
+/* Removed: @import './features.css'; */
+/* Removed: @import './header.css'; */
+/* Removed: @import './footer.css'; */
+/* Removed duplicate: @import './layout.css'; */
+/* Removed: @import './how-it-works.css'; */
+@import './buttons.css'; /* Kept for potential dashboard use */
+/* Removed: @import './form.css'; */

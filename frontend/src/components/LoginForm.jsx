@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import apiService from '../services/api.js'; // Import the API service
 
 function LoginForm({ onAuthSuccess }) {
@@ -6,18 +6,31 @@ function LoginForm({ onAuthSuccess }) {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [isLocalDev, setIsLocalDev] = useState(false);
+
+  useEffect(() => {
+    // Check if we're in local development environment
+    const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '';
+    setIsLocalDev(apiBaseUrl.includes('localhost') || apiBaseUrl.includes('127.0.0.1'));
+
+    // Pre-fill with test credentials in local dev mode
+    if (apiBaseUrl.includes('localhost') || apiBaseUrl.includes('127.0.0.1')) {
+      setEmail('test@example.com');
+      setPassword('password123');
+    }
+  }, []);
 
   const handleSubmit = async (event) => {
     console.log('LoginForm handleSubmit triggered');
     event.preventDefault();
     setIsLoading(true);
     setError('');
-    
+
     try {
       console.log('Attempting login with email:', email);
       const response = await apiService.login(email, password);
       console.log('Login successful:', response);
-      
+
       // Check if response has the expected structure
       if (response && response.success && response.token && response.user) {
         console.log('Valid login response received');
@@ -46,7 +59,18 @@ function LoginForm({ onAuthSuccess }) {
   return (
     <div className="auth-form-container">
       {error && <div className="auth-error">{error}</div>}
-      
+
+      {isLocalDev && (
+        <div className="dev-notice" style={{ background: '#f0f8ff', padding: '10px', borderRadius: '5px', marginBottom: '15px', fontSize: '14px' }}>
+          <strong>Local Development Mode</strong>
+          <p style={{ margin: '5px 0' }}>Default test credentials have been pre-filled:</p>
+          <ul style={{ margin: '5px 0', paddingLeft: '20px' }}>
+            <li>Email: test@example.com</li>
+            <li>Password: password123</li>
+          </ul>
+        </div>
+      )}
+
       <form onSubmit={handleSubmit} className="auth-form">
         <div className="form-group">
           <label htmlFor="login-email" className="form-label">Email</label>
@@ -67,7 +91,7 @@ function LoginForm({ onAuthSuccess }) {
             />
           </div>
         </div>
-        
+
         <div className="form-group">
           <label htmlFor="login-password" className="form-label">Password</label>
           <div className="input-wrapper">
@@ -87,7 +111,7 @@ function LoginForm({ onAuthSuccess }) {
             />
           </div>
         </div>
-        
+
         <div className="form-footer">
           <div className="remember-me">
             <input type="checkbox" id="remember-me" />
@@ -95,7 +119,7 @@ function LoginForm({ onAuthSuccess }) {
           </div>
           <a href="#" className="forgot-password">Forgot password?</a>
         </div>
-        
+
         <button
           type="submit"
           className={`btn btn-primary btn-full ${isLoading ? 'btn-loading' : ''}`}
@@ -104,19 +128,8 @@ function LoginForm({ onAuthSuccess }) {
           {isLoading ? 'Logging in...' : 'Log In'}
         </button>
       </form>
-      
-      <div className="auth-divider">
-        <span>OR</span>
-      </div>
-      
-      <div className="social-login">
-        <button className="btn btn-social btn-google">
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M12.545,10.239v3.821h5.445c-0.712,2.315-2.647,3.972-5.445,3.972c-3.332,0-6.033-2.701-6.033-6.032s2.701-6.032,6.033-6.032c1.498,0,2.866,0.549,3.921,1.453l2.814-2.814C17.503,2.988,15.139,2,12.545,2C7.021,2,2.543,6.477,2.543,12s4.478,10,10.002,10c8.396,0,10.249-7.85,9.426-11.748L12.545,10.239z"/>
-          </svg>
-          Continue with Google
-        </button>
-      </div>
+
+
     </div>
   );
 }

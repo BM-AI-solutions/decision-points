@@ -44,6 +44,7 @@ yarn-error.log
 *.swp
 *.swo
 .DS_Store
+.roo/
 
 # Docker
 docker-compose.override.yml
@@ -74,17 +75,26 @@ backend/**/__pycache__/
 .pytest_cache
 .__pycache__
 .pyc 
-.aider*
-.templates/*
-.docs/*
-.modes/*
-.roo/*
-.tasks
 .workflows/*
+.vscode/*
+.templates/*
+.tasks/*
+.snippets/*
 .roo/*
-.context/*
-.planning/*
+.reports/*
 .processes/*
+.planning/*
+.modes/*
+.logs/*
+.ideas/*
+.github/*
+.docs/*
+.decisions/*
+.context/*
+.chat/*
+.archive/*
 *.roomodes
 *.changelog.md
 *.rooREADME.md
+*mcp.json
+.roo/

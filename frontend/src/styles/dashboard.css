@@ -1,0 +1,226 @@
+/* Dashboard styles */
+@import './variables.css';
+
+/* Dashboard Layout */
+.dashboard-full {
+    padding: 0;
+    background: var(--gradient-background);
+    position: relative;
+    overflow: hidden;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Dashboard Mockup Styles */
+.dashboard-mockup {
+    width: 100%;
+    background: rgba(13, 13, 13, 0.9);
+    border-radius: var(--radius-xl);
+    display: flex;
+    flex-direction: column;
+    border: 1px solid rgba(255, 71, 19, 0.2);
+    max-width: 100%; /* Ensure it doesn't overflow its container */
+}
+
+.dashboard-header {
+    height: 60px;
+    background: rgba(8, 8, 8, 0.9);
+    border-bottom: 1px solid rgba(255, 71, 19, 0.2);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 20px;
+}
+
+.dashboard-logo {
+    color: var(--accent-orange);
+    font-weight: 700;
+    font-size: 1.2rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.dashboard-actions {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.dashboard-action {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.05);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    transition: all 0.2s ease;
+    cursor: pointer;
+}
+
+.dashboard-action:hover {
+    background: rgba(255, 71, 19, 0.2);
+    color: var(--accent-orange);
+}
+
+.dashboard-content {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+}
+
+.dashboard-sidebar {
+    width: 200px;
+    background: rgba(8, 8, 8, 0.9);
+    border-right: 1px solid rgba(255, 71, 19, 0.2);
+    padding: 20px 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.sidebar-item {
+    padding: 10px 20px;
+    color: var(--text-muted);
+    font-size: 0.95rem;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    transition: all 0.2s ease;
+    cursor: pointer;
+    border-left: 3px solid transparent;
+}
+
+.sidebar-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-primary);
+}
+
+.sidebar-item.active {
+    background: rgba(255, 71, 19, 0.2);
+    color: var(--accent-orange);
+    border-left: 3px solid var(--accent-orange);
+}
+
+.dashboard-main {
+    flex: 1;
+    padding: 20px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    grid-template-rows: auto auto;
+    gap: 20px;
+    overflow: auto;
+}
+
+.dashboard-widget {
+    background: rgba(26, 26, 26, 0.7);
+    border-radius: var(--radius-lg);
+    padding: 16px;
+    border: 1px solid rgba(255, 71, 19, 0.1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    display: flex;
+    flex-direction: column;
+}
+
+.dashboard-widget h4 {
+    margin-bottom: 10px;
+    font-size: 0.95rem;
+    color: var(--text-primary);
+}
+
+.dashboard-widget.revenue {
+    grid-column: 1 / 3;
+}
+
+.dashboard-widget.customers {
+    grid-column: 3 / 5;
+}
+
+.dashboard-widget.conversion {
+    grid-column: 1 / 3;
+}
+
+.dashboard-widget.growth {
+    grid-column: 3 / 5;
+}
+
+.metric {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.metric-value {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.metric-label {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.metric-change {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.85rem;
+    margin-top: 4px;
+}
+
+.metric-change.positive {
+    color: #4CAF50;
+}
+
+.metric-change.negative {
+    color: #F44336;
+}
+
+.metric-bar {
+    height: 6px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-top: 12px;
+}
+
+.metric-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent-orange), var(--primary));
+    border-radius: 3px;
+}
+
+.chart-container {
+    flex: 1;
+    min-height: 150px;
+    margin-top: 10px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 992px) {
+    .dashboard-image {
+        margin-top: var(--spacing-lg);
+        width: 100%;
+        max-width: 600px; /* Limit width on medium screens */
+        margin-left: auto;
+        margin-right: auto;
+    }
+}
+
+@media (max-width: 576px) {
+    .dashboard-widget h4 {
+        font-size: 0.9rem; /* Smaller headings on small screens */
+    }
+    
+    .dashboard-sidebar {
+        width: 160px; /* Narrower sidebar on small screens */
+    }
+    
+    .sidebar-item {
+        padding: 8px 16px; /* Smaller padding for sidebar items */
+        font-size: 0.9rem;
+    }
+}

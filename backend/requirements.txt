@@ -1,7 +1,6 @@
-# FastAPI Framework (New)
 fastapi>=0.110.0
 uvicorn[standard]>=0.27.0
-pydantic[dotenv]>=2.0.0 # Includes pydantic-settings for .env loading
+pydantic[dotenv,email]>=2.0.0 # Includes pydantic-settings for .env loading and email validation
 
 # API clients
 httpx==0.28.1
@@ -14,21 +13,10 @@ google-genai==1.11.0
 exa-py==1.12.1 # Used by MarketResearchAgent for Exa search
 firecrawl-py==2.1.2 # Used by MarketResearchAgent for data extraction
 google-adk==0.2.0
-# Data processing
-
-
-
-# Database (if using)
-
-# Caching and performance
-
-
 
 # Utilities
 
 loguru==0.7.3
-
-stripe==12.0.0 # For payment processing
 logfire==3.14.0 # For observability, used in WebSearchAgent
 google-cloud-pubsub==2.29.0 # For Pub/Sub integration
 google-cloud-secret-manager>=2.22.0 # For secret management (Version updated for google-adk compatibility)
@@ -39,6 +27,6 @@ aiokafka>=0.10.0 # For Kafka integration
 passlib[bcrypt]>=1.7.4
 python-jose[cryptography]
 python-multipart
-alembic
+alembic==1.15.2
 pydantic-settings
 python-socketio

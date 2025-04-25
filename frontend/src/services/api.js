@@ -53,7 +53,7 @@ class ApiClient {
 
     // Get auth token from localStorage
     const authToken = localStorage.getItem('authToken');
-    
+
     // Set up request options
     const requestOptions = {
       method,
@@ -82,7 +82,7 @@ class ApiClient {
       console.log(`Making ${method} request to ${url}`);
       const response = await fetch(url, requestOptions);
       clearTimeout(timeoutId);
-      
+
       console.log(`Response status: ${response.status} ${response.statusText}`);
       console.log(`Response headers:`, Object.fromEntries([...response.headers.entries()]));
 
@@ -90,12 +90,12 @@ class ApiClient {
       if (!response.ok) {
         let errorData = {};
         let responseText = '';
-        
+
         try {
             // First get the raw text
             responseText = await response.text();
             console.log(`Raw error response: ${responseText.substring(0, 200)}${responseText.length > 200 ? '...' : ''}`);
-            
+
             // Then try to parse as JSON
             try {
                 errorData = JSON.parse(responseText);
@@ -108,7 +108,7 @@ class ApiClient {
             console.error(`Error reading response text: ${textError}`);
             errorData = { message: 'Failed to parse error response.' };
         }
-        
+
         console.error(`API Error ${response.status}:`, errorData); // Log the error details
         throw {
           status: response.status,
@@ -129,7 +129,7 @@ class ApiClient {
         // First get the raw text
         const responseText = await response.text();
         console.log(`Raw success response: ${responseText.substring(0, 200)}${responseText.length > 200 ? '...' : ''}`);
-        
+
         // Then parse as JSON
         const responseData = JSON.parse(responseText);
         console.log(`Parsed response data:`, responseData);
@@ -186,7 +186,7 @@ const apiService = {
   // Market analysis
   analyzeMarket: (marketSegment, businessPreference) => {
     console.log("API Call: analyzeMarket", { marketSegment, businessPreference }); // Added logging
-    return apiClientInstance.post('/market/analyze', {
+    return apiClientInstance.post('/api/v1/market/analyze', {
       market_segment: marketSegment,
       business_preference: businessPreference
     });
@@ -195,78 +195,78 @@ const apiService = {
   // Business models
   getBusinessModels: () => {
     console.log("API Call: getBusinessModels"); // Added logging
-    console.log("Calling correct endpoint: /api/business/list");
-    return apiClientInstance.get('/api/business/list');
+    console.log("Calling correct endpoint: /api/v1/business/list");
+    return apiClientInstance.get('/api/v1/business/list');
   },
 
   getBusinessModel: (modelId) => {
     console.log("API Call: getBusinessModel", { modelId }); // Added logging
-    return apiClientInstance.get(`/api/business/models/${modelId}`);
+    return apiClientInstance.get(`/api/v1/business/models/${modelId}`);
   },
 
   createBusinessModel: (modelData) => {
     console.log("API Call: createBusinessModel", modelData); // Added logging
-    return apiClientInstance.post('/api/business/models', modelData);
+    return apiClientInstance.post('/api/v1/business/models', modelData);
   },
 
   // Features
   getFeatures: (businessModelId) => {
     console.log("API Call: getFeatures", { businessModelId }); // Added logging
-    return apiClientInstance.get('/api/features', { business_model_id: businessModelId });
+    return apiClientInstance.get('/api/v1/features', { business_model_id: businessModelId });
   },
 
   implementFeature: (featureId, options) => {
     console.log("API Call: implementFeature", { featureId, options }); // Added logging
-    return apiClientInstance.post(`/api/features/${featureId}/implement`, options);
+    return apiClientInstance.post(`/api/v1/features/${featureId}/implement`, options);
   },
 
   // User authentication
   login: (email, password) => {
     console.log("API Call: login with email:", email); // Added logging (don't log password)
-    
+
     // Check if the URL is correct
-    const loginUrl = '/api/auth/login';
+    const loginUrl = '/api/v1/auth/login';
     console.log("Login URL:", loginUrl);
-    
+
     // Make the request with detailed error handling
     return apiClientInstance.post(loginUrl, { email, password })
       .catch(error => {
         console.error("Login request failed:", error);
-        
+
         // Log more details about the error
         if (error.status) {
           console.error(`Status: ${error.status}, Status Text: ${error.statusText}`);
         }
-        
+
         if (error.data) {
           console.error("Error data:", error.data);
         }
-        
+
         throw error; // Re-throw the error for the component to handle
       });
   },
 
   signup: (userData) => {
     console.log("API Call: signup with email:", userData.email); // Added logging (don't log password)
-    
+
     // Check if the URL is correct
-    const signupUrl = '/api/auth/signup';
+    const signupUrl = '/api/v1/auth/signup';
     console.log("Signup URL:", signupUrl);
-    
+
     // Make the request with detailed error handling
     return apiClientInstance.post(signupUrl, userData)
       .catch(error => {
         console.error("Signup request failed:", error);
-        
+
         // Log more details about the error
         if (error.status) {
           console.error(`Status: ${error.status}, Status Text: ${error.statusText}`);
         }
-        
+
         if (error.data) {
           console.error("Error data:", error.data);
         }
-        
+
         // Check for specific error conditions
         if (error.status === 409 || (error.data && error.data.message && error.data.message.includes('already registered'))) {
           console.log("Email already registered error detected");
@@ -275,25 +275,25 @@ const apiService = {
             error.status = 409;
           }
         }
-        
+
         throw error; // Re-throw the error for the component to handle
       });
   },
 
   logout: () => {
     console.log("API Call: logout"); // Added logging
-    return apiClientInstance.post('/api/auth/logout');
+    return apiClientInstance.post('/api/v1/auth/logout');
   },
 
   getCurrentUser: () => {
     console.log("API Call: getCurrentUser"); // Added logging
     console.log("Token in localStorage:", localStorage.getItem('authToken') ? "Present" : "Missing");
-    
+
     // Log the full URL being requested
-    const fullUrl = `${apiClientInstance.baseUrl}/api/auth/profile`;
+    const fullUrl = `${apiClientInstance.baseUrl}/api/v1/auth/profile`;
     console.log("Full URL for getCurrentUser:", fullUrl);
-    
-    return apiClientInstance.get('/api/auth/profile')
+
+    return apiClientInstance.get('/api/v1/auth/profile')
       .then(response => {
         console.log("getCurrentUser successful response:", response);
         return response;
@@ -308,74 +308,69 @@ const apiService = {
       });
   },
 
-  // OAuth authentication
-  loginWithGoogle: (data) => {
-    console.log("API Call: loginWithGoogle"); // Added logging
-    return apiClientInstance.post('/api/auth/google', data);
-  },
-
+  // OAuth authentication - Removed Google Sign-In
   loginWithGithub: (data) => {
     console.log("API Call: loginWithGithub"); // Added logging
-    return apiClientInstance.post('/api/auth/github', data);
+    return apiClientInstance.post('/api/v1/auth/github', data);
   },
 
   // Subscription management
   getSubscriptionPlans: () => {
     console.log("API Call: getSubscriptionPlans"); // Added logging
-    return apiClientInstance.get('/subscriptions/plans');
+    return apiClientInstance.get('/api/v1/subscriptions/plans');
   },
 
   getCurrentSubscription: () => {
     console.log("API Call: getCurrentSubscription"); // Added logging
-    return apiClientInstance.get('/subscriptions/current');
+    return apiClientInstance.get('/api/v1/subscriptions/current');
   },
 
   createCheckoutSession: (data) => {
     console.log("API Call: createCheckoutSession", data); // Added logging
-    return apiClientInstance.post('/subscriptions/create-checkout-session', data);
+    return apiClientInstance.post('/api/v1/subscriptions/create-checkout-session', data);
   },
 
   updateSubscription: (subscriptionId, data) => {
     console.log("API Call: updateSubscription", { subscriptionId, data }); // Added logging
-    return apiClientInstance.put(`/subscriptions/${subscriptionId}`, data);
+    return apiClientInstance.put(`/api/v1/subscriptions/${subscriptionId}`, data);
   },
 
   cancelSubscription: (subscriptionId) => {
     console.log("API Call: cancelSubscription", { subscriptionId }); // Added logging
-    return apiClientInstance.post(`/subscriptions/${subscriptionId}/cancel`);
+    return apiClientInstance.post(`/api/v1/subscriptions/${subscriptionId}/cancel`);
   },
 
   reactivateSubscription: (subscriptionId) => {
     console.log("API Call: reactivateSubscription", { subscriptionId }); // Added logging
-    return apiClientInstance.post(`/subscriptions/${subscriptionId}/reactivate`);
+    return apiClientInstance.post(`/api/v1/subscriptions/${subscriptionId}/reactivate`);
   },
 
   // System health and configuration
   getHealthStatus: () => {
     console.log("API Call: getHealthStatus"); // Added logging
-    return apiClientInstance.get('/health');
+    return apiClientInstance.get('/api/v1/health');
   },
 
   getConfig: () => {
     console.log("API Call: getConfig"); // Added logging
-    return apiClientInstance.get('/config');
+    return apiClientInstance.get('/api/v1/config');
   },
 
   // Workflows
   getWorkflows: () => {
     console.log("API Call: getWorkflows");
-    return apiClientInstance.get('/api/workflows');
+    return apiClientInstance.get('/api/v1/workflows');
   },
 
   createWorkflow: (workflowData) => {
     console.log("API Call: createWorkflow", workflowData);
-    return apiClientInstance.post('/api/workflows', workflowData);
+    return apiClientInstance.post('/api/v1/workflows', workflowData);
   },
 
   // Cashflow
   getCashflowForecast: (businessId) => {
     console.log("API Call: getCashflowForecast", { businessId });
-    return apiClientInstance.get(`/api/cashflow/forecast/${businessId}`);
+    return apiClientInstance.get(`/api/v1/cashflow/forecast/${businessId}`);
   },
 
 
@@ -383,14 +378,14 @@ const apiService = {
   getAnalyticsData: () => {
     console.log("API Call: getAnalyticsData");
     // Assuming an endpoint like /api/analytics will exist
-    return apiClientInstance.get('/api/analytics');
+    return apiClientInstance.get('/api/v1/analytics');
   }, // Comma after getAnalyticsData
 
   // Insights
   getInsightsData: () => {
     console.log("API Call: getInsightsData");
     // Assuming an endpoint like /api/insights will exist
-    return apiClientInstance.get('/api/insights');
+    return apiClientInstance.get('/api/v1/insights');
   } // No comma after getInsightsData as it's the last item
 ,
 
@@ -398,7 +393,7 @@ const apiService = {
   getCustomersData: () => {
     console.log("API Call: getCustomersData (Placeholder)");
     // Assuming an endpoint like /api/customers will exist
-    return apiClientInstance.get('/api/customers');
+    return apiClientInstance.get('/api/v1/customers');
   }
 ,
 
@@ -406,21 +401,21 @@ const apiService = {
   getRevenueData: () => {
     console.log("API Call: getRevenueData (Placeholder)");
     // Assuming an endpoint like /api/revenue will exist
-    return apiClientInstance.get('/api/revenue');
+    return apiClientInstance.get('/api/v1/revenue');
   }
 ,
 
   // Orchestrator Tasks
   submitOrchestratorTask: (goal, parameters = {}) => {
     console.log("API Call: submitOrchestratorTask", { goal, parameters });
-    return apiClientInstance.post('/api/orchestrator/tasks', { goal, parameters });
+    return apiClientInstance.post('/api/v1/orchestrator/tasks', { goal, parameters });
   }
 ,
 
   // Workflow Resume
   resumeWorkflow: (workflowRunId, decision) => {
     console.log("API Call: resumeWorkflow", { workflowRunId, decision });
-    return apiClientInstance.post(`/a2a/workflow/${workflowRunId}/resume`, { decision });
+    return apiClientInstance.post(`/api/v1/a2a/workflow/${workflowRunId}/resume`, { decision });
   }
 }; // Closing brace for apiService object
 // Export the service object for use in components

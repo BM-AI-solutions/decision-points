@@ -1,4 +1,4 @@
-# backend/agents/web_search_agent.py
+# backend/agents/agent_web_search.py
 import asyncio
 import os
 from typing import Dict, Any, Optional
@@ -100,7 +100,7 @@ class WebSearchAgent(Agent):
 #
 #     agent = WebSearchAgent()
 #     executor = LocalAgentExecutor()
-#     context = InvocationContext(agent_id="web-search-agent", data={"query": "React 19 release date"})
+#     context = InvocationContext(agent_id="agent-web-search", data={"query": "React 19 release date"})
 #     result_event = await executor.run_agent(agent, context)
 #
 #     if result_event:

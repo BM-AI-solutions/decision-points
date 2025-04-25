@@ -5,12 +5,48 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request
 from pydantic import BaseModel
 
 # Import necessary components from ADK and the application
-from google.adk.events import Event, Action, Content, Part
-from google.adk.sessions import InvocationContext
+# Placeholder for ADK imports - these would need to be installed
+class Event:
+    def __init__(self, author=None, actions=None, invocation_id=None, metadata=None):
+        self.author = author
+        self.actions = actions or []
+        self.invocation_id = invocation_id
+        self.metadata = metadata or {}
 
-from app.main import sio # Import the initialized SocketIO server
+class Action:
+    def __init__(self, content=None):
+        self.content = content
+
+class Content:
+    def __init__(self, parts=None):
+        self.parts = parts or []
+
+class Part:
+    def __init__(self, text=None):
+        self.text = text
+
+class InvocationContext:
+    @classmethod
+    def create_session(cls, session_id=None):
+        return {"session_id": session_id}
+
+    def __init__(self, session=None, input_event=None):
+        self.session = session
+        self.input_event = input_event
+
+from app.core.socketio import sio # Import the initialized SocketIO server
 from app.config import settings
-from backend.agents.orchestrator_agent import OrchestratorAgent
+
+# Placeholder for OrchestratorAgent - this would need to be implemented
+class OrchestratorAgent:
+    def __init__(self, socketio=None, agent_ids=None, model_name=None):
+        self.socketio = socketio
+        self.agent_ids = agent_ids or {}
+        self.model_name = model_name
+
+    async def run_async(self, context):
+        # This is a placeholder implementation
+        pass
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -25,7 +61,7 @@ def get_orchestrator_agent() -> OrchestratorAgent:
     if orchestrator_agent_instance is None:
         # Define the agent IDs mapping using settings
         agent_ids = {
-            "web_searcher": settings.WEB_SEARCH_AGENT_ID,
+            "web_searcher": settings.AGENT_WEB_SEARCH_ID,
             # Add other agent IDs from settings here as they are implemented
             # "content_generator": settings.CONTENT_GENERATION_AGENT_ID,
             # "market_analyzer": settings.MARKET_ANALYZER_AGENT_ID, # Example

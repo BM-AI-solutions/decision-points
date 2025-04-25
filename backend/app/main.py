@@ -1,14 +1,14 @@
 import logging
+import os
 from contextlib import asynccontextmanager
-import socketio
 
 from fastapi import FastAPI
 from fastapi import Request, HTTPException, status
 from fastapi.responses import JSONResponse
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.logging_config import setup_logging
 from app.config import settings
-from app.api.v1.api import api_router
-from app.core.db import Base, engine
+from app.core.db import Base, engine, SessionLocal
 from app.models.user import User  # Import model to ensure it's registered with Base
 from app.core.messaging import (
     start_kafka_producer,
@@ -16,6 +16,8 @@ from app.core.messaging import (
     start_kafka_consumer,
     stop_kafka_consumer,
 )
+from app.core.socketio import sio  # Import the Socket.IO server from the core module
+from app.core.security import get_password_hash  # Import for creating test user
 
 # Apply logging configuration
 setup_logging()
@@ -24,41 +26,69 @@ setup_logging()
 logger = logging.getLogger("app") # Use 'app' logger defined in config
 # Configure logging basic setup (adjust as needed)
 
-# Initialize Socket.IO
-sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins='*') # Adjust cors_allowed_origins for production
-sio_app = socketio.ASGIApp(sio, other_asgi_app=app) # Wrap FastAPI app
-
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
     Manage application lifespan events:
     - Create database tables on startup.
-    - Start Kafka producer and consumer on startup.
-    - Stop Kafka consumer and producer on shutdown.
+    - Start Kafka producer and consumer on startup (if enabled).
+    - Stop Kafka consumer and producer on shutdown (if enabled).
     """
     # Startup: Initialize DB tables
     logger.info("Lifespan: Initializing database...")
     async with engine.begin() as conn:
-        # await conn.run_sync(Base.metadata.drop_all) # Optional: Uncomment to drop tables first
-        # await conn.run_sync(Base.metadata.create_all) # Removed: Alembic handles migrations
-        pass
+        # Create tables if they don't exist (for local development)
+        await conn.run_sync(Base.metadata.create_all)
     logger.info("Lifespan: Database tables checked/created.")
 
-    # Startup: Initialize Kafka clients
-    logger.info("Lifespan: Starting Kafka clients...")
-    await start_kafka_producer()
-    await start_kafka_consumer()
-    logger.info("Lifespan: Kafka clients startup process initiated.")
+    # Create a default test user for local development
+    if os.environ.get('APP_ENV') == 'development':
+        logger.info("Creating default test user for local development...")
+        try:
+            # Create a session
+            async with SessionLocal() as session:
+                # Check if test user already exists
+                from sqlalchemy.future import select
+                result = await session.execute(select(User).filter(User.email == "test@example.com"))
+                test_user = result.scalars().first()
+
+                if not test_user:
+                    # Create test user
+                    test_user = User(
+                        email="test@example.com",
+                        name="Test User",
+                        hashed_password=get_password_hash("password123"),
+                        is_active=True
+                    )
+                    session.add(test_user)
+                    await session.commit()
+                    logger.info("Default test user created successfully.")
+                else:
+                    logger.info("Default test user already exists.")
+        except Exception as e:
+            logger.error(f"Error creating default test user: {e}")
+
+    # Check if Kafka is disabled
+    kafka_disabled = os.environ.get('DISABLE_KAFKA', '').lower() in ('true', '1', 'yes')
+
+    if not kafka_disabled:
+        # Startup: Initialize Kafka clients
+        logger.info("Lifespan: Starting Kafka clients...")
+        await start_kafka_producer()
+        await start_kafka_consumer()
+        logger.info("Lifespan: Kafka clients startup process initiated.")
+    else:
+        logger.info("Lifespan: Kafka clients disabled by configuration.")
 
     yield  # Application runs here
 
-    # Shutdown: Stop Kafka clients
-    logger.info("Lifespan: Shutting down Kafka clients...")
-    await stop_kafka_consumer() # Stop consumer first
-    await stop_kafka_producer()
-    logger.info("Lifespan: Kafka clients shutdown complete.")
+    if not kafka_disabled:
+        # Shutdown: Stop Kafka clients
+        logger.info("Lifespan: Shutting down Kafka clients...")
+        await stop_kafka_consumer() # Stop consumer first
+        await stop_kafka_producer()
+        logger.info("Lifespan: Kafka clients shutdown complete.")
 
 
 # Initialize FastAPI app with lifespan manager
@@ -68,6 +98,13 @@ app = FastAPI(
     lifespan=lifespan,
     # Add other FastAPI parameters like version, description etc. if needed
 )
+
+# Import the API router after app is created to avoid circular imports
+from app.api.v1.api import api_router
+
+# Create Socket.IO ASGI app with FastAPI app
+from socketio import ASGIApp
+sio_app = ASGIApp(sio, other_asgi_app=app) # Wrap FastAPI app
 
 
 # --- Exception Handlers ---

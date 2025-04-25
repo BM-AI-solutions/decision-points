@@ -1,7 +1,7 @@
 import asyncio
 from typing import Any, Dict, List, Optional, Union, Tuple
 
-from flask_socketio import SocketIO
+# TODO: Replace flask_socketio with a FastAPI-compatible WebSocket solution (e.g., using Depends)
 from google.ai import generativelanguage as glm
 
 from google.adk.agents import LlmAgent, BaseAgent # Import BaseAgent for type hinting
@@ -20,14 +20,14 @@ class OrchestratorAgent(LlmAgent):
     Handles tasks, interacts with Gemini via ADK model abstraction,
     and emits updates via SocketIO.
     """
-    socketio: SocketIO # Add socketio as a class member
+    websocket_manager: Any # TODO: Replace Any with the actual type of your WebSocket manager dependency
 
     agents: Dict[str, BaseAgent] # Dictionary to hold references to other agents
 
     def __init__(
         self,
-        socketio: SocketIO,
-        agent_ids: Dict[str, str], # Add agent IDs parameter
+        websocket_manager: Any, # Changed from socketio: SocketIO
+        agent_ids: Dict[str, str],
         model_name: Optional[str] = None, # Changed from 'model' to 'model_name'
         instruction: Optional[str] = None,
         name: str = "OrchestratorAgent",
@@ -38,10 +38,10 @@ class OrchestratorAgent(LlmAgent):
         Initializes the ADK-based Orchestrator Agent.
 
         Args:
-            socketio: The Flask-SocketIO instance.
+            websocket_manager: The WebSocket manager instance (injected dependency).
             agent_ids: A dictionary mapping logical agent names (e.g., 'market_analyzer') to their ADK agent IDs.
             model_name: The name of the Gemini model to use (e.g., 'gemini-2.5-pro-preview-03-25').
-                        Defaults to a suitable model for orchestration if None.
+                         Defaults to a suitable model for orchestration if None.
             instruction: Default instruction for the LLM agent.
             name: Name of the agent.
             description: Description of the agent.
@@ -65,10 +65,10 @@ class OrchestratorAgent(LlmAgent):
             instruction=instruction,
             **kwargs
         )
-        self.socketio = socketio
+        self.websocket_manager = websocket_manager # Changed from self.socketio = socketio
         self.agent_ids = agent_ids # Store the agent IDs dictionary
         # Use self.model_name which holds the string name, self.model.model also works if super().__init__ sets it
-        logger.info(f"{self.name} initialized with SocketIO, model: {self.model_name}, and agent IDs: {list(self.agent_ids.keys())}.")
+        logger.info(f"{self.name} initialized with WebSocket Manager, model: {self.model_name}, and agent IDs: {list(self.agent_ids.keys())}.")
 
 
     async def run_async(self, context: InvocationContext) -> Event:
@@ -107,13 +107,14 @@ class OrchestratorAgent(LlmAgent):
         # --- Handle Delegation or Direct Processing ---
         if target_agent_key != "self" and target_agent_id:
             logger.info(f"Task {task_id} classified for delegation to {target_agent_key}.")
-            self.socketio.emit('task_update', {
-                'task_id': task_id,
-                'status': 'delegating',
-                'agent': target_agent_key,
-                'message': f"Delegating task to {target_agent_key}..."
-            })
-            logger.info(f"Emitted 'task_update' (delegating to {target_agent_key}) for task {task_id}")
+            # TODO: Replace with WebSocket manager call
+            # self.websocket_manager.broadcast(task_id, {
+            #     'status': 'delegating',
+            #     'agent': target_agent_key,
+            #     'message': f"Delegating task to {target_agent_key}..."
+            # })
+            # logger.info(f"Sent WebSocket update (delegating to {target_agent_key}) for task {task_id}")
+            logger.warning(f"WebSocket update (delegating to {target_agent_key}) for task {task_id} skipped - TODO")
 
             try:
                 # Prepare context for the delegated agent
@@ -134,26 +135,28 @@ class OrchestratorAgent(LlmAgent):
                 delegated_result_text = self._extract_text_from_event(delegated_output_event, f"No text response from {target_agent_key}.")
 
                 # Emit final completion update
-                completion_message = f"Task completed by {target_agent.name}."
-                self.socketio.emit('task_update', {
-                    'task_id': task_id,
-                    'status': 'completed',
-                    'message': completion_message,
-                    'result': delegated_result_text
-                })
-                logger.info(f"Emitted 'task_update' (completed by {target_agent_key}) for task {task_id}.")
+                completion_message = f"Task completed by {target_agent_key}." # Assuming target_agent_key is sufficient
+                # TODO: Replace with WebSocket manager call
+                # self.websocket_manager.broadcast(task_id, {
+                #     'status': 'completed',
+                #     'message': completion_message,
+                #     'result': delegated_result_text
+                # })
+                # logger.info(f"Sent WebSocket update (completed by {target_agent_key}) for task {task_id}.")
+                logger.warning(f"WebSocket update (completed by {target_agent_key}) for task {task_id} skipped - TODO")
                 return delegated_output_event # Return the event from the delegate
 
             except Exception as e:
                 error_message = f"Delegation to {target_agent_key} failed: {str(e)}"
                 logger.error(f"Task {task_id} delegation to {target_agent_key} failed: {error_message}", exc_info=True)
-                self.socketio.emit('task_update', {
-                    'task_id': task_id,
-                    'status': 'failed',
-                    'message': error_message,
-                    'result': None
-                })
-                logger.info(f"Emitted 'task_update' ({target_agent_key} delegation failed) for task {task_id}")
+                # TODO: Replace with WebSocket manager call
+                # self.websocket_manager.broadcast(task_id, {
+                #     'status': 'failed',
+                #     'message': error_message,
+                #     'result': None
+                # })
+                # logger.info(f"Sent WebSocket update ({target_agent_key} delegation failed) for task {task_id}")
+                logger.warning(f"WebSocket update ({target_agent_key} delegation failed) for task {task_id} skipped - TODO")
                 return self._create_error_event(error_message, context.input_event)
 
         else:
@@ -164,21 +167,23 @@ class OrchestratorAgent(LlmAgent):
                  logger.info(f"Task {task_id} classified for 'self'. Handling directly by {self.name}.")
 
             # Emit initial acknowledgment via SocketIO
-            self.socketio.emit('task_update', {
-                'task_id': task_id,
-                'status': 'submitted',
-                'message': f"Task received by Orchestrator: {prompt}"
-            })
-            logger.info(f"Emitted 'task_update' (submitted by orchestrator) for task {task_id}")
+            # TODO: Replace with WebSocket manager call
+            # self.websocket_manager.broadcast(task_id, {
+            #     'status': 'submitted',
+            #     'message': f"Task received by Orchestrator: {prompt}"
+            # })
+            # logger.info(f"Sent WebSocket update (submitted by orchestrator) for task {task_id}")
+            logger.warning(f"WebSocket update (submitted by orchestrator) for task {task_id} skipped - TODO")
 
             # Emit processing update
             processing_message = f"Processing prompt with {self.model.model}..."
-            self.socketio.emit('task_update', {
-                'task_id': task_id,
-                'status': 'working',
-                'message': processing_message
-            })
-            logger.info(f"Emitted 'task_update' (working by orchestrator) for task {task_id}")
+            # TODO: Replace with WebSocket manager call
+            # self.websocket_manager.broadcast(task_id, {
+            #     'status': 'working',
+            #     'message': processing_message
+            # })
+            # logger.info(f"Sent WebSocket update (working by orchestrator) for task {task_id}")
+            logger.warning(f"WebSocket update (working by orchestrator) for task {task_id} skipped - TODO")
 
             try:
                 # Execute the core LLM logic using the parent LlmAgent's run_async
@@ -194,25 +199,27 @@ class OrchestratorAgent(LlmAgent):
 
                 # Emit final completion update
                 completion_message = "Task completed successfully by Orchestrator."
-                self.socketio.emit('task_update', {
-                    'task_id': task_id,
-                    'status': 'completed',
-                    'message': completion_message,
-                    'result': llm_response_text
-                })
-                logger.info(f"Emitted 'task_update' (completed by orchestrator) for task {task_id} with LLM response.")
+                # TODO: Replace with WebSocket manager call
+                # self.websocket_manager.broadcast(task_id, {
+                #     'status': 'completed',
+                #     'message': completion_message,
+                #     'result': llm_response_text
+                # })
+                # logger.info(f"Sent WebSocket update (completed by orchestrator) for task {task_id} with LLM response.")
+                logger.warning(f"WebSocket update (completed by orchestrator) for task {task_id} skipped - TODO")
                 return output_event
 
             except Exception as e:
                 error_message = f"Orchestrator processing failed: {str(e)}"
                 logger.error(f"Task {task_id} failed during orchestrator processing: {error_message}", exc_info=True)
-                self.socketio.emit('task_update', {
-                    'task_id': task_id,
-                    'status': 'failed',
-                    'message': error_message,
-                    'result': None
-                })
-                logger.info(f"Emitted 'task_update' (orchestrator failed) for task {task_id}")
+                # TODO: Replace with WebSocket manager call
+                # self.websocket_manager.broadcast(task_id, {
+                #     'status': 'failed',
+                #     'message': error_message,
+                #     'result': None
+                # })
+                # logger.info(f"Sent WebSocket update (orchestrator failed) for task {task_id}")
+                logger.warning(f"WebSocket update (orchestrator failed) for task {task_id} skipped - TODO")
                 return self._create_error_event(error_message, context.input_event)
 
 

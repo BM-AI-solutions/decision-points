@@ -16,7 +16,6 @@ import logging
 from typing import Dict, Any, List, Optional, Tuple, Set, Union
 from functools import wraps
 
-from flask import request, Response, g, current_app, render_template_string
 from bs4 import BeautifulSoup
 
 from utils.logger import setup_logger
@@ -635,64 +634,6 @@ class AccessibilityChecker:
         
         return report_path
 
-# ===== Flask Integration =====
-
-def init_accessibility(app, config: Optional[AccessibilityConfig] = None):
-    """Initialize accessibility checking with Flask application.
-    
-    Args:
-        app: Flask application
-        config: Accessibility configuration
-    """
-    if config is None:
-        config = AccessibilityConfig.from_env()
-    
-    checker = AccessibilityChecker(config)
-    app.extensions['accessibility'] = checker
-    
-    # Add after_request handler to check HTML responses
-    @app.after_request
-    def check_accessibility(response):
-        # Skip if not HTML
-        content_type = response.headers.get('Content-Type', '')
-        if 'text/html' not in content_type:
-            return response
-        
-        # Skip if response is too large
-        if response.content_length and response.content_length > 1024 * 1024:  # 1MB
-            logger.warning("Skipping accessibility check for large response")
-            return response
-        
-        try:
-            # Check HTML content
-            html = response.get_data(as_text=True)
-            issues = checker.check_html(html)
-            
-            # Store issues in Flask g object for access in templates
-            g.accessibility_issues = issues
-            
-            # Generate report if configured
-            if config.generate_reports and issues:
-                report = checker.generate_report(issues, request.url)
-                checker.save_report(report)
-                
-                # Log issues
-                logger.info(f"Accessibility check found {len(issues)} issues for {request.url}")
-                for severity in ['error', 'warning']:
-                    severity_issues = [i for i in issues if i.severity == severity]
-                    if severity_issues:
-                        logger.warning(f"Accessibility {severity}s ({len(severity_issues)}):")
-                        for issue in severity_issues[:5]:  # Log first 5 issues
-                            logger.warning(f"- {issue.message}")
-                        if len(severity_issues) > 5:
-                            logger.warning(f"- ... and {len(severity_issues) - 5} more")
-        
-        except Exception as e:
-            logger.error(f"Error checking accessibility: {str(e)}")
-        
-        return response
-    
-    return checker
-
 # Initialize with default configuration
+# Note: This checker instance can be imported and used by FastAPI middleware.
 accessibility_checker = AccessibilityChecker()

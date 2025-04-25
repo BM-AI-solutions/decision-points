@@ -94,7 +94,7 @@ class MarketResearchAgent(Agent):
         self.exa_api_key = settings.EXA_API_KEY
         self.perplexity_api_key = settings.PERPLEXITY_API_KEY
         self.search_provider = settings.COMPETITOR_SEARCH_PROVIDER.lower() # Use settings
-        self.web_search_agent_id = settings.WEB_SEARCH_AGENT_ID # Use settings
+        self.agent_web_search_id = settings.AGENT_WEB_SEARCH_ID # Use settings
         self.brave_api_key = settings.BRAVE_API_KEY # Use settings
         self.content_generation_agent_id = settings.CONTENT_GENERATION_AGENT_ID # Use settings
 
@@ -150,11 +150,11 @@ class MarketResearchAgent(Agent):
         # --- End Gemini Initialization ---
 
         # --- WebSearchAgent A2A Validation (using settings) ---
-        if not self.web_search_agent_id:
-            raise ValueError("WEB_SEARCH_AGENT_ID not configured in settings. Cannot call WebSearchAgent.")
+        if not self.agent_web_search_id:
+            raise ValueError("AGENT_WEB_SEARCH_ID not configured in settings. Cannot call WebSearchAgent.")
         if not self.brave_api_key:
             logger.warning("BRAVE_API_KEY not configured in settings. WebSearchAgent might require it.")
-        logger.info(f"WebSearchAgent ID configured via settings: {self.web_search_agent_id}")
+        logger.info(f"WebSearchAgent ID configured via settings: {self.agent_web_search_id}")
         # --- End Additions ---
         # --- ContentGenerationAgent A2A Validation (using settings) ---
         if not self.content_generation_agent_id:
@@ -162,7 +162,7 @@ class MarketResearchAgent(Agent):
         logger.info(f"ContentGenerationAgent ID configured via settings: {self.content_generation_agent_id}")
 
 
-    # ... (_find_competitor_urls_exa, _find_competitor_urls_perplexity, _extract_competitor_info, _call_web_search_agent remain the same) ...
+    # ... (_find_competitor_urls_exa, _find_competitor_urls_perplexity, _extract_competitor_info, _call_agent_web_search remain the same) ...
     async def _find_competitor_urls_exa(self, topic: str, target_url: Optional[str], num_results: int) -> List[str]:
         """Finds competitor URLs using Exa asynchronously."""
         try:
@@ -310,13 +310,13 @@ class MarketResearchAgent(Agent):
             return None # Return None on error, handled in run_async
 
     # --- New Method for WebSearchAgent A2A Call ---
-    async def _call_web_search_agent(self, context: InvocationContext, query: str) -> Optional[Dict[str, Any]]:
+    async def _call_agent_web_search(self, context: InvocationContext, query: str) -> Optional[Dict[str, Any]]:
         """Calls the WebSearchAgent via A2A to perform a general web search."""
-        if not self.web_search_agent_id:
+        if not self.agent_web_search_id:
             logger.error("WebSearchAgent ID not configured for A2A call.")
             return None
 
-        logger.info(f"Invoking WebSearchAgent skill 'web_search' on agent '{self.web_search_agent_id}' with query: '{query}' via ADK...")
+        logger.info(f"Invoking WebSearchAgent skill 'web_search' on agent '{self.agent_web_search_id}' with query: '{query}' via ADK...")
 
         # Prepare the input Event for the WebSearchAgent skill
         # Pass Brave key via metadata if WebSearchAgent expects it there
@@ -327,7 +327,7 @@ class MarketResearchAgent(Agent):
         try:
             # Use context.invoke_skill for ADK A2A
             result_event = await context.invoke_skill(
-                target_agent_id=self.web_search_agent_id,
+                target_agent_id=self.agent_web_search_id,
                 skill_name="web_search", # Assuming skill name
                 input=input_event,
                 timeout_seconds=30.0 # Keep timeout
@@ -529,7 +529,7 @@ class MarketResearchAgent(Agent):
 
             # --- New Step 2b: Perform General Web Search via A2A ---
             logger.info(f"Performing general web search for topic: '{inputs.initial_topic}' via A2A...")
-            web_search_results = await self._call_web_search_agent(
+            web_search_results = await self._call_agent_web_search(
                 query=inputs.initial_topic,
                 parent_context=context
             )

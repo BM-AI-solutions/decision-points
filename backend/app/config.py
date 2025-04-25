@@ -50,8 +50,8 @@ class Settings(BaseSettings):
 
     # Agent Service Locators (URLs/IDs - Phase 1 might use IDs, Phase 2 URLs/Discovery)
     # Using Optional[str] as they might not be set in all envs or needed by all parts
-    WEB_SEARCH_AGENT_ID: Optional[str] = "web-search-agent" # Default ID for the web search agent service
-    WEB_SEARCH_AGENT_URL: Optional[str] = None
+    AGENT_WEB_SEARCH_ID: Optional[str] = "agent-web-search" # Default ID for the web search agent service
+    AGENT_WEB_SEARCH_URL: Optional[str] = None
     CONTENT_GENERATION_AGENT_ID: Optional[str] = None
     CONTENT_GENERATION_AGENT_URL: Optional[str] = None
     # Add other agent IDs/URLs as needed

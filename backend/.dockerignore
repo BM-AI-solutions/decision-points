@@ -23,9 +23,7 @@ ENV/
 
 # Secrets / Environment variables
 .env*
-!backend/.env.example
-!backend/.env.production.template
-
+!/.env.example
 # Test artifacts
 .pytest_cache/
 .coverage
@@ -41,3 +39,4 @@ logs/
 # OS generated files
 .DS_Store
 Thumbs.db
+.roo/

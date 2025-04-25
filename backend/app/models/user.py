@@ -15,7 +15,7 @@ class User(Base):
 
     email = Column(String, unique=True, index=True, nullable=False)
     name = Column(String, index=True)
-    hashed_password = Column(String, nullable=False)
+    # hashed_password = Column(String, nullable=False) # Removed hashed_password column
     is_active = Column(Boolean(), default=True)
     # is_superuser = Column(Boolean(), default=False) # Optional: Add if needed
 

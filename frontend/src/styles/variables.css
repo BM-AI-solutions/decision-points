@@ -1,0 +1,67 @@
+/* CSS Variables - Apple from Hell Theme */
+:root {
+    /* Primary Colors */
+    --primary: #FF3A00; /* Hellfire Orange */
+    --primary-dark: #D90429; /* Blood Crimson */
+    --primary-light: #FF5400; /* Ember Orange */
+
+    /* Secondary Colors */
+    --secondary: #0A0A0A; /* Obsidian Black */
+    --secondary-light: #1A1A1A; /* Charcoal Ash */
+    --secondary-dark: #000000; /* Void Black */
+
+    /* Accent Colors */
+    --accent-orange: #FF4713; /* Hellfire Orange */
+    --accent-gold: #FFB800; /* Brimstone Gold */
+    --accent-yellow: #FFC123; /* Sulfur Yellow */
+    --accent-magma: #FF7D4D; /* Molten Magma */
+
+    /* Text Colors */
+    --text-primary: #FFFFFF; /* Pure White */
+    --text-secondary: #F8F0E3; /* Bone White */
+    --text-muted: #B3B3B3; /* Ash Gray */
+    --text-highlight: #FF9776; /* Ember Glow */
+
+    /* Gradients */
+    --gradient-background: linear-gradient(135deg, #000000 0%, #1A0000 50%, #2D0000 100%);
+    --gradient-card: linear-gradient(120deg, rgba(10,10,10,0.9) 0%, rgba(45,0,0,0.7) 100%);
+    --gradient-button: linear-gradient(90deg, #FF3A00 0%, #D90429 100%);
+    --gradient-highlight: radial-gradient(circle, rgba(255,71,19,0.2) 0%, rgba(255,71,19,0) 70%);
+
+    /* UI Elements */
+    --card-bg: rgba(10, 10, 10, 0.95); /* Obsidian Black with transparency */
+    --input-bg: rgba(10, 10, 10, 0.8); /* Dark with slight transparency */
+    --border-color: rgba(255, 84, 0, 0.2); /* Subtle orange border */
+    --glass-bg: rgba(10, 10, 10, 0.7); /* Glassmorphism background */
+    --glass-border: rgba(255, 84, 0, 0.15); /* Glassmorphism border */
+
+    /* Spacing */
+    --spacing-xs: 0.25rem; /* 4px */
+    --spacing-sm: 0.5rem; /* 8px */
+    --spacing-md: 1rem; /* 16px */
+    --spacing-lg: 1.5rem; /* 24px */
+    --spacing-xl: 2rem; /* 32px */
+    --spacing-xxl: 3rem; /* 48px */
+
+    /* Border Radius */
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 14px;
+    --radius-xl: 20px;
+    --radius-xxl: 28px;
+    --radius-full: 9999px;
+
+    /* Shadows */
+    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.2), 0 0 2px rgba(255, 84, 0, 0.1);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.25), 0 0 4px rgba(255, 84, 0, 0.15);
+    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.3), 0 0 8px rgba(255, 84, 0, 0.2);
+    --shadow-xl: 0 12px 36px rgba(0, 0, 0, 0.4), 0 0 12px rgba(255, 84, 0, 0.25);
+    --shadow-ember: 0 0 20px rgba(255, 84, 0, 0.3), 0 0 40px rgba(217, 4, 41, 0.2);
+    --shadow-infernal: 0 0 30px rgba(255, 84, 0, 0.4), 0 0 60px rgba(217, 4, 41, 0.3);
+
+    /* Transitions */
+    --transition-fast: 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    --transition-normal: 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    --transition-slow: 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+    --transition-bounce: 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}

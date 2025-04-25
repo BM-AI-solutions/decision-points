@@ -1,26 +1,36 @@
 # syntax=docker/dockerfile:1
 
-############################
-# Build stage
-############################
 FROM node:20-alpine AS build
 
 WORKDIR /app
 
+# Install dependencies
 COPY package*.json ./
 RUN npm install
 
+# Set environment variables
+ENV NODE_ENV=production
+ENV VITE_API_TIMEOUT=30000
+
+# Copy frontend source code
 COPY . .
+
+# Run the production build
 RUN npm run build
 
-############################
-# Production stage
-############################
-FROM nginx:alpine AS prod
+# Use a smaller image for serving
+FROM node:20-alpine
 
-# Copy built static files to nginx html directory
-COPY --from=build /app/dist /usr/share/nginx/html
+WORKDIR /app
 
-EXPOSE 80
+# Install serve for production static file serving
+RUN npm install -g serve
 
-CMD ["nginx", "-g", "daemon off;"]
+# Copy built assets from the build stage
+COPY --from=build /app/dist /app/dist
+
+# Expose port for serving the built application
+EXPOSE 3000
+
+# Serve the static files with optimized settings
+CMD ["serve", "-s", "dist", "-l", "3000", "--no-clipboard", "--no-port-switching"]
