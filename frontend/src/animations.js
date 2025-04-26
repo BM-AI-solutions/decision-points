@@ -3,6 +3,20 @@
  * Implements Intersection Observer API for triggering animations when elements enter viewport
  */
 
+// Throttling function
+const throttle = (func, limit) => {
+  let inThrottle;
+  return function() {
+    const args = arguments;
+    const context = this;
+    if (!inThrottle) {
+      func.apply(context, args);
+      inThrottle = true;
+      setTimeout(() => inThrottle = false, limit);
+    }
+  }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   // Observer options
   const observerOptions = {
@@ -11,6 +25,8 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   // Create observer
+  // Commenting out Intersection Observer for performance testing
+  /*
   const observer = new IntersectionObserver((entries) => {
     entries.forEach(entry => {
       if (entry.isIntersecting) {
@@ -19,11 +35,15 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   }, observerOptions);
+  */
 
   // Observe all elements with animate-on-scroll class
+  // Commenting out Intersection Observer for performance testing
+  /*
   document.querySelectorAll('.animate-on-scroll').forEach(el => {
     observer.observe(el);
   });
+  */
   
   // Navigation enhancement - highlight active section on scroll
   const sections = document.querySelectorAll('section, .hero, .features, .how-it-works, .dashboard-preview, .pricing, .app-section, .testimonials');
@@ -56,11 +76,12 @@ document.addEventListener('DOMContentLoaded', () => {
   setActiveNavLink();
   
   // Add scroll event listener for active nav highlighting
-  window.addEventListener('scroll', setActiveNavLink);
-  
+  // Throttled to improve performance
+  window.addEventListener('scroll', throttle(setActiveNavLink, 100)); // Throttle to 100ms
+
   // Navbar appearance change on scroll
   const navbar = document.querySelector('.navbar');
-  
+
   const updateNavbarAppearance = () => {
     // Only run if navbar exists
     if (navbar) {
@@ -76,9 +97,10 @@ document.addEventListener('DOMContentLoaded', () => {
   if (navbar) {
     updateNavbarAppearance();
     // Add scroll event listener for navbar appearance (only if navbar exists)
-    window.addEventListener('scroll', updateNavbarAppearance);
+    // Throttled to improve performance
+    window.addEventListener('scroll', throttle(updateNavbarAppearance, 100)); // Throttle to 100ms
   }
-  
+
   // Mobile menu toggle enhancement
   const mobileMenuToggle = document.querySelector('.navbar-toggle');
   const navMenu = document.querySelector('.nav-menu');
@@ -117,7 +139,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // Add parallax effect to hero section
   const heroSection = document.querySelector('.hero');
   if (heroSection) {
-    window.addEventListener('scroll', () => {
+    // Throttled scroll listener for parallax effect
+    window.addEventListener('scroll', throttle(() => {
       const scrollPosition = window.scrollY;
       if (scrollPosition < 800) { // Only apply effect near the top of the page
         const parallaxElements = heroSection.querySelectorAll('.parallax');
@@ -126,36 +149,9 @@ document.addEventListener('DOMContentLoaded', () => {
           el.style.transform = `translateY(${scrollPosition * speed}px)`;
         });
       }
-    });
+    }, 100)); // Throttle to 100ms
   }
 
-  // Add hover effect for cards
-  document.querySelectorAll('.feature-card, .pricing-card, .testimonial-card').forEach(card => {
-    card.addEventListener('mouseenter', (e) => {
-      const glowElement = document.createElement('div');
-      glowElement.classList.add('card-glow');
-      glowElement.style.position = 'absolute';
-      glowElement.style.top = '0';
-      glowElement.style.left = '0';
-      glowElement.style.right = '0';
-      glowElement.style.bottom = '0';
-      glowElement.style.borderRadius = 'inherit';
-      glowElement.style.pointerEvents = 'none';
-      glowElement.style.animation = 'card-glow 2s infinite alternate ease-in-out';
-      glowElement.style.zIndex = '0';
-      
-      // Only add if it doesn't already have one
-      if (!card.querySelector('.card-glow')) {
-        card.style.position = 'relative';
-        card.appendChild(glowElement);
-      }
-    });
-    
-    card.addEventListener('mouseleave', (e) => {
-      const glowElement = card.querySelector('.card-glow');
-      if (glowElement) {
-        glowElement.remove();
-      }
-    });
-  });
+  // Add hover effect for cards (refactored to CSS)
+  // Removed JavaScript logic for dynamic glow element creation/removal
 });

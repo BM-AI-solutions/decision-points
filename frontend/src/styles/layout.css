@@ -3,38 +3,39 @@
 
 /* Premium glassmorphism for main sections */
 .features-section,
-.pricing-section,
-.testimonials-section {
+.pricing-section {
   position: relative;
-  background: linear-gradient(120deg, rgba(30,0,0,0.85) 0%, rgba(123,6,18,0.85) 100%);
-  box-shadow: 0 8px 48px 0 rgba(255,30,0,0.18), 0 1.5px 0 0 #ff5400;
+  /* background: linear-gradient(120deg, rgba(30,0,0,0.85) 0%, rgba(123,6,18,0.85) 100%); */ /* Removed for performance testing */
+  background-color: rgba(30,0,0,0.85); /* Use solid color instead */
+  /* Simplified box-shadow for performance testing */
+  /* box-shadow: 0 4px 24px rgba(255,30,0,0.18); */ /* Removed for performance testing */
   border-radius: 32px;
   margin: 2.5rem 0;
   overflow: visible;
   z-index: 1;
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
-  backdrop-filter: blur(24px) saturate(180%);
+  /* -webkit-backdrop-filter: blur(24px) saturate(180%); */ /* Removed for performance testing */
+  /* backdrop-filter: blur(24px) saturate(180%); */ /* Removed for performance testing */
   border: 2.5px solid rgba(255,84,0,0.18);
 }
 
 .features-section .container,
-.pricing-section .container,
-.testimonials-section .container {
+.pricing-section .container {
   position: relative;
   z-index: 2;
 }
 
+/* Removed ::before pseudo-elements for performance testing */
+/*
 .features-section::before,
-.pricing-section::before,
-.testimonials-section::before {
+.pricing-section::before {
   content: '';
   position: absolute;
-  top: -60px; left: -60px; right: -60px; bottom: -60px;
-  background: radial-gradient(circle at 60% 20%, rgba(255,84,0,0.18) 0%, rgba(217,4,41,0.08) 60%, transparent 100%);
+  top: -30px; left: -30px; right: -30px; bottom: -30px;
+  background: radial-gradient(circle at 50% 50%, rgba(255,84,0,0.05) 0%, transparent 70%);
   z-index: 0;
   pointer-events: none;
-  filter: blur(32px);
 }
+*/
 
 /* Navbar */
 .navbar {
@@ -44,11 +45,12 @@
     width: 100%;
     height: 80px;
     background: rgba(13, 13, 13, 0.95);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
+    /* backdrop-filter: blur(20px); */ /* Removed for performance testing */
+    /* -webkit-backdrop-filter: blur(20px); */ /* Removed for performance testing */
     z-index: 1000;
     border-bottom: 1px solid rgba(255, 71, 19, 0.1);
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    /* Simplified box-shadow for performance testing */
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
 }
 
 .navbar .container {
@@ -424,12 +426,13 @@
         left: 0;
         width: 100%;
         background: rgba(13, 13, 13, 0.95);
-        backdrop-filter: blur(20px);
-        -webkit-backdrop-filter: blur(20px);
+        /* backdrop-filter: blur(20px); */ /* Removed for performance testing */
+        /* -webkit-backdrop-filter: blur(20px); */ /* Removed for performance testing */
         flex-direction: column;
         align-items: center;
         padding: 1.5rem 0;
-        box-shadow: 0 8px 32px 0 rgba(217,4,41,0.35);
+        /* Simplified box-shadow for performance testing */
+        box-shadow: 0 4px 16px rgba(217,4,41,0.35);
         z-index: 1100;
         border-bottom: 2px solid var(--primary-dark);
         gap: 0;
@@ -441,7 +444,8 @@
         display: flex;
         animation: navSlideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
         z-index: 1200;
-        box-shadow: 0 12px 32px 0 rgba(217,4,41,0.45);
+        /* Simplified box-shadow for performance testing */
+        box-shadow: 0 6px 24px rgba(217,4,41,0.45);
     }
 
     .nav-menu li {

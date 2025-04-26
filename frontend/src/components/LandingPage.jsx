@@ -5,7 +5,6 @@ import HowItWorks from './HowItWorks';
 import DashboardPreview from './DashboardPreview';
 import Pricing from './Pricing';
 import AppSection from './AppSection';
-import Testimonials from './Testimonials';
 import Footer from './Footer';
 import Header from './Header'; // Assuming a Header component exists or will be created
 
@@ -19,7 +18,6 @@ function LandingPage() {
       <DashboardPreview />
       <Pricing />
       <AppSection />
-      <Testimonials />
       <Footer />
     </>
   );

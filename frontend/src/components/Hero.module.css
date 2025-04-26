@@ -6,8 +6,11 @@
     overflow: hidden;
     background: var(--gradient-background);
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    will-change: transform, opacity, box-shadow, filter; /* Hint for performance */
 }
 
+/* Removed ::before pseudo-element for performance testing */
+/*
 .hero::before {
     content: '';
     position: absolute;
@@ -18,6 +21,7 @@
     background: radial-gradient(circle at 70% 30%, rgba(255, 71, 19, 0.15), transparent 70%);
     z-index: 1;
 }
+*/
 
 .container {
     width: 100%;
@@ -34,16 +38,7 @@
 
 .heroContent {
     flex: 1;
-}
-
-.heroContent h1 {
-    margin-bottom: var(--spacing-md);
-    font-family: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    font-weight: 900;
-    line-height: 1.2;
-    color: var(--text-primary);
-    letter-spacing: -0.02em;
-    font-size: 3rem; /* 48px */
+    }
 }
 
 .heroContent p {
@@ -126,17 +121,8 @@
 .btn:active::after {
     animation: ripple 0.6s ease-out;
     width: 180%; height: 180%; opacity: 0.18;
+    }
 }
-
-@keyframes ripple {
-    0% {
-        transform: scale(0, 0);
-        opacity: 0.5;
-    }
-    100% {
-        transform: scale(20, 20);
-        opacity: 0;
-    }
 }
 
 .btnPrimary {
@@ -176,25 +162,7 @@
     transform: scale(0.97);
     box-shadow: 0 0 12px 2px #d90429cc;
     border-color: #d90429;
-}
-
-.btnLarge {
-    padding: 16px 32px;
-    font-size: 1.1rem;
-    border-radius: var(--radius-lg);
-    padding: 1.2rem 2.5rem;
-    font-size: 1.25rem;
-    border-radius: 24px;
-}
-
-.emberGlow {
-    animation: ember-glow 4s infinite alternate ease-in-out;
-}
-
-@keyframes ember-glow {
-    0% { box-shadow: 0 0 10px 2px rgba(255, 71, 19, 0.3); }
-    50% { box-shadow: 0 0 20px 5px rgba(255, 71, 19, 0.5); }
-    100% { box-shadow: 0 0 10px 2px rgba(255, 71, 19, 0.3); }
+    }
 }
 
 @keyframes infernal-glow {
@@ -214,11 +182,13 @@
     width: 100%;
     max-width: 550px;
     filter: drop-shadow(0 20px 30px rgba(0, 0, 0, 0.5));
-    animation: float 6s ease-in-out infinite;
     position: relative;
     z-index: 2;
+    will-change: transform, filter; /* Hint for performance */
 }
 
+/* Removed heroGradient element for performance testing */
+/*
 .heroGradient {
     position: absolute;
     top: -20%;
@@ -230,15 +200,7 @@
     filter: blur(100px);
     z-index: 1;
 }
-
-@keyframes float {
-    0%, 100% {
-        transform: translateY(0);
-    }
-    50% {
-        transform: translateY(-20px);
-    }
-}
+*/
 
 .animateOnScroll {
     opacity: 0;
@@ -257,24 +219,6 @@
         flex-direction: column;
         text-align: center;
         padding: 0 var(--spacing-md);
-    }
-
-    .heroContent {
-        order: 1;
-    }
-
-    .heroContent p {
-        margin-left: auto;
-        margin-right: auto;
-    }
-
-    .hero-buttons {
-        justify-content: center;
-    }
-
-    .heroImage {
-        order: 0;
-        margin-bottom: var(--spacing-lg);
     }
 }
 

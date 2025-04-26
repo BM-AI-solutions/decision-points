@@ -1,7 +1,9 @@
 /* Optimized Animations for the Apple from Hell theme */
 @import './variables.css';
 
-/* Ember Glow Animation - Optimized with will-change */
+/* Commenting out animations for performance testing */
+
+/*
 .ember-glow {
   position: relative;
   box-shadow: 0 0 10px 2px rgba(255, 84, 0, 0.3);
@@ -12,8 +14,9 @@
 .ember-glow:hover {
   box-shadow: 0 0 20px 5px rgba(255, 84, 0, 0.5);
 }
+*/
 
-/* Infernal Glow Animation - Optimized */
+/*
 .infernal-glow {
   position: relative;
   box-shadow: 0 0 15px 3px rgba(255, 84, 0, 0.4);
@@ -24,8 +27,9 @@
 .infernal-glow:hover {
   box-shadow: 0 0 25px 5px rgba(255, 84, 0, 0.6);
 }
+*/
 
-/* Floating Animation - Only applied to important elements */
+/*
 .float {
   animation: float 6s infinite ease-in-out;
   will-change: transform;
@@ -36,8 +40,9 @@
   50% { transform: translateY(-10px); }
   100% { transform: translateY(0px); }
 }
+*/
 
-/* Button Hover Animation - Simplified */
+/*
 .btn-hover-effect {
   position: relative;
   overflow: hidden;
@@ -48,8 +53,9 @@
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
+*/
 
-/* Fade In Animation - Essential for UI */
+/*
 .fade-in {
   animation: fade-in 0.5s ease-out forwards;
   opacity: 0;
@@ -66,8 +72,9 @@
     transform: translateY(0);
   }
 }
+*/
 
-/* Staggered Fade In for Lists - Simplified */
+/*
 .stagger-fade-in > * {
   opacity: 0;
   animation: fade-in 0.5s ease-out forwards;
@@ -76,8 +83,9 @@
 .stagger-fade-in > *:nth-child(1) { animation-delay: 0.1s; }
 .stagger-fade-in > *:nth-child(2) { animation-delay: 0.2s; }
 .stagger-fade-in > *:nth-child(3) { animation-delay: 0.3s; }
+*/
 
-/* Shake Animation - Only for validation errors */
+/*
 .shake {
   animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
 }
@@ -88,10 +96,12 @@
   30%, 50%, 70% { transform: translate3d(-3px, 0, 0); }
   40%, 60% { transform: translate3d(3px, 0, 0); }
 }
+*/
 
-/* Hellfire Border - Static version */
+/*
 .hellfire-border {
   position: relative;
   border: 2px solid #FF3A00;
   box-shadow: 0 0 15px rgba(255, 84, 0, 0.4);
 }
+*/
