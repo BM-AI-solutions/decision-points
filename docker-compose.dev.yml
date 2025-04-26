@@ -14,11 +14,9 @@ services:
     working_dir: /app
     ports:
       - "8000:8000" # Map host 8000 to container 8000
-    volumes:
-      - ./backend:/app
     restart: unless-stopped
     # Update command to use port 8000
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
     depends_on:
       - db # Correct dependency name to 'db'
     networks:

@@ -14,7 +14,7 @@ google-api-core
 
 exa-py==1.12.1 # Used by MarketResearchAgent for Exa search
 firecrawl-py==2.1.2 # Used by MarketResearchAgent for data extraction
-google-adk==0.2.0
+google-adk
 # Data processing
 
 
