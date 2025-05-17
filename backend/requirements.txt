@@ -1,6 +1,6 @@
 # Core dependencies
 flask[async]==3.0.3
-flask-cors==4.0.2
+flask-cors==6.0.0
 flask-jwt-extended==4.6.0
 werkzeug==3.0.6
 Flask-SocketIO==5.3.6
